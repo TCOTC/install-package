@@ -961,7 +961,7 @@ export default class InstallPackage extends Plugin {
      */
     private showMessage(message: string, type: 'info' | 'error' = 'info') {
         // 使用 SiYuan 的消息提示 API
-        showMessage(this.displayName + ": " + message, 100000, type);
+        showMessage(this.displayName + ": " + message, 10000, type);
         // if (type === 'info') {
         //     console.log(message);
         // } else {

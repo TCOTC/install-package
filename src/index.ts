@@ -495,6 +495,12 @@ export default class InstallPackage extends Plugin {
             console.log(`Attempting to ${enable ? 'enable' : 'disable'} package: ${packageType} - ${packageName}`);
             await this.setPackageEnabled(packageType, packageName, enable);
             
+            // 如果是图标包，安装成功后调用 reloadIcon API
+            if (packageType === 'icon') {
+                console.log(`Icon package installed, calling reloadIcon API...`);
+                await this.reloadIcon();
+            }
+            
             console.log(`Package installed successfully: ${packageName}`);
             return true;
         } catch (error) {
@@ -896,7 +902,7 @@ export default class InstallPackage extends Plugin {
                             // 插件状态变更后需要刷新 UI 以确保插件正确加载/卸载
                             setTimeout(() => {
                                 this.showReloadDialog(packageName, action);
-                            }, 1000);
+                            }, 200);
                         } else {
                             console.error(`Failed to ${action} plugin: ${response.msg}`);
                             this.showMessage(`Failed to ${action} plugin: ${response.msg}`, "error");
@@ -954,6 +960,69 @@ export default class InstallPackage extends Plugin {
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    /**
+     * 重新加载图标
+     */
+    private async reloadIcon(): Promise<void> {
+        try {
+            console.log('Calling /api/ui/reloadIcon API...');
+            
+            const response = await fetch('/api/ui/reloadIcon', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            if (response.ok) {
+                console.log('Icon reload API called successfully');
+                this.showMessage('Icon package installed and icons reloaded', 'info');
+                
+                // 显示确认对话框，询问是否重新加载界面
+                setTimeout(() => {
+                    this.showIconReloadDialog();
+                }, 200);
+            } else {
+                console.error(`Failed to call reloadIcon API: ${response.status}`);
+                this.showMessage('Icon package installed successfully, but failed to reload icons', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to call reloadIcon API:', error);
+            this.showMessage('Icon package installed successfully, but failed to reload icons', 'error');
+        }
+    }
+
+    /**
+     * 显示图标包重新加载确认对话框
+     */
+    private showIconReloadDialog(): void {
+        const dialog = new Dialog({
+            title: "Icon Package Installed",
+            content: 
+`<div class="b3-dialog__content">
+    <div>Icon package has been installed</div>
+    <div class="b3-label__text">To ensure the icon package takes full effect, it is recommended to reload the interface. Reload now?</div>
+</div>
+<div class="b3-dialog__action">
+    <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
+    <div class="fn__space"></div>
+    <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
+</div>`,
+            width: "400px"
+        });
+
+        dialog.element.querySelector('[data-type="cancel"]').addEventListener('click', () => {
+            dialog.destroy();
+        });
+
+        dialog.element.querySelector('[data-type="confirm"]').addEventListener('click', () => {
+            dialog.destroy();
+            // 使用 reloadUI API 刷新界面
+            console.log('User confirmed UI reload, calling /api/system/reloadUI API...');
+            fetchPost('/api/system/reloadUI');
+        });
     }
 
     /**

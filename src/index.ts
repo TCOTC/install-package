@@ -6,7 +6,7 @@ export default class InstallPackage extends Plugin {
 
         this.addTopBar({
             icon: "iconInstallPackagePlugin",
-            title: "Install Package",
+            title: this.i18n.title,
             position: "right",
             callback: this.topBarHandler,
         });
@@ -32,21 +32,24 @@ export default class InstallPackage extends Plugin {
 
     private topBarHandler = () => {
         const dialog = new Dialog({
-            title: "Install Package",
+            title: this.i18n.dialogTitle,
             width: isMobile() ? "92vw" : "520px",
             content: 
 `<div class="b3-dialog__content">
-    URL of the GitHub repository
+    ${this.i18n.urlLabel}
     <div class="fn__hr"></div>
-    <input data-type="url" class="b3-text-field fn__block" value="https://github.com/" placeholder="format: https://github.com/user/repo">
+    <input data-type="url" class="b3-text-field fn__block" value="https://github.com/" placeholder="${this.i18n.urlPlaceholder}">
     <div class="fn__hr"></div>
-    Version (Git Tag) of the package (optional)
+    ${this.i18n.versionLabel}
     <div class="fn__hr"></div>
-    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="install latest version by default">
+    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${this.i18n.versionPlaceholder}">
     <div class="fn__hr"></div>
-    Enable the plugin package after install
+    ${this.i18n.enableLabel}
     <div class="fn__hr"></div>
-    <input data-type="enable" class="b3-switch fn__flex fn__flex-center" style="overflow: visible;" type="checkbox" checked>
+    <select data-type="enable" class="b3-select fn__block">
+        <option value="enable">${this.i18n.enableOptionEnable}</option>
+        <option value="disable">${this.i18n.enableOptionDisable}</option>
+    </select>
 </div>
 <div class="b3-dialog__action">
     <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
@@ -55,12 +58,15 @@ export default class InstallPackage extends Plugin {
         });
         const urlInput = dialog.element.querySelector("input[data-type='url']") as HTMLInputElement;
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
-        const enableInput = dialog.element.querySelector("input[data-type='enable']") as HTMLInputElement;
+        const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
+        
+        const getEnableValue = () => enableSelect.value === "enable";
+        
         dialog.bindInput(urlInput, () => {
-            this.installPackage(urlInput.value, versionInput.value, enableInput.checked);
+            this.installPackage(urlInput.value, versionInput.value, getEnableValue());
         });
         dialog.bindInput(versionInput, () => {
-            this.installPackage(urlInput.value, versionInput.value, enableInput.checked);
+            this.installPackage(urlInput.value, versionInput.value, getEnableValue());
         });
         urlInput.select();
 
@@ -70,7 +76,7 @@ export default class InstallPackage extends Plugin {
         });
         const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
         confirmButton.addEventListener("click", () => {
-            this.installPackage(urlInput.value, versionInput.value, enableInput.checked);
+            this.installPackage(urlInput.value, versionInput.value, getEnableValue());
             dialog.destroy();
         });
     }
@@ -85,7 +91,7 @@ export default class InstallPackage extends Plugin {
             // 验证 GitHub URL，确保包含用户名和仓库名
             const githubUrlMatch = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)(\/)?$/);
             if (!githubUrlMatch || !githubUrlMatch[1] || !githubUrlMatch[2]) {
-                this.showMessage("Please enter a valid GitHub repository URL with username and repository name, format: https://github.com/user/repo", "error");
+                this.showMessage(this.i18n.invalidUrl, "error");
                 return;
             }
             
@@ -95,7 +101,7 @@ export default class InstallPackage extends Plugin {
             // 获取仓库信息
             const repoInfo = await this.getRepositoryInfo(owner, repo);
             if (!repoInfo) {
-                this.showMessage("Unable to get repository information, please check if the repository exists", "error");
+                this.showMessage(this.i18n.repoInfoError, "error");
                 return;
             }
             
@@ -108,12 +114,16 @@ export default class InstallPackage extends Plugin {
             // 获取 Release 信息
             const releaseInfo = await this.getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
-                this.showMessage(`Unable to get Release information for version ${version || 'latest'}`, "error");
+                const versionText = version || this.i18n.latest;
+                this.showMessage(this.i18n.releaseInfoError.replace("{version}", versionText), "error");
                 return;
             }
             
             console.log("Release Info:", releaseInfo);
-            this.showMessage(`Found Release: ${releaseInfo.tag_name}${releaseInfo.published_at ? ` (published on ${new Date(releaseInfo.published_at).toLocaleDateString()})` : ''}`, "info");
+            const publishedAt = releaseInfo.published_at 
+                ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString())
+                : '';
+            this.showMessage(this.i18n.foundRelease.replace("{tagName}", releaseInfo.tag_name).replace("{publishedAt}", publishedAt), "info");
             
             // 显示 Release 描述（如果有的话）
             if (releaseInfo.body && releaseInfo.body.trim()) {
@@ -123,11 +133,11 @@ export default class InstallPackage extends Plugin {
             // 查找包文件
             const pluginAsset = this.findPluginAsset(releaseInfo.assets);
             if (!pluginAsset) {
-                this.showMessage("package.zip file not found", "error");
+                this.showMessage(this.i18n.packageZipNotFound, "error");
                 return;
             }
             
-            this.showMessage(`Downloading ${pluginAsset.name} (${this.formatFileSize(pluginAsset.size)})`, "info");
+            this.showMessage(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", this.formatFileSize(pluginAsset.size)), "info");
             
             // 使用 GitHub 下载 URL
             const downloadUrl = pluginAsset.browser_download_url;
@@ -136,14 +146,15 @@ export default class InstallPackage extends Plugin {
             const { success, packageType } = await this.downloadAndInstallPlugin(downloadUrl, pluginAsset.name, enable);
             
             if (success) {
-                console.log(`Package downloaded and installed successfully!${enable && packageType === "plugin" ? ' Auto-enabled.' : ' Please enable the package manually.'}`);
+                const autoEnabledText = enable && packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually;
+                console.log(this.i18n.downloadSuccess.replace("{autoEnabled}", autoEnabledText));
             } else {
                 console.error("Failed to download or install package");
             }
             
         } catch (error) {
             console.error("InstallPackage error:", error);
-            this.showMessage(`Download failed: ${error.message}`, "error");
+            this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), "error");
         }
     }
 
@@ -231,7 +242,7 @@ export default class InstallPackage extends Plugin {
             } catch (error) {
                 clearTimeout(timeoutId);
                 if (error.name === 'AbortError') {
-                    throw new Error('Download timeout, please check network connection');
+                    throw new Error(this.i18n.downloadTimeout);
                 }
                 throw error;
             }
@@ -241,7 +252,7 @@ export default class InstallPackage extends Plugin {
             
             // 验证文件
             if (!this.validatePluginFile(uint8Array, fileName)) {
-                this.showMessage("File validation failed, please check if the file is complete.", "error");
+                this.showMessage(this.i18n.fileValidationFailed, "error");
                 return { success: false, packageType: null };
             }
             
@@ -252,12 +263,12 @@ export default class InstallPackage extends Plugin {
             try {
                 packageType = await this.detectPackageType(uint8Array, fileName);
             } catch (error) {
-                this.showMessage(`Package type detection failed: ${error.message}`, "error");
+                this.showMessage(this.i18n.packageTypeDetectionFailed.replace("{error}", error.message), "error");
                 return { success: false, packageType: null };
             }
             
             if (!packageType) {
-                this.showMessage("Unable to identify package type, please ensure the package contains the correct configuration file (one of plugin.json, widget.json, template.json, theme.json, icon.json).", "error");
+                this.showMessage(this.i18n.packageTypeUnknown, "error");
                 return { success: false, packageType: null };
             }
             
@@ -267,15 +278,16 @@ export default class InstallPackage extends Plugin {
             const success = await this.installPackageWithKernelAPI(uint8Array, fileName, packageType, enable);
             
             if (success) {
-                this.showMessage(`${packageType} package installed successfully${enable && packageType === "plugin" ? ', auto-enabled.' : ', please enable manually.'}`, "info");
+                const autoEnabledText = enable && packageType === "plugin" ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
+                this.showMessage(this.i18n.packageInstalledSuccess.replace("{packageType}", packageType).replace("{autoEnabled}", autoEnabledText), "info");
             } else {
-                this.showMessage("Package installation failed", "error");
+                this.showMessage(this.i18n.packageInstallFailed, "error");
             }
             
             return { success, packageType };
         } catch (error) {
             console.error("Failed to download or install plugin:", error);
-            this.showMessage(`Installation failed: ${error.message}`, "error");
+            this.showMessage(this.i18n.installationFailed.replace("{error}", error.message), "error");
             return { success: false, packageType: null };
         }
     }
@@ -366,7 +378,7 @@ export default class InstallPackage extends Plugin {
             console.log('Extracted directory contents:', dirData);
             
             if (!dirData.data || !Array.isArray(dirData.data)) {
-                throw new Error('Extracted directory is empty or format is incorrect');
+                throw new Error(this.i18n.extractedDirEmpty);
             }
             
             // 获取文件名列表
@@ -395,9 +407,9 @@ export default class InstallPackage extends Plugin {
             
             // 必须只包含一种配置文件
             if (foundConfigs.length === 0) {
-                throw new Error('No configuration files found (plugin.json, widget.json, template.json, theme.json, icon.json)');
+                throw new Error(this.i18n.noConfigFiles);
             } else if (foundConfigs.length > 1) {
-                throw new Error(`Multiple configuration files found: ${foundConfigs.join(', ')}, a package can only contain one type of configuration file`);
+                throw new Error(this.i18n.multipleConfigFiles.replace("{files}", foundConfigs.join(', ')));
             }
             
             return foundConfigs[0];
@@ -459,7 +471,7 @@ export default class InstallPackage extends Plugin {
             // 检查目标目录是否已存在
             if (await this.pathExists(installPath)) {
                 console.log(`Target directory already exists: ${installPath}`);
-                this.showMessage(`Target directory ${installPath} already exists, clearing old package files...`, "info");
+                this.showMessage(this.i18n.targetDirExists.replace("{path}", installPath), "info");
                 
                 // 清空已存在的目录
                 await this.clearDirectory(installPath);
@@ -493,7 +505,8 @@ export default class InstallPackage extends Plugin {
             
             // 根据启用状态设置包的状态
             console.log(`Attempting to ${enable ? 'enable' : 'disable'} package: ${packageType} - ${packageName}`);
-            await this.setPackageEnabled(packageType, packageName, enable);
+            // 安装时如果是插件类型，不显示启用/禁用消息，因为安装成功消息已经包含了状态信息
+            await this.setPackageEnabled(packageType, packageName, enable, packageType !== 'plugin');
             
             // 如果是图标包，安装成功后调用 reloadIcon API
             if (packageType === 'icon') {
@@ -505,7 +518,7 @@ export default class InstallPackage extends Plugin {
             return true;
         } catch (error) {
             console.error("Package installation failed:", error);
-            this.showMessage(`Installation failed: ${error.message}`, "error");
+            this.showMessage(this.i18n.installationFailed.replace("{error}", error.message), "error");
             return false;
         } finally {
             // 确保清理临时文件
@@ -656,20 +669,20 @@ export default class InstallPackage extends Plugin {
             const packageName = configData.name || configData.packageName;
             
             if (!packageName) {
-                throw new Error(`Package name not found in configuration file (name or packageName field)`);
+                throw new Error(this.i18n.packageNameNotFound);
             }
             
             console.log(`Package name extracted from configuration file: ${packageName}`);
             
             // 验证包名格式
             if (typeof packageName !== 'string' || packageName.trim() === '') {
-                throw new Error(`Invalid package name format: ${packageName}`);
+                throw new Error(this.i18n.invalidPackageName.replace("{name}", String(packageName)));
             }
             
             return packageName.trim();
         } catch (error) {
             console.error('Failed to extract package name from content:', error);
-            throw new Error(`Unable to extract package name from configuration file: ${error.message}`);
+            throw new Error(this.i18n.extractPackageNameError.replace("{error}", error.message));
         }
     }
 
@@ -881,8 +894,12 @@ export default class InstallPackage extends Plugin {
 
     /**
      * 设置包启用状态
+     * @param packageType 包类型
+     * @param packageName 包名
+     * @param enabled 是否启用
+     * @param showMessage 是否显示消息（默认 true）
      */
-    private async setPackageEnabled(packageType: string, packageName: string, enabled: boolean): Promise<void> {
+    private async setPackageEnabled(packageType: string, packageName: string, enabled: boolean, showMessage: boolean = true): Promise<void> {
         try {
             // 根据包类型调用相应的 API
             switch (packageType) {
@@ -891,28 +908,40 @@ export default class InstallPackage extends Plugin {
                     const action = enabled ? 'enable' : 'disable';
                     console.log(`Attempting to ${action} plugin: ${packageName}`);
                     fetchPost('/api/petal/setPetalEnabled', {
+                        // 不需要 app 参数，内核会广播到所有前端，包括当前界面
                         packageName: packageName,
                         enabled: enabled,
                         frontend: getFrontend()
                     }, (response) => {
                         if (response.code === 0) {
                             console.log(`Plugin ${packageName} ${action}d successfully`);
-                            this.showMessage(`Plugin ${packageName} has been ${action}d`, "info");
+                            if (showMessage) {
+                                const message = enabled ? this.i18n.pluginEnabled.replace("{name}", packageName) : this.i18n.pluginDisabled.replace("{name}", packageName);
+                                this.showMessage(message, "info");
+                            }
                         } else {
                             console.error(`Failed to ${action} plugin: ${response.msg}`);
-                            this.showMessage(`Failed to ${action} plugin: ${response.msg}`, "error");
+                            const errorMsg = enabled 
+                                ? this.i18n.enablePluginFailed.replace("{error}", response.msg)
+                                : this.i18n.disablePluginFailed.replace("{error}", response.msg);
+                            this.showMessage(errorMsg, "error");
                         }
                     });
                     break;
                 default:
                     // 其他包类型不需要启用/禁用功能
                     console.log(`${packageType} ${packageName} installed`);
-                    this.showMessage(`${packageType} ${packageName} installed`, "info");
+                    if (showMessage) {
+                        this.showMessage(this.i18n.packageInstalled.replace("{packageType}", packageType).replace("{name}", packageName), "info");
+                    }
             }
         } catch (error) {
             const action = enabled ? 'enable' : 'disable';
             console.error(`Failed to ${action} package:`, error);
-            this.showMessage(`Failed to ${action} package: ${error.message}`, "error");
+            const errorMsg = enabled 
+                ? this.i18n.enablePackageFailed.replace("{error}", error.message)
+                : this.i18n.disablePackageFailed.replace("{error}", error.message);
+            this.showMessage(errorMsg, "error");
         }
     }
 
@@ -973,7 +1002,7 @@ export default class InstallPackage extends Plugin {
             
             if (response.ok) {
                 console.log('Icon reload API called successfully');
-                this.showMessage('Icon package installed and icons reloaded', 'info');
+                this.showMessage(this.i18n.iconReloadSuccess, 'info');
                 
                 // 显示确认对话框，询问是否重新加载界面
                 setTimeout(() => {
@@ -981,11 +1010,11 @@ export default class InstallPackage extends Plugin {
                 }, 200);
             } else {
                 console.error(`Failed to call reloadIcon API: ${response.status}`);
-                this.showMessage('Icon package installed successfully, but failed to reload icons', 'error');
+                this.showMessage(this.i18n.iconReloadFailed, 'error');
             }
         } catch (error) {
             console.error('Failed to call reloadIcon API:', error);
-            this.showMessage('Icon package installed successfully, but failed to reload icons', 'error');
+            this.showMessage(this.i18n.iconReloadFailed, 'error');
         }
     }
 
@@ -994,11 +1023,11 @@ export default class InstallPackage extends Plugin {
      */
     private showIconReloadDialog(): void {
         const dialog = new Dialog({
-            title: "Icon Package Installed",
+            title: this.i18n.iconPackageInstalled,
             content: 
 `<div class="b3-dialog__content">
-    <div>Icon package has been installed</div>
-    <div class="b3-label__text">To ensure the icon package takes full effect, it is recommended to reload the interface. Reload now?</div>
+    <div>${this.i18n.iconPackageInstalled}</div>
+    <div class="b3-label__text">${this.i18n.iconReloadDialogContent}</div>
 </div>
 <div class="b3-dialog__action">
     <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>

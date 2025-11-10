@@ -2,8 +2,8 @@
   "name": "install-package",
   "author": "TCOTC",
   "url": "https://github.com/TCOTC/install-package",
-  "version": "0.1.1",
-  "minAppVersion": "3.1.0",
+  "version": "0.2.0",
+  "minAppVersion": "3.3.6",
   "backends": ["windows","linux","darwin"],
   "frontends": ["desktop", "browser-desktop", "browser-mobile"],
   "disabledInPublish": true,
@@ -12,21 +12,14 @@
     "zh_CN": "安装集市包"
   },
   "description": {
-    "default": "Install the specified marketplace package GitHub repository Release",
-    "zh_CN": "安装指定集市包 GitHub 仓库的 Release"
+    "default": "Install the specified GitHub repository marketplace package Release",
+    "zh_CN": "安装指定 GitHub 仓库的集市包 Release"
   },
   "readme": {
     "default": "README.md",
     "zh_CN": "README_zh_CN.md"
   },
-  "funding": {
-    "openCollective": "",
-    "patreon": "",
-    "github": "",
-    "custom": [
-      "https://bento.me/jeffff"
-    ]
-  },
+  "funding": {"custom": ["https://bento.me/jeffff"]},
   "keywords": [
     "开发者工具",
     "developer tool"

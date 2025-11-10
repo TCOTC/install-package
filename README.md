@@ -2,7 +2,7 @@
 
 This is a plugin for installing marketplace packages, which can download and install specified marketplace package GitHub repository releases into SiYuan Notes.
 
-This is essentially a developer-specific tool, and regular users typically don't need to install or use it.
+It is mainly designed to facilitate quick installation and testing when reviewing marketplace packages. Regular users typically don't need to install or use it, but you can try it if you want.
 
 ### Features
 

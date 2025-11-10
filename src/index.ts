@@ -898,11 +898,6 @@ export default class InstallPackage extends Plugin {
                         if (response.code === 0) {
                             console.log(`Plugin ${packageName} ${action}d successfully`);
                             this.showMessage(`Plugin ${packageName} has been ${action}d`, "info");
-                            
-                            // 插件状态变更后需要刷新 UI 以确保插件正确加载/卸载
-                            setTimeout(() => {
-                                this.showReloadDialog(packageName, action);
-                            }, 200);
                         } else {
                             console.error(`Failed to ${action} plugin: ${response.msg}`);
                             this.showMessage(`Failed to ${action} plugin: ${response.msg}`, "error");
@@ -922,34 +917,34 @@ export default class InstallPackage extends Plugin {
     }
 
     /**
-     * 显示刷新对话框
+     * 显示刷新对话框。v3.3.6 之后由内核推送到前端，不再需要手动重载 https://github.com/siyuan-note/siyuan/issues/16156
      */
-    private showReloadDialog(packageName: string, action: string): void {
-        const dialog = new Dialog({
-            title: "Plugin Status Change",
-            content: 
-`<div class="b3-dialog__content">
-    <div>Plugin ${packageName} has been ${action}d</div>
-    <div class="b3-label__text">To ensure the plugin works properly, it is recommended to refresh the interface. Refresh now?</div>
-</div>
-<div class="b3-dialog__action">
-    <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
-    <div class="fn__space"></div>
-    <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
-</div>`,
-            width: "400px"
-        });
+//     private showReloadDialog(packageName: string, action: string): void {
+//         const dialog = new Dialog({
+//             title: "Plugin Status Change",
+//             content: 
+// `<div class="b3-dialog__content">
+//     <div>Plugin ${packageName} has been ${action}d</div>
+//     <div class="b3-label__text">To ensure the plugin works properly, it is recommended to refresh the interface. Refresh now?</div>
+// </div>
+// <div class="b3-dialog__action">
+//     <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
+//     <div class="fn__space"></div>
+//     <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
+// </div>`,
+//             width: "400px"
+//         });
 
-        dialog.element.querySelector('[data-type="cancel"]').addEventListener('click', () => {
-            dialog.destroy();
-        });
+//         dialog.element.querySelector('[data-type="cancel"]').addEventListener('click', () => {
+//             dialog.destroy();
+//         });
 
-        dialog.element.querySelector('[data-type="confirm"]').addEventListener('click', () => {
-            dialog.destroy();
-            // 使用 reloadUI API 刷新界面
-            fetchPost('/api/system/reloadUI');
-        });
-    }
+//         dialog.element.querySelector('[data-type="confirm"]').addEventListener('click', () => {
+//             dialog.destroy();
+//             // 使用 reloadUI API 刷新界面
+//             fetchPost('/api/system/reloadUI');
+//         });
+//     }
 
     /**
      * 格式化文件大小

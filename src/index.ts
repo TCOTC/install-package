@@ -543,7 +543,16 @@ export default class InstallPackage extends Plugin {
                     path: path
                 })
             });
-            return response.ok;
+            
+            // 不仅检查 response.ok，还要检查响应的 code 字段
+            if (!response.ok) {
+                return false;
+            }
+            
+            const data = await response.json();
+            // SiYuan API 通常返回 { code: 0, data: ... } 格式
+            // code 为 0 表示成功，且 data 存在且为数组时，说明目录存在
+            return data.code === 0 && data.data && Array.isArray(data.data);
         } catch (error) {
             return false;
         }

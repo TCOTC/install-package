@@ -327,28 +327,34 @@ export default class InstallPackage extends Plugin {
      * 检测包类型 - 基于配置文件存在性
      */
     private async detectPackageType(data: Uint8Array, fileName: string): Promise<string | null> {
+        let tempPath = '';
+        let extractPath = '';
+        
         try {
             // 先解压到临时目录进行检测
             const tempFileName = `temp_${Date.now()}_${fileName}`;
-            const tempPath = `temp/${tempFileName}`;
+            tempPath = `temp/export/${tempFileName}`;
             
             // 写入临时文件
             await this.writeTempFile(data, tempPath);
             
             // 解压到临时目录
-            const extractPath = `temp/extract_${Date.now()}`;
+            extractPath = `temp/export/extract_${Date.now()}`;
             await this.unzipFile(tempPath, extractPath);
             
             // 检测包类型
             const packageType = await this.detectPackageTypeFromContent(extractPath);
             
-            // 清理临时文件
-            await this.cleanupTempFiles([tempPath, extractPath]);
-            
             return packageType;
         } catch (error) {
             console.error('Failed to detect package type:', error);
             return null;
+        } finally {
+            // 确保清理临时文件
+            if (tempPath || extractPath) {
+                console.log(`Cleaning up temporary files: ${tempPath}, ${extractPath}`);
+                await this.cleanupTempFiles([tempPath, extractPath].filter(Boolean)); // 过滤掉空值
+            }
         }
     }
 
@@ -431,7 +437,7 @@ export default class InstallPackage extends Plugin {
             
             // 创建临时文件
             const tempFileName = `temp_${Date.now()}_${fileName}`;
-            tempPath = `temp/${tempFileName}`;
+            tempPath = `temp/export/${tempFileName}`;
             console.log(`Creating temporary file: ${tempPath}`);
             
             // 使用 SiYuan 的文件 API 写入临时文件
@@ -439,7 +445,7 @@ export default class InstallPackage extends Plugin {
             console.log(`Temporary file written successfully: ${tempPath}`);
             
             // 解压到临时目录
-            extractPath = `temp/extract_${Date.now()}`;
+            extractPath = `temp/export/extract_${Date.now()}`;
             console.log(`Extracting to directory: ${extractPath}`);
             await this.unzipFile(tempPath, extractPath);
             console.log(`Extraction completed: ${extractPath}`);

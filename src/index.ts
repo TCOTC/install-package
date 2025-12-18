@@ -38,11 +38,11 @@ export default class InstallPackage extends Plugin {
 `<div class="b3-dialog__content">
     ${this.i18n.urlLabel}
     <div class="fn__hr"></div>
-    <input data-type="url" class="b3-text-field fn__block" value="https://github.com/" placeholder="${this.i18n.urlPlaceholder}">
+    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${this.i18n.urlPlaceholder}" spellcheck="false">
     <div class="fn__hr"></div>
     ${this.i18n.versionLabel}
     <div class="fn__hr"></div>
-    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${this.i18n.versionPlaceholder}">
+    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${this.i18n.versionPlaceholder}" spellcheck="false">
     <div class="fn__hr"></div>
     ${this.i18n.enableLabel}
     <div class="fn__hr"></div>
@@ -88,14 +88,27 @@ export default class InstallPackage extends Plugin {
         try {
             console.log("InstallPackage installPackage", url, version, enable);
             
-            // 验证 GitHub URL，确保包含用户名和仓库名
-            const githubUrlMatch = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)(\/)?$/);
-            if (!githubUrlMatch || !githubUrlMatch[1] || !githubUrlMatch[2]) {
-                this.showMessage(this.i18n.invalidUrl, "error");
-                return;
-            }
+            let owner: string;
+            let repo: string;
             
-            const [, owner, repo] = githubUrlMatch;
+            // 先尝试匹配完整的 GitHub URL
+            const githubUrlMatch = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)(\/)?$/);
+            if (githubUrlMatch && githubUrlMatch[1] && githubUrlMatch[2]) {
+                // 完整 URL 格式
+                owner = githubUrlMatch[1];
+                repo = githubUrlMatch[2];
+                console.log(`Full URL format detected: ${owner}/${repo}`);
+            } else {
+                // 尝试匹配 user/repo 格式
+                const shortFormatMatch = url.match(/^([^\/\s]+)\/([^\/\s]+)$/);
+                if (!shortFormatMatch || !shortFormatMatch[1] || !shortFormatMatch[2]) {
+                    this.showMessage(this.i18n.invalidUrl, "error");
+                    return;
+                }
+                owner = shortFormatMatch[1];
+                repo = shortFormatMatch[2];
+                console.log(`Short format detected: ${owner}/${repo}`);
+            }
             console.log("Getting repository information...");
             
             // 获取仓库信息

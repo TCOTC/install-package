@@ -3,7 +3,7 @@
   "author": "TCOTC",
   "url": "https://github.com/TCOTC/install-package",
   "version": "0.2.1",
-  "minAppVersion": "3.4.2",
+  "minAppVersion": "3.5.0",
   "backends": ["windows","linux","darwin"],
   "frontends": ["desktop", "browser-desktop", "browser-mobile"],
   "disabledInPublish": true,

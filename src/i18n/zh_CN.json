@@ -48,5 +48,7 @@
   "latest": "最新",
   "downloadTimeout": "下载超时，请检查网络连接",
   "extractedDirEmpty": "解压目录为空或格式不正确",
-  "packageNameMismatch": "包名不匹配：配置文件中的包名为 [{configName}]，但仓库名为 [{repoName}]。包名必须与仓库名一致。"
+  "packageNameMismatch": "包名不匹配：配置文件中的包名为 [{configName}]，但仓库名为 [{repoName}]。包名必须与仓库名一致。",
+  "openPluginsDir": "打开 Plugins 目录",
+  "openPetalDir": "打开 Petal 目录"
 }

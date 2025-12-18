@@ -1,5 +1,12 @@
 import { Dialog, Plugin, showMessage, fetchPost, getFrontend } from "siyuan";
 
+// 为 Electron 环境扩展 Window 接口
+declare global {
+    interface Window {
+        require?: (module: string) => any;
+    }
+}
+
 export default class InstallPackage extends Plugin {
     onload() {
         console.log("InstallPackage loaded");
@@ -31,6 +38,17 @@ export default class InstallPackage extends Plugin {
     }
 
     private topBarHandler = () => {
+        // 判断是否在 Electron 环境中
+        const isElectron = typeof window !== 'undefined' && window.require;
+        
+        // 根据环境生成按钮 HTML
+        const openDirButtons = isElectron ? `
+    <div class="fn__hr"></div>
+    <div class="fn__flex" style="gap: 8px;">
+        <button data-type="open-plugins" class="b3-button b3-button--outline">${this.i18n.openPluginsDir}</button>
+        <button data-type="open-petal" class="b3-button b3-button--outline">${this.i18n.openPetalDir}</button>
+    </div>` : '';
+        
         const dialog = new Dialog({
             title: this.i18n.dialogTitle,
             width: isMobile() ? "92vw" : "520px",
@@ -50,6 +68,7 @@ export default class InstallPackage extends Plugin {
         <option value="enable">${this.i18n.enableOptionEnable}</option>
         <option value="disable">${this.i18n.enableOptionDisable}</option>
     </select>
+    ${openDirButtons}
 </div>
 <div class="b3-dialog__action">
     <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
@@ -79,6 +98,19 @@ export default class InstallPackage extends Plugin {
             this.installPackage(urlInput.value, versionInput.value, getEnableValue());
             dialog.destroy();
         });
+        
+        // 只在 Electron 环境下添加打开目录按钮的事件监听器
+        if (isElectron) {
+            const openPluginsButton = dialog.element.querySelector("button[data-type='open-plugins']") as HTMLButtonElement;
+            openPluginsButton.addEventListener("click", () => {
+                this.openDirectory("data/plugins");
+            });
+            
+            const openPetalButton = dialog.element.querySelector("button[data-type='open-petal']") as HTMLButtonElement;
+            openPetalButton.addEventListener("click", () => {
+                this.openDirectory("data/storage/petal");
+            });
+        }
     }
 
     private installPackage = async (url: string, version: string, enable: boolean) => {
@@ -1115,6 +1147,32 @@ export default class InstallPackage extends Plugin {
         // } else {
         //     console.error(message);
         // }
+    }
+
+    /**
+     * 打开目录（仅在 Electron 环境下调用）
+     */
+    private openDirectory(path: string): void {
+        try {
+            console.log(`Opening directory: ${path}`);
+            
+            const { shell } = window.require('electron');
+            const workspaceDir = window.siyuan?.config?.system?.workspaceDir || '';
+            const fullPath = workspaceDir ? `${workspaceDir}/${path}` : path;
+            
+            console.log(`Opening directory in Electron: ${fullPath}`);
+            shell.openPath(fullPath).then((error: string) => {
+                if (error) {
+                    console.error(`Failed to open directory: ${error}`);
+                    this.showMessage(`无法打开目录：${error}`, 'error');
+                } else {
+                    console.log(`Directory opened successfully: ${fullPath}`);
+                }
+            });
+        } catch (error) {
+            console.error(`Failed to open directory: ${path}`, error);
+            this.showMessage(`打开目录失败：${error.message}`, 'error');
+        }
     }
 }
 

@@ -339,8 +339,15 @@ export default class InstallPackage extends Plugin {
             const success = await this.installPackageWithKernelAPI(uint8Array, fileName, packageType, packageName, enable);
             
             if (success) {
-                const autoEnabledText = enable && packageType === "plugin" ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
-                this.showMessage(this.i18n.packageInstalledSuccess.replace("{packageType}", packageType).replace("{autoEnabled}", autoEnabledText), "info");
+                let autoEnabledText = "";
+                if (packageType === "plugin") {
+                    autoEnabledText = enable ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
+                } else if (packageType === "widget" || packageType === "template") {
+                    // 挂件和模板没有"启用"的概念
+                } else if (packageType === "theme" || packageType === "icon") {
+                    autoEnabledText = this.i18n.packageInstalledSuccessManual; // 主题和图标需要手动应用
+                }
+                this.showMessage(this.i18n.packageInstalledSuccess.replace("{packageType}", packageType).replace("{packageName}", packageName).replace("{autoEnabled}", autoEnabledText), "info");
             } else {
                 this.showMessage(this.i18n.packageInstallFailed, "error");
             }
@@ -581,8 +588,7 @@ export default class InstallPackage extends Plugin {
             
             // 根据启用状态设置包的状态
             console.log(`Attempting to ${enable ? 'enable' : 'disable'} package: ${packageType} - ${packageName}`);
-            // 安装时如果是插件类型，不显示启用/禁用消息，因为安装成功消息已经包含了状态信息
-            await this.setPackageEnabled(packageType, packageName, enable, packageType !== 'plugin');
+            await this.setPackageEnabled(packageType, packageName, enable);
             
             // 如果是图标包，安装成功后调用 reloadIcon API
             if (packageType === 'icon') {
@@ -984,9 +990,8 @@ export default class InstallPackage extends Plugin {
      * @param packageType 包类型
      * @param packageName 包名
      * @param enabled 是否启用
-     * @param showMessage 是否显示消息（默认 true）
      */
-    private async setPackageEnabled(packageType: string, packageName: string, enabled: boolean, showMessage: boolean = true): Promise<void> {
+    private async setPackageEnabled(packageType: string, packageName: string, enabled: boolean): Promise<void> {
         try {
             // 根据包类型调用相应的 API
             switch (packageType) {
@@ -1002,10 +1007,6 @@ export default class InstallPackage extends Plugin {
                     }, (response) => {
                         if (response.code === 0) {
                             console.log(`Plugin ${packageName} ${action}d successfully`);
-                            if (showMessage) {
-                                const message = enabled ? this.i18n.pluginEnabled.replace("{name}", packageName) : this.i18n.pluginDisabled.replace("{name}", packageName);
-                                this.showMessage(message, "info");
-                            }
                         } else {
                             console.error(`Failed to ${action} plugin: ${response.msg}`);
                             const errorMsg = enabled 
@@ -1018,9 +1019,6 @@ export default class InstallPackage extends Plugin {
                 default:
                     // 其他包类型不需要启用/禁用功能
                     console.log(`${packageType} ${packageName} installed`);
-                    if (showMessage) {
-                        this.showMessage(this.i18n.packageInstalled.replace("{packageType}", packageType).replace("{name}", packageName), "info");
-                    }
             }
         } catch (error) {
             const action = enabled ? 'enable' : 'disable';

@@ -9,14 +9,16 @@
 - 支持从 GitHub 仓库下载 Release 版本
 - 显示文件大小和 Release 信息
 - 文件验证和完整性检查
+- 快速打开插件和存储目录（仅桌面版）
 
 ### 使用方法
 
 1. 点击顶部工具栏的下载图标
-2. 输入 GitHub 仓库 URL（格式：`https://github.com/user/repo`）
+2. 输入 GitHub 仓库 URL（格式：`https://github.com/user/repo` 或 `user/repo`）
 3. 可选：指定版本号（留空则下载最新版本）
 4. 选择安装之后是否启用插件
-5. 点击确认开始下载
+5. 可点击底部按钮快速打开 Plugins 目录或 Petal 目录（仅桌面版）
+6. 点击确认开始下载
 
 ### 注意事项
 

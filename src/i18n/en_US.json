@@ -47,5 +47,6 @@
   "iconReloadDialogContent": "To ensure the icon package takes full effect, it is recommended to reload the interface. Reload now?",
   "latest": "latest",
   "downloadTimeout": "Download timeout, please check network connection",
-  "extractedDirEmpty": "Extracted directory is empty or format is incorrect"
+  "extractedDirEmpty": "Extracted directory is empty or format is incorrect",
+  "packageNameMismatch": "Package name mismatch: package name in config is [{configName}], but repository name is [{repoName}]. Package name must match repository name."
 }

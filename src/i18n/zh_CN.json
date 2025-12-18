@@ -47,5 +47,6 @@
   "iconReloadDialogContent": "为确保图标集市包完全生效，建议重新加载界面。现在重新加载吗？",
   "latest": "最新",
   "downloadTimeout": "下载超时，请检查网络连接",
-  "extractedDirEmpty": "解压目录为空或格式不正确"
+  "extractedDirEmpty": "解压目录为空或格式不正确",
+  "packageNameMismatch": "包名不匹配：配置文件中的包名为 [{configName}]，但仓库名为 [{repoName}]。包名必须与仓库名一致。"
 }

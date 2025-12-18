@@ -215,6 +215,18 @@ export default class InstallPackage extends Plugin {
         return file || null;
     }
 
+    /**
+     * 从下载 URL 中提取包名（仓库名）
+     */
+    private extractPackageNameFromUrl(url: string): string {
+        // URL 格式: https://github.com/owner/repo/releases/download/...
+        const match = url.match(/github\.com\/[^\/]+\/([^\/]+)/);
+        if (match && match[1]) {
+            return match[1];
+        }
+        throw new Error('Unable to extract package name from URL');
+    }
+
 
     /**
      * 下载并安装插件
@@ -274,8 +286,12 @@ export default class InstallPackage extends Plugin {
             
             console.log(`Package type detected: ${packageType}, installing...`);
             
+            // 从下载 URL 中提取仓库名作为包名
+            const packageName = this.extractPackageNameFromUrl(downloadUrl);
+            console.log(`Package name extracted from URL: ${packageName}`);
+            
             // 使用 SiYuan 内核 API 进行安装
-            const success = await this.installPackageWithKernelAPI(uint8Array, fileName, packageType, enable);
+            const success = await this.installPackageWithKernelAPI(uint8Array, fileName, packageType, packageName, enable);
             
             if (success) {
                 const autoEnabledText = enable && packageType === "plugin" ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
@@ -428,12 +444,12 @@ export default class InstallPackage extends Plugin {
     /**
      * 使用 SiYuan 内核 API 安装包
      */
-    private async installPackageWithKernelAPI(data: Uint8Array, fileName: string, packageType: string, enable: boolean): Promise<boolean> {
+    private async installPackageWithKernelAPI(data: Uint8Array, fileName: string, packageType: string, packageName: string, enable: boolean): Promise<boolean> {
         let tempPath = '';
         let extractPath = '';
         
         try {
-            console.log(`Starting package installation: ${fileName}, type: ${packageType}`);
+            console.log(`Starting package installation: ${fileName}, type: ${packageType}, name: ${packageName}`);
             
             // 创建临时文件
             const tempFileName = `temp_${Date.now()}_${fileName}`;
@@ -444,9 +460,9 @@ export default class InstallPackage extends Plugin {
             await this.writeTempFile(data, tempPath);
             console.log(`Temporary file written successfully: ${tempPath}`);
             
-            // 解压到临时目录
-            extractPath = `temp/export/extract_${Date.now()}`;
-            console.log(`Extracting to directory: ${extractPath}`);
+            // 直接解压到 temp/export/extract_xxx/packageName/
+            extractPath = `temp/export/extract_${Date.now()}/${packageName}`;
+            console.log(`Extracting to final directory: ${extractPath}`);
             await this.unzipFile(tempPath, extractPath);
             console.log(`Extraction completed: ${extractPath}`);
             
@@ -466,9 +482,18 @@ export default class InstallPackage extends Plugin {
                 console.log('Extracted directory contents:', extractDirData);
             }
             
-            // 根据包类型安装到对应目录 - 包名必须从配置文件中提取
-            const packageName = await this.extractPackageNameFromContent(extractPath, packageType);
-            console.log(`Package name extracted from configuration file: ${packageName}`);
+            // 从配置文件中读取包名并验证是否与仓库名一致
+            const configPackageName = await this.extractPackageNameFromContent(extractPath, packageType);
+            console.log(`Package name from config: ${configPackageName}, repository name: ${packageName}`);
+            
+            if (configPackageName !== packageName) {
+                const errorMsg = this.i18n.packageNameMismatch.replace("{configName}", configPackageName).replace("{repoName}", packageName);
+                this.showMessage(errorMsg, "error");
+                console.error(errorMsg);
+                return false;
+            }
+            
+            console.log('Package name verification passed');
             
             const installPath = this.getInstallPath(packageType, packageName);
             console.log(`Final package name: ${packageName}`);
@@ -528,9 +553,12 @@ export default class InstallPackage extends Plugin {
             return false;
         } finally {
             // 确保清理临时文件
-            if (tempPath || extractPath) {
-                console.log(`Cleaning up temporary files: ${tempPath}, ${extractPath}`);
-                await this.cleanupTempFiles([tempPath, extractPath].filter(Boolean));
+            // extractPath 格式是 temp/export/extract_xxx/packageName/，需要清理整个 extract_xxx 目录
+            const extractBaseDir = extractPath ? extractPath.substring(0, extractPath.lastIndexOf('/')) : '';
+            const pathsToClean = [tempPath, extractBaseDir].filter(Boolean);
+            if (pathsToClean.length > 0) {
+                console.log(`Cleaning up temporary files: ${pathsToClean.join(', ')}`);
+                await this.cleanupTempFiles(pathsToClean);
             }
         }
     }
@@ -722,7 +750,7 @@ export default class InstallPackage extends Plugin {
     }
 
     /**
-     * 复制到安装路径（使用 globalCopyFiles API）
+     * 复制到安装路径（整个目录复制，globalCopyFiles 会保留源目录名）
      */
     private async copyToInstallPath(sourcePath: string, targetPath: string): Promise<void> {
         console.log(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
@@ -732,7 +760,7 @@ export default class InstallPackage extends Plugin {
         // - destDir: 相对路径（会自动拼接工作空间路径）
         
         // 将相对路径转换为绝对路径
-        // 假设工作空间路径在 window.siyuan.config.system.workspaceDir
+        // 工作空间路径在 window.siyuan.config.system.workspaceDir
         const workspaceDir = window.siyuan?.config?.system?.workspaceDir || '';
         const absoluteSourcePath = workspaceDir ? `${workspaceDir}/${sourcePath}` : sourcePath;
         
@@ -741,8 +769,12 @@ export default class InstallPackage extends Plugin {
         const destDir = lastSlashIndex > 0 ? targetPath.substring(0, lastSlashIndex) : '';
         const targetDirName = lastSlashIndex > 0 ? targetPath.substring(lastSlashIndex + 1) : targetPath;
         
+        // 提取源目录名
+        const sourceDirName = sourcePath.split('/').pop() || sourcePath;
+        
         console.log(`Workspace directory: ${workspaceDir}`);
         console.log(`Absolute source path: ${absoluteSourcePath}`);
+        console.log(`Source directory name: ${sourceDirName}`);
         console.log(`Target parent directory: ${destDir}`);
         console.log(`Target directory name: ${targetDirName}`);
         
@@ -773,17 +805,12 @@ export default class InstallPackage extends Plugin {
             throw new Error(`Failed to copy directory: ${responseData.msg}`);
         }
         
-        // globalCopyFiles 会保留源目录名，需要重命名为目标目录名
-        const sourceDirName = sourcePath.split('/').pop() || sourcePath;
-        const tempTargetPath = `${destDir}/${sourceDirName}`;
+        // globalCopyFiles 会保留源目录名，由于我们已经在 temp 目录中重命名为 packageName，所以 sourceDirName 应该等于 targetDirName，不需要再重命名
+        console.log(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
         
-        console.log(`Temporary target path: ${tempTargetPath}`);
-        console.log(`Final target path: ${targetPath}`);
-        
-        // 如果源目录名和目标目录名不同，需要重命名
         if (sourceDirName !== targetDirName) {
-            console.log(`Renaming directory: ${tempTargetPath} -> ${targetPath}`);
-            await this.renameDirectory(tempTargetPath, targetPath);
+            console.warn(`Warning: Source and target directory names do not match!`);
+            console.warn(`This should not happen. The directory may have been copied with the wrong name.`);
         }
         
         console.log(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
@@ -792,44 +819,44 @@ export default class InstallPackage extends Plugin {
     /**
      * 重命名目录
      */
-    private async renameDirectory(oldPath: string, newPath: string): Promise<void> {
-        console.log(`Renaming directory: ${oldPath} -> ${newPath}`);
+    // private async renameDirectory(oldPath: string, newPath: string): Promise<void> {
+    //     console.log(`Renaming directory: ${oldPath} -> ${newPath}`);
         
-        // 检查目标路径是否已存在
-        if (await this.pathExists(newPath)) {
-            console.log(`Target path already exists: ${newPath}, deleting it first`);
-            await this.clearDirectory(newPath);
-            console.log(`Cleared target path: ${newPath}`);
-        }
+    //     // 检查目标路径是否已存在
+    //     if (await this.pathExists(newPath)) {
+    //         console.log(`Target path already exists: ${newPath}, deleting it first`);
+    //         await this.clearDirectory(newPath);
+    //         console.log(`Cleared target path: ${newPath}`);
+    //     }
         
-        const response = await fetch('/api/file/renameFile', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                path: oldPath,
-                newPath: newPath
-            })
-        });
+    //     const response = await fetch('/api/file/renameFile', {
+    //         method: 'POST',
+    //         headers: {
+    //             'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({
+    //             path: oldPath,
+    //             newPath: newPath
+    //         })
+    //     });
         
-        console.log(`Rename response: ${response.status} ${response.ok}`);
+    //     console.log(`Rename response: ${response.status} ${response.ok}`);
         
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Failed to rename directory: ${response.status} - ${errorText}`);
-            throw new Error(`Failed to rename directory: ${response.status} - ${errorText}`);
-        }
+    //     if (!response.ok) {
+    //         const errorText = await response.text();
+    //         console.error(`Failed to rename directory: ${response.status} - ${errorText}`);
+    //         throw new Error(`Failed to rename directory: ${response.status} - ${errorText}`);
+    //     }
         
-        const responseData = await response.json();
-        console.log(`Rename response data:`, responseData);
+    //     const responseData = await response.json();
+    //     console.log(`Rename response data:`, responseData);
         
-        if (responseData.code !== 0) {
-            throw new Error(`Failed to rename directory: ${responseData.msg}`);
-        }
+    //     if (responseData.code !== 0) {
+    //         throw new Error(`Failed to rename directory: ${responseData.msg}`);
+    //     }
         
-        console.log(`Directory renamed successfully: ${oldPath} -> ${newPath}`);
-    }
+    //     console.log(`Directory renamed successfully: ${oldPath} -> ${newPath}`);
+    // }
 
     /**
      * 删除目录（包括非空目录）

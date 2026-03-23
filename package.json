@@ -3,6 +3,9 @@
   "version": "0.4.6",
   "description": "Install the specified GitHub repository marketplace package Release",
   "main": ".src/index.js",
+  "pnpm": {
+    "neverBuiltDependencies": ["electron"]
+  },
   "scripts": {
     "lint": "eslint . --fix --cache",
     "dev": "webpack --mode development",

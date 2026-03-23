@@ -3,10 +3,10 @@ import { findPluginAsset, getReleaseInfo, getRepositoryInfo } from "./modules/gi
 import { downloadAndInstallPlugin } from "./modules/packageDetect";
 import type { InstallFlowContext } from "./modules/installKernel";
 
-// 为 Electron 环境扩展 Window 接口
 declare global {
     interface Window {
-        require?: (module: string) => any;
+        require?(moduleName: "electron"): typeof import("electron");
+        require?(moduleName: string): any;
     }
 }
 
@@ -129,7 +129,7 @@ export default class InstallPackage extends Plugin {
             repo = shortFormatMatch[2];
             console.log(`extract from short format: ${owner}/${repo}`);
         } else {
-            this.showMessage(this.i18n.invalidUrl, "error");
+            this.showMessage(this.i18n.invalidUrl, true);
             return;
         }
 
@@ -145,7 +145,7 @@ export default class InstallPackage extends Plugin {
             // 获取仓库信息
             const repoInfo = await getRepositoryInfo(owner, repo);
             if (!repoInfo) {
-                this.showMessage(this.i18n.repoInfoError, "error");
+                this.showMessage(this.i18n.repoInfoError, true);
                 return;
             }
             
@@ -159,7 +159,7 @@ export default class InstallPackage extends Plugin {
             const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
                 const versionText = version || "latest";
-                this.showMessage(this.i18n.releaseInfoError.replace("{version}", versionText), "error");
+                this.showMessage(this.i18n.releaseInfoError.replace("{version}", versionText), true);
                 return;
             }
             
@@ -168,8 +168,7 @@ export default class InstallPackage extends Plugin {
                 .replace("{tagName}", releaseInfo.tag_name)
                 .replace("{publishedAt}", (
                     releaseInfo.published_at ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
-                )),
-                "info"
+                ))
             );
             
             // 显示 Release 描述（如果有的话）
@@ -180,11 +179,11 @@ export default class InstallPackage extends Plugin {
             // 查找包文件
             const pluginAsset = findPluginAsset(releaseInfo.assets);
             if (!pluginAsset) {
-                this.showMessage(this.i18n.packageZipNotFound, "error");
+                this.showMessage(this.i18n.packageZipNotFound, true);
                 return;
             }
             
-            this.showMessage(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", this.formatFileSize(pluginAsset.size)), "info");
+            this.showMessage(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", this.formatFileSize(pluginAsset.size)));
             
             // 使用 GitHub 下载 URL
             const downloadUrl = pluginAsset.browser_download_url;
@@ -206,7 +205,7 @@ export default class InstallPackage extends Plugin {
             console.error("Failed to download or install package");
         } catch (error) {
             console.error("InstallPackage error:", error);
-            this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), "error");
+            this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), true);
         } finally {
             this.installInFlight.delete(repoLockKey);
         }
@@ -215,7 +214,7 @@ export default class InstallPackage extends Plugin {
     private getInstallFlowContext(): InstallFlowContext {
         return {
             i18n: this.i18n as Record<string, string>,
-            showMessage: (message, type = "info") => this.showMessage(message, type),
+            showMessage: (message, type = "info") => this.showMessage(message, type === "error"),
             reloadIcon: () => this.reloadIcon(),
         };
     }
@@ -247,7 +246,7 @@ export default class InstallPackage extends Plugin {
             
             if (response.ok) {
                 console.log("Icon reload API called successfully");
-                this.showMessage(this.i18n.iconReloadSuccess, "info");
+                this.showMessage(this.i18n.iconReloadSuccess);
                 
                 // 显示确认对话框，询问是否重新加载界面
                 setTimeout(() => {
@@ -255,11 +254,11 @@ export default class InstallPackage extends Plugin {
                 }, 200);
             } else {
                 console.error(`Failed to call reloadIcon API: ${response.status}`);
-                this.showMessage(this.i18n.iconReloadFailed, "error");
+                this.showMessage(this.i18n.iconReloadFailed, true);
             }
         } catch (error) {
             console.error("Failed to call reloadIcon API:", error);
-            this.showMessage(this.i18n.iconReloadFailed, "error");
+            this.showMessage(this.i18n.iconReloadFailed, true);
         }
     }
 
@@ -297,8 +296,9 @@ export default class InstallPackage extends Plugin {
     /**
      * 显示消息提示
      */
-    private showMessage(message: string, type: "info" | "error" = "info") {
-        showMessage(this.displayName + ": " + message, type === "info" ? 3000 : 10000, type);
+    private showMessage(message: string, isError?: boolean) {
+        const type = isError ? "error" : "info";
+        showMessage(this.displayName + ": " + message, isError ? 10000 : 3000, type);
     }
 
     /**
@@ -313,17 +313,16 @@ export default class InstallPackage extends Plugin {
             const fullPath = workspaceDir ? `${workspaceDir}/${path}` : path;
             
             console.log(`Opening directory in Electron: ${fullPath}`);
-            shell.openPath(fullPath).then((error: string) => {
+            shell.openPath(fullPath).then((error) => {
                 if (error) {
-                    console.error(`Failed to open directory: ${error}`);
-                    this.showMessage(`无法打开目录：${error}`, "error");
+                    this.showMessage(this.i18n.openDirectoryFailed + error, true);
                 } else {
                     console.log(`Directory opened successfully: ${fullPath}`);
                 }
             });
         } catch (error) {
-            console.error(`Failed to open directory: ${path}`, error);
-            this.showMessage(`打开目录失败：${error.message}`, "error");
+            const detail = error instanceof Error ? error.message : String(error);
+            this.showMessage(this.i18n.openDirectoryFailed + detail, true);
         }
     }
 }

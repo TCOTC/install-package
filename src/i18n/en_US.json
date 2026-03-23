@@ -46,5 +46,6 @@
   "extractedDirEmpty": "Extracted directory is empty or format is incorrect",
   "packageNameMismatch": "Package name mismatch: package name in config is [{configName}], but repository name is [{repoName}]. Package name must match repository name.",
   "openPluginsDir": "Open Plugins Directory",
-  "openPetalDir": "Open Petal Directory"
+  "openPetalDir": "Open Petal Directory",
+  "openDirectoryFailed": "Failed to open directory: "
 }

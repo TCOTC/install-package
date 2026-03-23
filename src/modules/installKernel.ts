@@ -2,7 +2,7 @@
  * 通过内核 API 安装包、路径与启用状态
  */
 
-import { fetchPost, getFrontend } from "siyuan";
+import { fetchSyncPost, getFrontend } from "siyuan";
 import {
     cleanupTempFiles,
     clearDirectory,
@@ -11,13 +11,6 @@ import {
     unzipFile,
     writeTempFile,
 } from "./fsKernel";
-
-/** 安装流程在模块间共享的上下文（i18n、提示、图标刷新） */
-export interface InstallFlowContext {
-    i18n: Record<string, string>;
-    showMessage: (message: string, type?: "info" | "error") => void;
-    reloadIcon: () => Promise<void>;
-}
 
 export function getInstallPath(packageType: string, packageName: string): string {
     switch (packageType) {
@@ -58,95 +51,90 @@ export async function extractPackageNameFromContent(
     packageType: string,
     i18n: Record<string, string>
 ): Promise<string> {
-    try {
-        console.log(`Extracting package name from content: ${extractPath}, type: ${packageType}`);
+    console.log(`Extracting package name from content: ${extractPath}, type: ${packageType}`);
 
-        const configFile = getConfigFileName(packageType);
-        const configPath = `${extractPath}/${configFile}`;
+    const configFile = getConfigFileName(packageType);
+    const configPath = `${extractPath}/${configFile}`;
 
-        console.log(`Reading configuration file: ${configPath}`);
+    console.log(`Reading configuration file: ${configPath}`);
 
-        const response = await fetch("/api/file/getFile", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                path: configPath,
-            }),
-        });
+    const response = await fetch("/api/file/getFile", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            path: configPath,
+        }),
+    });
 
-        if (response.status !== 200) {
-            throw new Error(`Unable to read configuration file ${configFile}: ${response.status}`);
-        }
-
-        const configData = await response.json();
-        console.log("Configuration file content:", configData);
-
-        const packageName = configData.name || configData.packageName;
-
-        if (!packageName) {
-            throw new Error(i18n.packageNameNotFound);
-        }
-
-        console.log(`Package name extracted from configuration file: ${packageName}`);
-
-        if (typeof packageName !== "string" || packageName.trim() === "") {
-            throw new Error(i18n.invalidPackageName.replace("{name}", String(packageName)));
-        }
-
-        return packageName.trim();
-    } catch (error) {
-        console.error("Failed to extract package name from content:", error);
-        throw new Error(i18n.extractPackageNameError.replace("{error}", error.message));
+    if (response.status !== 200) {
+        throw new Error(
+            i18n.extractPackageNameError.replace(
+                "{error}",
+                `read ${configFile}: HTTP ${response.status}`
+            )
+        );
     }
+
+    const configData = await response.json();
+    console.log("Configuration file content:", configData);
+
+    const packageName = configData.name || configData.packageName;
+
+    if (!packageName) {
+        throw new Error(i18n.packageNameNotFound);
+    }
+
+    console.log(`Package name extracted from configuration file: ${packageName}`);
+
+    if (typeof packageName !== "string" || packageName.trim() === "") {
+        throw new Error(i18n.invalidPackageName.replace("{name}", String(packageName)));
+    }
+
+    return packageName.trim();
 }
 
 export async function setPackageEnabled(
     packageType: string,
     packageName: string,
     enabled: boolean,
-    ctx: InstallFlowContext
-): Promise<void> {
-    const { i18n, showMessage } = ctx;
+    i18n: Record<string, string>
+): Promise<string | undefined> {
     try {
         switch (packageType) {
             case "plugin": {
                 const action = enabled ? "enable" : "disable";
                 console.log(`Attempting to ${action} plugin: ${packageName}`);
-                fetchPost(
-                    "/api/petal/setPetalEnabled",
-                    {
-                        packageName: packageName,
-                        enabled: enabled,
-                        frontend: getFrontend(),
-                    },
-                    (response) => {
-                        if (response.code === 0) {
-                            console.log(`Plugin ${packageName} ${action}d successfully`);
-                        } else {
-                            console.error(`Failed to ${action} plugin: ${response.msg}`);
-                            const errorMsg = enabled
-                                ? i18n.enablePluginFailed.replace("{error}", response.msg)
-                                : i18n.disablePluginFailed.replace("{error}", response.msg);
-                            showMessage(errorMsg, "error");
-                        }
-                    }
-                );
-                break;
+                const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
+                    packageName: packageName,
+                    enabled: enabled,
+                    frontend: getFrontend(),
+                });
+                if (response.code === 0) {
+                    console.log(`Plugin ${packageName} ${action}d successfully`);
+                    return undefined;
+                }
+                console.error(`Failed to ${action} plugin: ${response.msg}`);
+                const tpl = enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed;
+                return tpl.replace("{error}", String(response.msg ?? ""));
             }
             default:
                 console.log(`${packageType} ${packageName} installed`);
+                return undefined;
         }
     } catch (error) {
         const action = enabled ? "enable" : "disable";
         console.error(`Failed to ${action} package:`, error);
-        const errorMsg = enabled
-            ? i18n.enablePackageFailed.replace("{error}", error.message)
-            : i18n.disablePackageFailed.replace("{error}", error.message);
-        showMessage(errorMsg, "error");
+        const msg = error instanceof Error ? error.message : String(error);
+        const tpl = enabled ? i18n.enablePackageFailed : i18n.disablePackageFailed;
+        return tpl.replace("{error}", msg);
     }
 }
+
+export type KernelInstallResult =
+    | { ok: true; infos: string[]; enableWarnings: string[] }
+    | { ok: false; error: string };
 
 export async function installPackageWithKernelAPI(
     data: Uint8Array,
@@ -154,11 +142,13 @@ export async function installPackageWithKernelAPI(
     packageType: string,
     packageName: string,
     enable: boolean,
-    ctx: InstallFlowContext
-): Promise<boolean> {
-    const { i18n, showMessage, reloadIcon } = ctx;
+    i18n: Record<string, string>
+): Promise<KernelInstallResult> {
     let tempPath = "";
     let extractPath = "";
+
+    const infos: string[] = [];
+    const enableWarnings: string[] = [];
 
     try {
         console.log(`Starting package installation: ${fileName}, type: ${packageType}, name: ${packageName}`);
@@ -194,12 +184,14 @@ export async function installPackageWithKernelAPI(
         console.log(`Package name from config: ${configPackageName}, repository name: ${packageName}`);
 
         if (configPackageName !== packageName) {
-            const errorMsg = i18n.packageNameMismatch
-                .replace("{configName}", configPackageName)
-                .replace("{repoName}", packageName);
-            showMessage(errorMsg, "error");
+            const errorMsg = `Package name mismatch: config ${configPackageName}, repo ${packageName}`;
             console.error(errorMsg);
-            return false;
+            return {
+                ok: false,
+                error: i18n.packageNameMismatch
+                    .replace("{configName}", configPackageName)
+                    .replace("{repoName}", packageName),
+            };
         }
 
         console.log("Package name verification passed");
@@ -210,7 +202,7 @@ export async function installPackageWithKernelAPI(
 
         if (await pathExists(installPath)) {
             console.log(`Target directory already exists: ${installPath}`);
-            showMessage(i18n.targetDirExists.replace("{path}", installPath), "info");
+            infos.push(i18n.targetDirExists.replace("{path}", installPath));
 
             await clearDirectory(installPath);
             console.log(`Cleared old package files: ${installPath}`);
@@ -240,19 +232,22 @@ export async function installPackageWithKernelAPI(
         }
 
         console.log(`Attempting to ${enable ? "enable" : "disable"} package: ${packageType} - ${packageName}`);
-        await setPackageEnabled(packageType, packageName, enable, ctx);
-
-        if (packageType === "icon") {
-            console.log("Icon package installed, calling reloadIcon API...");
-            await reloadIcon();
+        const enableWarning = await setPackageEnabled(packageType, packageName, enable, i18n);
+        if (enableWarning) {
+            enableWarnings.push(enableWarning);
         }
 
         console.log(`Package installed successfully: ${packageName}`);
-        return true;
+        return { ok: true, infos, enableWarnings };
     } catch (error) {
         console.error("Package installation failed:", error);
-        showMessage(i18n.installationFailed.replace("{error}", error.message), "error");
-        return false;
+        if (error instanceof Error) {
+            return { ok: false, error: error.message };
+        }
+        return {
+            ok: false,
+            error: i18n.installationFailed.replace("{error}", String(error)),
+        };
     } finally {
         const extractBaseDir = extractPath ? extractPath.substring(0, extractPath.lastIndexOf("/")) : "";
         const pathsToClean = [tempPath, extractBaseDir].filter(Boolean);

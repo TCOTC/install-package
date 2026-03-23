@@ -1,7 +1,6 @@
 import { Dialog, Plugin, showMessage, fetchPost } from "siyuan";
 import { findPluginAsset, getReleaseInfo, getRepositoryInfo } from "./modules/github";
 import { downloadAndInstallPlugin } from "./modules/packageDetect";
-import type { InstallFlowContext } from "./modules/installKernel";
 
 declare global {
     interface Window {
@@ -129,7 +128,7 @@ export default class InstallPackage extends Plugin {
             repo = shortFormatMatch[2];
             console.log(`extract from short format: ${owner}/${repo}`);
         } else {
-            this.showMessage(this.i18n.invalidUrl, true);
+            this.message(this.i18n.invalidUrl, true);
             return;
         }
 
@@ -145,7 +144,7 @@ export default class InstallPackage extends Plugin {
             // 获取仓库信息
             const repoInfo = await getRepositoryInfo(owner, repo);
             if (!repoInfo) {
-                this.showMessage(this.i18n.repoInfoError, true);
+                this.message(this.i18n.repoInfoError, true);
                 return;
             }
             
@@ -159,11 +158,11 @@ export default class InstallPackage extends Plugin {
             const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
                 const versionText = version || "latest";
-                this.showMessage(this.i18n.releaseInfoError.replace("{version}", versionText), true);
+                this.message(this.i18n.releaseInfoError.replace("{version}", versionText), true);
                 return;
             }
             
-            this.showMessage(
+            this.message(
                 this.i18n.foundRelease
                 .replace("{tagName}", releaseInfo.tag_name)
                 .replace("{publishedAt}", (
@@ -179,44 +178,88 @@ export default class InstallPackage extends Plugin {
             // 查找包文件
             const pluginAsset = findPluginAsset(releaseInfo.assets);
             if (!pluginAsset) {
-                this.showMessage(this.i18n.packageZipNotFound, true);
+                this.message(this.i18n.packageZipNotFound, true);
                 return;
             }
             
-            this.showMessage(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", this.formatFileSize(pluginAsset.size)));
+            this.message(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", this.formatFileSize(pluginAsset.size)));
             
             // 使用 GitHub 下载 URL
             const downloadUrl = pluginAsset.browser_download_url;
             
             console.log("downloadUrl", downloadUrl);
-            const { success, packageType } = await downloadAndInstallPlugin(
+            const result = await downloadAndInstallPlugin(
                 downloadUrl,
                 pluginAsset.name,
                 enable,
-                this.getInstallFlowContext()
+                this.i18n
             );
-            
-            if (success) {
-                const autoEnabledText = enable && packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually;
-                console.log(this.i18n.downloadSuccess.replace("{autoEnabled}", autoEnabledText));
-                dialog.destroy();
+
+            if (result.infos) {
+                for (const text of result.infos) {
+                    this.message(text, false);
+                }
+            }
+            if (result.enableWarnings) {
+                for (const text of result.enableWarnings) {
+                    this.message(text, true);
+                }
+            }
+
+            if (!result.success) {
+                if (result.error) {
+                    this.message(result.error, true);
+                } else {
+                    this.message(this.i18n.packageInstallFailed, true);
+                }
+                console.error("Failed to download or install package");
                 return;
             }
-            console.error("Failed to download or install package");
+
+            let autoEnabledText = "";
+            if (result.packageType === "plugin") {
+                autoEnabledText = enable
+                    ? this.i18n.packageInstalledSuccessAuto
+                    : this.i18n.packageInstalledSuccessManual;
+            } else if (result.packageType === "widget" || result.packageType === "template") {
+                // 挂件和模板没有「启用」的概念
+            } else if (result.packageType === "theme" || result.packageType === "icon") {
+                autoEnabledText = this.i18n.packageInstalledSuccessManual;
+            }
+            this.message(
+                this.i18n.packageInstalledSuccess
+                    .replace("{packageType}", result.packageType ?? "")
+                    .replace("{packageName}", result.packageName ?? "")
+                    .replace("{autoEnabled}", autoEnabledText),
+                false
+            );
+
+            if (result.shouldReloadIcon) {
+                await this.reloadIcon();
+            }
+
+            const autoEnabledTextForLog =
+                enable && result.packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually;
+            console.log(this.i18n.downloadSuccess.replace("{autoEnabled}", autoEnabledTextForLog));
+            dialog.destroy();
+            return;
         } catch (error) {
             console.error("InstallPackage error:", error);
-            this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), true);
+            this.message(
+                this.i18n.downloadFailed.replace(
+                    "{error}",
+                    error instanceof Error ? error.message : String(error)
+                ),
+                true
+            );
         } finally {
             this.installInFlight.delete(repoLockKey);
         }
     };
 
-    private getInstallFlowContext(): InstallFlowContext {
-        return {
-            i18n: this.i18n as Record<string, string>,
-            showMessage: (message, type = "info") => this.showMessage(message, type === "error"),
-            reloadIcon: () => this.reloadIcon(),
-        };
+    private message(text: string, isError?: boolean): void {
+        const type = isError ? "error" : "info";
+        showMessage(this.displayName + ": " + text, isError ? 10000 : 3000, type);
     }
 
     /**
@@ -246,7 +289,7 @@ export default class InstallPackage extends Plugin {
             
             if (response.ok) {
                 console.log("Icon reload API called successfully");
-                this.showMessage(this.i18n.iconReloadSuccess);
+                this.message(this.i18n.iconReloadSuccess);
                 
                 // 显示确认对话框，询问是否重新加载界面
                 setTimeout(() => {
@@ -254,11 +297,11 @@ export default class InstallPackage extends Plugin {
                 }, 200);
             } else {
                 console.error(`Failed to call reloadIcon API: ${response.status}`);
-                this.showMessage(this.i18n.iconReloadFailed, true);
+                this.message(this.i18n.iconReloadFailed, true);
             }
         } catch (error) {
             console.error("Failed to call reloadIcon API:", error);
-            this.showMessage(this.i18n.iconReloadFailed, true);
+            this.message(this.i18n.iconReloadFailed, true);
         }
     }
 
@@ -294,14 +337,6 @@ export default class InstallPackage extends Plugin {
     }
 
     /**
-     * 显示消息提示
-     */
-    private showMessage(message: string, isError?: boolean) {
-        const type = isError ? "error" : "info";
-        showMessage(this.displayName + ": " + message, isError ? 10000 : 3000, type);
-    }
-
-    /**
      * 打开目录（仅在 Electron 环境下调用）
      */
     private openDirectory(path: string): void {
@@ -315,14 +350,14 @@ export default class InstallPackage extends Plugin {
             console.log(`Opening directory in Electron: ${fullPath}`);
             shell.openPath(fullPath).then((error) => {
                 if (error) {
-                    this.showMessage(this.i18n.openDirectoryFailed + error, true);
+                    this.message(this.i18n.openDirectoryFailed + error, true);
                 } else {
                     console.log(`Directory opened successfully: ${fullPath}`);
                 }
             });
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
-            this.showMessage(this.i18n.openDirectoryFailed + detail, true);
+            this.message(this.i18n.openDirectoryFailed + detail, true);
         }
     }
 }

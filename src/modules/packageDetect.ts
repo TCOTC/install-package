@@ -4,7 +4,18 @@
 
 import { extractPackageNameFromUrl } from "./github";
 import { cleanupTempFiles, unzipFile, writeTempFile } from "./fsKernel";
-import { installPackageWithKernelAPI, type InstallFlowContext } from "./installKernel";
+import { installPackageWithKernelAPI } from "./installKernel";
+
+export type DownloadInstallResult = {
+    success: boolean;
+    packageType: string | null;
+    packageName: string | null;
+    /** 安装成功后若为图标包，由插件层调用 reloadIcon */
+    shouldReloadIcon: boolean;
+    error?: string;
+    infos?: string[];
+    enableWarnings?: string[];
+};
 
 export function validatePluginFile(data: Uint8Array, fileName: string): boolean {
     try {
@@ -33,71 +44,67 @@ export function validatePluginFile(data: Uint8Array, fileName: string): boolean 
 export async function detectPackageTypeFromContent(
     extractPath: string,
     i18n: Record<string, string>
-): Promise<string | null> {
-    try {
-        console.log(`Checking extracted directory: ${extractPath}`);
+): Promise<string> {
+    console.log(`Checking extracted directory: ${extractPath}`);
 
-        const dirResponse = await fetch("/api/file/readDir", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                path: extractPath,
-            }),
-        });
+    const dirResponse = await fetch("/api/file/readDir", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            path: extractPath,
+        }),
+    });
 
-        if (!dirResponse.ok) {
-            throw new Error(`Unable to read extracted directory: ${dirResponse.status}`);
-        }
-
-        const dirData = await dirResponse.json();
-        console.log("Extracted directory contents:", dirData);
-
-        if (!dirData.data || !Array.isArray(dirData.data)) {
-            throw new Error(i18n.extractedDirEmpty);
-        }
-
-        const fileNames = dirData.data.map((item: any) => item.name || item);
-        console.log("File list:", fileNames);
-
-        const configFiles = [
-            { file: "plugin.json", type: "plugin" },
-            { file: "widget.json", type: "widget" },
-            { file: "template.json", type: "template" },
-            { file: "theme.json", type: "theme" },
-            { file: "icon.json", type: "icon" },
-        ];
-
-        const foundConfigs: string[] = [];
-
-        for (const config of configFiles) {
-            if (fileNames.includes(config.file)) {
-                foundConfigs.push(config.type);
-                console.log(`Found configuration file: ${config.type}`);
-            }
-        }
-
-        console.log("Found configuration files:", foundConfigs);
-
-        if (foundConfigs.length === 0) {
-            throw new Error(i18n.noConfigFiles);
-        } else if (foundConfigs.length > 1) {
-            throw new Error(i18n.multipleConfigFiles.replace("{files}", foundConfigs.join(", ")));
-        }
-
-        return foundConfigs[0];
-    } catch (error) {
-        console.warn("Failed to detect package type from content:", error);
-        throw error;
+    if (!dirResponse.ok) {
+        throw new Error(i18n.extractedDirEmpty);
     }
+
+    const dirData = await dirResponse.json();
+    console.log("Extracted directory contents:", dirData);
+
+    if (!dirData.data || !Array.isArray(dirData.data)) {
+        throw new Error(i18n.extractedDirEmpty);
+    }
+
+    const fileNames = dirData.data.map((item: any) => item.name || item);
+    console.log("File list:", fileNames);
+
+    const configFiles = [
+        { file: "plugin.json", type: "plugin" },
+        { file: "widget.json", type: "widget" },
+        { file: "template.json", type: "template" },
+        { file: "theme.json", type: "theme" },
+        { file: "icon.json", type: "icon" },
+    ];
+
+    const foundConfigs: string[] = [];
+
+    for (const config of configFiles) {
+        if (fileNames.includes(config.file)) {
+            foundConfigs.push(config.type);
+            console.log(`Found configuration file: ${config.type}`);
+        }
+    }
+
+    console.log("Found configuration files:", foundConfigs);
+
+    if (foundConfigs.length === 0) {
+        throw new Error(i18n.noConfigFiles);
+    }
+    if (foundConfigs.length > 1) {
+        throw new Error(i18n.multipleConfigFiles.replace("{files}", foundConfigs.join(", ")));
+    }
+
+    return foundConfigs[0];
 }
 
 export async function detectPackageType(
     data: Uint8Array,
     fileName: string,
     i18n: Record<string, string>
-): Promise<string | null> {
+): Promise<string> {
     let tempPath = "";
     let extractPath = "";
 
@@ -110,12 +117,7 @@ export async function detectPackageType(
         extractPath = `temp/export/extract_${Date.now()}`;
         await unzipFile(tempPath, extractPath);
 
-        const packageType = await detectPackageTypeFromContent(extractPath, i18n);
-
-        return packageType;
-    } catch (error) {
-        console.error("Failed to detect package type:", error);
-        return null;
+        return await detectPackageTypeFromContent(extractPath, i18n);
     } finally {
         if (tempPath || extractPath) {
             console.log(`Cleaning up temporary files: ${tempPath}, ${extractPath}`);
@@ -128,9 +130,15 @@ export async function downloadAndInstallPlugin(
     downloadUrl: string,
     fileName: string,
     enable: boolean,
-    ctx: InstallFlowContext
-): Promise<{ success: boolean; packageType: string | null }> {
-    const { i18n, showMessage } = ctx;
+    i18n: Record<string, string>
+): Promise<DownloadInstallResult> {
+    const empty: DownloadInstallResult = {
+        success: false,
+        packageType: null,
+        packageName: null,
+        shouldReloadIcon: false,
+    };
+
     try {
         console.log("Downloading file from GitHub...");
 
@@ -150,8 +158,11 @@ export async function downloadAndInstallPlugin(
             }
         } catch (error) {
             clearTimeout(timeoutId);
-            if (error.name === "AbortError") {
-                throw new Error(i18n.downloadTimeout);
+            if ((error as Error).name === "AbortError") {
+                return {
+                    ...empty,
+                    error: i18n.downloadTimeout,
+                };
             }
             throw error;
         }
@@ -160,23 +171,23 @@ export async function downloadAndInstallPlugin(
         const uint8Array = new Uint8Array(arrayBuffer);
 
         if (!validatePluginFile(uint8Array, fileName)) {
-            showMessage(i18n.fileValidationFailed, "error");
-            return { success: false, packageType: null };
+            return {
+                ...empty,
+                error: i18n.fileValidationFailed,
+            };
         }
 
         console.log("File validation passed, detecting package type...");
 
-        let packageType: string | null;
+        let packageType: string;
         try {
             packageType = await detectPackageType(uint8Array, fileName, i18n);
         } catch (error) {
-            showMessage(i18n.packageTypeDetectionFailed.replace("{error}", error.message), "error");
-            return { success: false, packageType: null };
-        }
-
-        if (!packageType) {
-            showMessage(i18n.packageTypeUnknown, "error");
-            return { success: false, packageType: null };
+            const msg = error instanceof Error ? error.message : String(error);
+            return {
+                ...empty,
+                error: msg,
+            };
         }
 
         console.log(`Package type detected: ${packageType}, installing...`);
@@ -184,41 +195,41 @@ export async function downloadAndInstallPlugin(
         const packageName = extractPackageNameFromUrl(downloadUrl);
         console.log(`Package name extracted from URL: ${packageName}`);
 
-        const success = await installPackageWithKernelAPI(
+        const kernelResult = await installPackageWithKernelAPI(
             uint8Array,
             fileName,
             packageType,
             packageName,
             enable,
-            ctx
+            i18n
         );
 
-        if (success) {
-            let autoEnabledText = "";
-            if (packageType === "plugin") {
-                autoEnabledText = enable
-                    ? i18n.packageInstalledSuccessAuto
-                    : i18n.packageInstalledSuccessManual;
-            } else if (packageType === "widget" || packageType === "template") {
-                // 挂件和模板没有「启用」的概念
-            } else if (packageType === "theme" || packageType === "icon") {
-                autoEnabledText = i18n.packageInstalledSuccessManual;
-            }
-            showMessage(
-                i18n.packageInstalledSuccess
-                    .replace("{packageType}", packageType)
-                    .replace("{packageName}", packageName)
-                    .replace("{autoEnabled}", autoEnabledText),
-                "info"
-            );
-        } else {
-            showMessage(i18n.packageInstallFailed, "error");
+        if (kernelResult.ok === false) {
+            return {
+                success: false,
+                packageType,
+                packageName,
+                shouldReloadIcon: false,
+                error: kernelResult.error,
+            };
         }
 
-        return { success, packageType };
+        const shouldReloadIcon = packageType === "icon";
+        return {
+            success: true,
+            packageType,
+            packageName,
+            shouldReloadIcon,
+            infos: kernelResult.infos.length > 0 ? kernelResult.infos : undefined,
+            enableWarnings:
+                kernelResult.enableWarnings.length > 0 ? kernelResult.enableWarnings : undefined,
+        };
     } catch (error) {
         console.error("Failed to download or install plugin:", error);
-        showMessage(i18n.installationFailed.replace("{error}", error.message), "error");
-        return { success: false, packageType: null };
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+            ...empty,
+            error: i18n.installationFailed.replace("{error}", msg),
+        };
     }
 }

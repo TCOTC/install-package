@@ -12,23 +12,18 @@ declare global {
 
 export default class InstallPackage extends Plugin {
     onload() {
-        console.log(this.displayName, "plugin loaded");
-
         this.addTopBar({
             // 图标来源 https://www.svgrepo.com/svg/355075/install
-            icon: 
-`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
+            icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
 </svg>`,
             title: this.i18n.title,
             position: "right",
             callback: this.topBarHandler,
         });
-    }
 
-    // onLayoutReady() {
-    //     console.log("InstallPackage onLayoutReady");
-    // }
+        console.log(this.displayName, "plugin loaded");
+    }
 
     onunload() {
         // console.log("InstallPackage unloaded");
@@ -39,16 +34,7 @@ export default class InstallPackage extends Plugin {
     }
 
     private topBarHandler = () => {
-        // 判断是否在 Electron 环境中
         const isElectron = typeof window !== "undefined" && window.require;
-        
-        // 根据环境生成按钮 HTML
-        const openDirButtons = isElectron ? `
-    <div class="fn__hr"></div>
-    <div class="fn__flex" style="gap: 8px;">
-        <button data-type="open-plugins" class="b3-button b3-button--outline">${this.i18n.openPluginsDir}</button>
-        <button data-type="open-petal" class="b3-button b3-button--outline">${this.i18n.openPetalDir}</button>
-    </div>` : "";
         
         const dialog = new Dialog({
             title: this.i18n.title,
@@ -69,7 +55,15 @@ export default class InstallPackage extends Plugin {
         <option value="enable">${this.i18n.enableOptionEnable}</option>
         <option value="disable">${this.i18n.enableOptionDisable}</option>
     </select>
-    ${openDirButtons}
+    ${
+        // 只在 Electron 环境下显示打开目录按钮
+        !isElectron ? "" : `
+        <div class="fn__hr"></div>
+        <div class="fn__flex" style="gap: 8px;">
+            <button data-type="open-plugins" class="b3-button b3-button--outline">${this.i18n.openPluginsDir}</button>
+            <button data-type="open-petal" class="b3-button b3-button--outline">${this.i18n.openPetalDir}</button>
+        </div>`
+    }
 </div>
 <div class="b3-dialog__action">
     <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
@@ -83,10 +77,10 @@ export default class InstallPackage extends Plugin {
         const getEnableValue = () => enableSelect.value === "enable";
         
         dialog.bindInput(urlInput, () => {
-            this.installPackage(urlInput.value, versionInput.value, getEnableValue());
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue());
         });
         dialog.bindInput(versionInput, () => {
-            this.installPackage(urlInput.value, versionInput.value, getEnableValue());
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue());
         });
         urlInput.select();
 
@@ -96,25 +90,21 @@ export default class InstallPackage extends Plugin {
         });
         const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
         confirmButton.addEventListener("click", () => {
-            this.installPackage(urlInput.value, versionInput.value, getEnableValue());
-            dialog.destroy();
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue());
         });
         
-        // 只在 Electron 环境下添加打开目录按钮的事件监听器
-        if (isElectron) {
-            const openPluginsButton = dialog.element.querySelector("button[data-type='open-plugins']") as HTMLButtonElement;
-            openPluginsButton.addEventListener("click", () => {
-                this.openDirectory("data/plugins");
-            });
-            
-            const openPetalButton = dialog.element.querySelector("button[data-type='open-petal']") as HTMLButtonElement;
-            openPetalButton.addEventListener("click", () => {
-                this.openDirectory("data/storage/petal");
-            });
-        }
+        const openPluginsButton = dialog.element.querySelector("button[data-type='open-plugins']") as HTMLButtonElement;
+        openPluginsButton?.addEventListener("click", () => {
+            this.openDirectory("data/plugins");
+        });
+        
+        const openPetalButton = dialog.element.querySelector("button[data-type='open-petal']") as HTMLButtonElement;
+        openPetalButton?.addEventListener("click", () => {
+            this.openDirectory("data/storage/petal");
+        });
     };
 
-    private installPackage = async (url: string, version: string, enable: boolean) => {
+    private installPackage = async (dialog: Dialog, url: string, version: string, enable: boolean) => {
         url = url.trim();
         version = version.trim();
 
@@ -199,10 +189,10 @@ export default class InstallPackage extends Plugin {
             if (success) {
                 const autoEnabledText = enable && packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually;
                 console.log(this.i18n.downloadSuccess.replace("{autoEnabled}", autoEnabledText));
-            } else {
-                console.error("Failed to download or install package");
+                dialog.destroy();
+                return;
             }
-            
+            console.error("Failed to download or install package");
         } catch (error) {
             console.error("InstallPackage error:", error);
             this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), "error");

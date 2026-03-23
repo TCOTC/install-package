@@ -19,9 +19,6 @@
     "default": "README.md",
     "zh_CN": "README_zh_CN.md"
   },
-  "funding": {"custom": ["https://bento.me/jeffff"]},
-  "keywords": [
-    "开发者工具",
-    "developer tool"
-  ]
+  "funding": {"custom": ["https://mytemos.com/"]},
+  "keywords": ["开发者工具","developer tool"]
 }

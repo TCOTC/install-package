@@ -9,6 +9,14 @@ declare global {
     }
 }
 
+const electron: typeof import("electron") | undefined = (() => {
+    try {
+        return typeof window !== "undefined" ? window.require?.("electron") : undefined;
+    } catch {
+        return undefined;
+    }
+})();
+
 export default class InstallPackage extends Plugin {
     /** 正在安装的仓库键（小写 owner/repo），用于避免同一仓库并发安装，不同仓库可并行 */
     private installInFlight = new Set<string>();
@@ -36,8 +44,6 @@ export default class InstallPackage extends Plugin {
     }
 
     private topBarHandler = () => {
-        const isElectron = typeof window !== "undefined" && window.require;
-        
         const dialog = new Dialog({
             title: this.i18n.title,
             width: isMobile() ? "92vw" : "520px",
@@ -59,7 +65,7 @@ export default class InstallPackage extends Plugin {
     </select>
     ${
         // 只在 Electron 环境下显示打开目录按钮
-        !isElectron ? "" : `
+        !electron ? "" : `
         <div class="fn__hr"></div>
         <div class="fn__flex" style="gap: 8px;">
             <button data-type="open-plugins" class="b3-button b3-button--outline">${this.i18n.openPluginsDir}</button>
@@ -339,22 +345,36 @@ export default class InstallPackage extends Plugin {
     /**
      * 打开目录（仅在 Electron 环境下调用）
      */
-    private openDirectory(path: string): void {
+    private async openDirectory(relPath: string): Promise<void> {
         try {
-            console.log(`Opening directory: ${path}`);
-            
-            const { shell } = window.require("electron");
-            const workspaceDir = window.siyuan?.config?.system?.workspaceDir || "";
-            const fullPath = workspaceDir ? `${workspaceDir}/${path}` : path;
-            
-            console.log(`Opening directory in Electron: ${fullPath}`);
-            shell.openPath(fullPath).then((error) => {
-                if (error) {
-                    this.message(this.i18n.openDirectoryFailed + error, true);
-                } else {
-                    console.log(`Directory opened successfully: ${fullPath}`);
-                }
-            });
+            console.log(`Opening directory: ${relPath}`);
+
+            if (!electron) {
+                this.message(this.i18n.openDirectoryFailed + this.i18n.openDirectoryNoElectron, true);
+                return;
+            }
+
+            const workspaceDir = (window.siyuan?.config?.system?.workspaceDir ?? "").trim();
+            if (!workspaceDir) {
+                this.message(this.i18n.openDirectoryFailed + this.i18n.openDirectoryNoWorkspace, true);
+                return;
+            }
+
+            const fullPath = `${workspaceDir}/${relPath}`;
+
+            if (electron.ipcRenderer) {
+                // 优先走思源主进程 ipc，避免渲染进程使用 shell.openPath 时资源管理器在后台打开。
+                electron.ipcRenderer.send("siyuan-cmd", {
+                    cmd: "openPath",
+                    filePath: fullPath,
+                });
+                return;
+            }
+
+            const openErr = await electron.shell.openPath(fullPath);
+            if (openErr) {
+                throw new Error(openErr);
+            }
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             this.message(this.i18n.openDirectoryFailed + detail, true);

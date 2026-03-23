@@ -47,5 +47,7 @@
   "packageNameMismatch": "Package name mismatch: package name in config is [{configName}], but repository name is [{repoName}]. Package name must match repository name.",
   "openPluginsDir": "Open Plugins Directory",
   "openPetalDir": "Open Petal Directory",
-  "openDirectoryFailed": "Failed to open directory: "
+  "openDirectoryFailed": "Failed to open directory: ",
+  "openDirectoryNoElectron": "Unable to load the Electron module.",
+  "openDirectoryNoWorkspace": "Workspace directory is unavailable."
 }

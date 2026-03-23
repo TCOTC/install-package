@@ -151,23 +151,26 @@ export default class InstallPackage extends Plugin {
             
             // 显示仓库信息
             console.log(`Repository: ${repoInfo.full_name}`);
-            console.log(`Description: ${repoInfo.description || "No description"}`);
+            console.log(`Description: ${repoInfo.description || ""}`);
             console.log(`Stars: ${repoInfo.stargazers_count}`);
             console.log(`Last updated: ${new Date(repoInfo.updated_at).toLocaleDateString()}`);
             
             // 获取 Release 信息
             const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
-                const versionText = version || this.i18n.latest;
+                const versionText = version || "latest";
                 this.showMessage(this.i18n.releaseInfoError.replace("{version}", versionText), "error");
                 return;
             }
             
-            console.log("Release Info:", releaseInfo);
-            const publishedAt = releaseInfo.published_at 
-                ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString())
-                : "";
-            this.showMessage(this.i18n.foundRelease.replace("{tagName}", releaseInfo.tag_name).replace("{publishedAt}", publishedAt), "info");
+            this.showMessage(
+                this.i18n.foundRelease
+                .replace("{tagName}", releaseInfo.tag_name)
+                .replace("{publishedAt}", (
+                    releaseInfo.published_at ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
+                )),
+                "info"
+            );
             
             // 显示 Release 描述（如果有的话）
             if (releaseInfo.body && releaseInfo.body.trim()) {
@@ -216,36 +219,6 @@ export default class InstallPackage extends Plugin {
             reloadIcon: () => this.reloadIcon(),
         };
     }
-
-    /**
-     * 显示刷新对话框。v3.3.6 之后由内核推送到前端，不再需要手动重载 https://github.com/siyuan-note/siyuan/issues/16156
-     */
-//     private showReloadDialog(packageName: string, action: string): void {
-//         const dialog = new Dialog({
-//             title: "Plugin Status Change",
-//             content: 
-// `<div class="b3-dialog__content">
-//     <div>Plugin ${packageName} has been ${action}d</div>
-//     <div class="b3-label__text">To ensure the plugin works properly, it is recommended to refresh the interface. Refresh now?</div>
-// </div>
-// <div class="b3-dialog__action">
-//     <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
-//     <div class="fn__space"></div>
-//     <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
-// </div>`,
-//             width: "400px"
-//         });
-
-//         dialog.element.querySelector('[data-type="cancel"]').addEventListener('click', () => {
-//             dialog.destroy();
-//         });
-
-//         dialog.element.querySelector('[data-type="confirm"]').addEventListener('click', () => {
-//             dialog.destroy();
-//             // 使用 reloadUI API 刷新界面
-//             fetchPost('/api/system/reloadUI');
-//         });
-//     }
 
     /**
      * 格式化文件大小

@@ -12,25 +12,23 @@ declare global {
 
 export default class InstallPackage extends Plugin {
     onload() {
-        console.log("InstallPackage loaded");
+        console.log(this.displayName, "plugin loaded");
 
         this.addTopBar({
-            icon: "iconInstallPackagePlugin",
+            // 图标来源 https://www.svgrepo.com/svg/355075/install
+            icon: 
+`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
+</svg>`,
             title: this.i18n.title,
             position: "right",
             callback: this.topBarHandler,
         });
-
-        this.addIcons(
-`<symbol id="iconInstallPackagePlugin" viewBox="0 0 32 32">
-    <path d="M15.996 23.275q-0.317 0-0.59-0.104t-0.53-0.362l-7.163-7.162q-0.482-0.491-0.457-1.145t0.478-1.136q0.495-0.482 1.16-0.489t1.148 0.474l4.353 4.384v-15.545q0-0.682 0.463-1.144t1.149-0.462q0.684 0 1.142 0.462t0.457 1.144v15.545l4.384-4.384q0.476-0.482 1.129-0.457t1.148 0.506q0.453 0.482 0.462 1.14t-0.474 1.14l-7.13 7.13q-0.257 0.258-0.534 0.362t-0.594 0.104zM3.795 31.417q-1.301 0-2.257-0.956t-0.956-2.257v-4.914q0-0.682 0.463-1.144t1.148-0.462 1.143 0.462 0.457 1.144v4.914h24.409v-4.914q0-0.682 0.463-1.144t1.148-0.462 1.143 0.462 0.457 1.144v4.914q0 1.301-0.956 2.257t-2.257 0.956h-24.409z"></path>
-</symbol>`
-        );
     }
 
-    onLayoutReady() {
-        // console.log("InstallPackage onLayoutReady");
-    }
+    // onLayoutReady() {
+    //     console.log("InstallPackage onLayoutReady");
+    // }
 
     onunload() {
         // console.log("InstallPackage unloaded");
@@ -42,7 +40,7 @@ export default class InstallPackage extends Plugin {
 
     private topBarHandler = () => {
         // 判断是否在 Electron 环境中
-        const isElectron = typeof window !== 'undefined' && window.require;
+        const isElectron = typeof window !== "undefined" && window.require;
         
         // 根据环境生成按钮 HTML
         const openDirButtons = isElectron ? `
@@ -50,10 +48,10 @@ export default class InstallPackage extends Plugin {
     <div class="fn__flex" style="gap: 8px;">
         <button data-type="open-plugins" class="b3-button b3-button--outline">${this.i18n.openPluginsDir}</button>
         <button data-type="open-petal" class="b3-button b3-button--outline">${this.i18n.openPetalDir}</button>
-    </div>` : '';
+    </div>` : "";
         
         const dialog = new Dialog({
-            title: this.i18n.dialogTitle,
+            title: this.i18n.title,
             width: isMobile() ? "92vw" : "520px",
             content: 
 `<div class="b3-dialog__content">
@@ -114,7 +112,7 @@ export default class InstallPackage extends Plugin {
                 this.openDirectory("data/storage/petal");
             });
         }
-    }
+    };
 
     private installPackage = async (url: string, version: string, enable: boolean) => {
         url = url.trim();
@@ -155,7 +153,7 @@ export default class InstallPackage extends Plugin {
             
             // 显示仓库信息
             console.log(`Repository: ${repoInfo.full_name}`);
-            console.log(`Description: ${repoInfo.description || 'No description'}`);
+            console.log(`Description: ${repoInfo.description || "No description"}`);
             console.log(`Stars: ${repoInfo.stargazers_count}`);
             console.log(`Last updated: ${new Date(repoInfo.updated_at).toLocaleDateString()}`);
             
@@ -170,12 +168,12 @@ export default class InstallPackage extends Plugin {
             console.log("Release Info:", releaseInfo);
             const publishedAt = releaseInfo.published_at 
                 ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString())
-                : '';
+                : "";
             this.showMessage(this.i18n.foundRelease.replace("{tagName}", releaseInfo.tag_name).replace("{publishedAt}", publishedAt), "info");
             
             // 显示 Release 描述（如果有的话）
             if (releaseInfo.body && releaseInfo.body.trim()) {
-                console.log(`Release description: ${releaseInfo.body.substring(0, 200)}${releaseInfo.body.length > 200 ? '...' : ''}`);
+                console.log(`Release description: ${releaseInfo.body.substring(0, 200)}${releaseInfo.body.length > 200 ? "..." : ""}`);
             }
             
             // 查找包文件
@@ -209,7 +207,7 @@ export default class InstallPackage extends Plugin {
             console.error("InstallPackage error:", error);
             this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), "error");
         }
-    }
+    };
 
     private getInstallFlowContext(): InstallFlowContext {
         return {
@@ -253,11 +251,11 @@ export default class InstallPackage extends Plugin {
      * 格式化文件大小
      */
     private formatFileSize(bytes: number): string {
-        if (bytes === 0) return '0 B';
+        if (bytes === 0) return "0 B";
         const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const sizes = ["B", "KB", "MB", "GB"];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     }
 
     /**
@@ -265,18 +263,18 @@ export default class InstallPackage extends Plugin {
      */
     private async reloadIcon(): Promise<void> {
         try {
-            console.log('Calling /api/ui/reloadIcon API...');
+            console.log("Calling /api/ui/reloadIcon API...");
             
-            const response = await fetch('/api/ui/reloadIcon', {
-                method: 'POST',
+            const response = await fetch("/api/ui/reloadIcon", {
+                method: "POST",
                 headers: {
-                    'Content-Type': 'application/json',
+                    "Content-Type": "application/json",
                 }
             });
             
             if (response.ok) {
-                console.log('Icon reload API called successfully');
-                this.showMessage(this.i18n.iconReloadSuccess, 'info');
+                console.log("Icon reload API called successfully");
+                this.showMessage(this.i18n.iconReloadSuccess, "info");
                 
                 // 显示确认对话框，询问是否重新加载界面
                 setTimeout(() => {
@@ -284,11 +282,11 @@ export default class InstallPackage extends Plugin {
                 }, 200);
             } else {
                 console.error(`Failed to call reloadIcon API: ${response.status}`);
-                this.showMessage(this.i18n.iconReloadFailed, 'error');
+                this.showMessage(this.i18n.iconReloadFailed, "error");
             }
         } catch (error) {
-            console.error('Failed to call reloadIcon API:', error);
-            this.showMessage(this.i18n.iconReloadFailed, 'error');
+            console.error("Failed to call reloadIcon API:", error);
+            this.showMessage(this.i18n.iconReloadFailed, "error");
         }
     }
 
@@ -311,22 +309,22 @@ export default class InstallPackage extends Plugin {
             width: "400px"
         });
 
-        dialog.element.querySelector('[data-type="cancel"]').addEventListener('click', () => {
+        dialog.element.querySelector('[data-type="cancel"]').addEventListener("click", () => {
             dialog.destroy();
         });
 
-        dialog.element.querySelector('[data-type="confirm"]').addEventListener('click', () => {
+        dialog.element.querySelector('[data-type="confirm"]').addEventListener("click", () => {
             dialog.destroy();
             // 使用 reloadUI API 刷新界面
-            console.log('User confirmed UI reload, calling /api/system/reloadUI API...');
-            fetchPost('/api/system/reloadUI');
+            console.log("User confirmed UI reload, calling /api/system/reloadUI API...");
+            fetchPost("/api/system/reloadUI");
         });
     }
 
     /**
      * 显示消息提示
      */
-    private showMessage(message: string, type: 'info' | 'error' = 'info') {
+    private showMessage(message: string, type: "info" | "error" = "info") {
         // 使用 SiYuan 的消息提示 API
         showMessage(this.displayName + ": " + message, 10000, type);
         // if (type === 'info') {
@@ -343,22 +341,22 @@ export default class InstallPackage extends Plugin {
         try {
             console.log(`Opening directory: ${path}`);
             
-            const { shell } = window.require('electron');
-            const workspaceDir = window.siyuan?.config?.system?.workspaceDir || '';
+            const { shell } = window.require("electron");
+            const workspaceDir = window.siyuan?.config?.system?.workspaceDir || "";
             const fullPath = workspaceDir ? `${workspaceDir}/${path}` : path;
             
             console.log(`Opening directory in Electron: ${fullPath}`);
             shell.openPath(fullPath).then((error: string) => {
                 if (error) {
                     console.error(`Failed to open directory: ${error}`);
-                    this.showMessage(`无法打开目录：${error}`, 'error');
+                    this.showMessage(`无法打开目录：${error}`, "error");
                 } else {
                     console.log(`Directory opened successfully: ${fullPath}`);
                 }
             });
         } catch (error) {
             console.error(`Failed to open directory: ${path}`, error);
-            this.showMessage(`打开目录失败：${error.message}`, 'error');
+            this.showMessage(`打开目录失败：${error.message}`, "error");
         }
     }
 }

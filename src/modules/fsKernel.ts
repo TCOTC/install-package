@@ -187,7 +187,7 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
     }
 
     const responseData = await response.json();
-    console.log(`Copy directory response data:`, responseData);
+    console.log("Copy directory response data:", responseData);
 
     if (responseData.code !== 0) {
         throw new Error(`Failed to copy directory: ${responseData.msg}`);
@@ -196,8 +196,8 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
     console.log(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
 
     if (sourceDirName !== targetDirName) {
-        console.warn(`Warning: Source and target directory names do not match!`);
-        console.warn(`This should not happen. The directory may have been copied with the wrong name.`);
+        console.warn("Warning: Source and target directory names do not match!");
+        console.warn("This should not happen. The directory may have been copied with the wrong name.");
     }
 
     console.log(`Directory copy successful: ${sourcePath} -> ${targetPath}`);

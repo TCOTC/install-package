@@ -1,6 +1,5 @@
 {
   "title": "Install Package",
-  "dialogTitle": "Install Package",
   "urlLabel": "GitHub repository URL or user/repo",
   "urlPlaceholder": "format: https://github.com/user/repo or user/repo",
   "versionLabel": "Version (Git Tag) of the package (optional)",

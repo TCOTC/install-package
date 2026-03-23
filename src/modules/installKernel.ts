@@ -81,7 +81,7 @@ export async function extractPackageNameFromContent(
         }
 
         const configData = await response.json();
-        console.log(`Configuration file content:`, configData);
+        console.log("Configuration file content:", configData);
 
         const packageName = configData.name || configData.packageName;
 
@@ -243,7 +243,7 @@ export async function installPackageWithKernelAPI(
         await setPackageEnabled(packageType, packageName, enable, ctx);
 
         if (packageType === "icon") {
-            console.log(`Icon package installed, calling reloadIcon API...`);
+            console.log("Icon package installed, calling reloadIcon API...");
             await reloadIcon();
         }
 

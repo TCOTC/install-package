@@ -1,6 +1,5 @@
 {
   "title": "安装集市包",
-  "dialogTitle": "安装集市包",
   "urlLabel": "GitHub 仓库 URL 或 user/repo",
   "urlPlaceholder": "格式：https://github.com/user/repo 或 user/repo",
   "versionLabel": "集市包的版本（Git Tag）（可选）",

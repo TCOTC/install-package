@@ -4,6 +4,7 @@
 
 export async function getRepositoryInfo(owner: string, repo: string): Promise<any> {
     try {
+        console.log("get repository information: " + owner + "/" + repo);
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);

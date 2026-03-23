@@ -11,6 +11,9 @@ declare global {
 }
 
 export default class InstallPackage extends Plugin {
+    /** 正在安装的仓库键（小写 owner/repo），用于避免同一仓库并发安装，不同仓库可并行 */
+    private installInFlight = new Set<string>();
+
     onload() {
         this.addTopBar({
             // 图标来源 https://www.svgrepo.com/svg/355075/install
@@ -108,32 +111,37 @@ export default class InstallPackage extends Plugin {
         url = url.trim();
         version = version.trim();
 
-        try {
-            console.log("InstallPackage installPackage", url, version, enable);
-            
-            let owner: string;
-            let repo: string;
-            
-            // 先尝试匹配完整的 GitHub URL
-            const githubUrlMatch = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)(\/)?$/);
-            if (githubUrlMatch && githubUrlMatch[1] && githubUrlMatch[2]) {
-                // 完整 URL 格式
-                owner = githubUrlMatch[1];
-                repo = githubUrlMatch[2];
-                console.log(`Full URL format detected: ${owner}/${repo}`);
-            } else {
-                // 尝试匹配 user/repo 格式
-                const shortFormatMatch = url.match(/^([^\/\s]+)\/([^\/\s]+)$/);
-                if (!shortFormatMatch || !shortFormatMatch[1] || !shortFormatMatch[2]) {
-                    this.showMessage(this.i18n.invalidUrl, "error");
-                    return;
-                }
-                owner = shortFormatMatch[1];
-                repo = shortFormatMatch[2];
-                console.log(`Short format detected: ${owner}/${repo}`);
+        let owner: string;
+        let repo: string;
+
+        // 尝试从 GitHub URL 提取 owner、repo
+        const githubUrlMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)/i);
+        const shortFormatMatch = url.match(/^([^\/\s]+)\/([^\/\s]+)$/);
+        if (githubUrlMatch) {
+            owner = githubUrlMatch[1];
+            repo = githubUrlMatch[2];
+            if (repo.toLowerCase().endsWith(".git")) {
+                repo = repo.slice(0, -4);
             }
-            console.log("Getting repository information...");
-            
+            console.log(`extract from GitHub URL: ${owner}/${repo}`);
+        } else if (shortFormatMatch) {
+            owner = shortFormatMatch[1];
+            repo = shortFormatMatch[2];
+            console.log(`extract from short format: ${owner}/${repo}`);
+        } else {
+            this.showMessage(this.i18n.invalidUrl, "error");
+            return;
+        }
+
+        const repoLockKey = `${owner}/${repo}`.toLowerCase();
+        if (this.installInFlight.has(repoLockKey)) {
+            console.warn(repoLockKey + " is already in download queue");
+            return;
+        }
+        this.installInFlight.add(repoLockKey);
+
+        try {
+            console.log("install package: url=" + url + ", version=" + version + ", enable=" + enable);
             // 获取仓库信息
             const repoInfo = await getRepositoryInfo(owner, repo);
             if (!repoInfo) {
@@ -196,6 +204,8 @@ export default class InstallPackage extends Plugin {
         } catch (error) {
             console.error("InstallPackage error:", error);
             this.showMessage(this.i18n.downloadFailed.replace("{error}", error.message), "error");
+        } finally {
+            this.installInFlight.delete(repoLockKey);
         }
     };
 
@@ -315,13 +325,7 @@ export default class InstallPackage extends Plugin {
      * 显示消息提示
      */
     private showMessage(message: string, type: "info" | "error" = "info") {
-        // 使用 SiYuan 的消息提示 API
-        showMessage(this.displayName + ": " + message, 10000, type);
-        // if (type === 'info') {
-        //     console.log(message);
-        // } else {
-        //     console.error(message);
-        // }
+        showMessage(this.displayName + ": " + message, type === "info" ? 3000 : 10000, type);
     }
 
     /**

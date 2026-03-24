@@ -58,3 +58,66 @@ export function extractPackageNameFromUrl(url: string): string {
     }
     throw new Error("Unable to extract package name from URL");
 }
+
+const SHORT_FORMAT_RE = /^([^/\s]+)\/([^/\s]+)$/; // 短格式：`owner/repo`
+const GITHUB_REPO_URL_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)/i; // GitHub URL 格式：`https://github.com/owner/repo`
+const GITHUB_ISSUE_OR_PULL_URL_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:pull|issues)\/(\d+)/i; // GitHub PR / Issue URL：`.../pull/N` 或 `.../issues/N`
+const BAZAAR_PR_TITLE_RE = /([^/\s]+)\/([^/\s]+)/; // bazaar PR 标题：匹配首个 `owner/repo` 形式
+
+async function getGitHubIssueTitle(owner: string, repo: string, issueNumber: number): Promise<string | null> {
+    const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
+    const data = await fetchGitHubJson<{ title: string }>(url, "Failed to get GitHub issue:");
+    console.log(`get GitHub issue:`, url, data);
+    return data?.title ?? null;
+}
+
+/**
+ * 从用户输入解析 GitHub owner/repo：完整仓库 URL、owner/repo 简写，或 Issue / PR 链接（从标题中解析首个 owner/repo）
+ */
+export async function parseOwnerRepo(input: string): Promise<{ owner: string; repo: string } | null> {
+    const trimmed = input.trim();
+
+    const issueOrPullMatch = trimmed.match(GITHUB_ISSUE_OR_PULL_URL_RE);
+    if (issueOrPullMatch) {
+        const ghOwner = issueOrPullMatch[1];
+        const ghRepo = issueOrPullMatch[2];
+        const issueNumber = parseInt(issueOrPullMatch[3], 10);
+        if (!Number.isFinite(issueNumber)) {
+            return null;
+        }
+        const issueTitle = await getGitHubIssueTitle(ghOwner, ghRepo, issueNumber);
+        if (!issueTitle) {
+            return null;
+        }
+        const titleMatch = issueTitle.match(BAZAAR_PR_TITLE_RE);
+        if (!titleMatch) {
+            console.error("Issue/PR title has no owner/repo segment:", issueTitle);
+            return null;
+        }
+        const owner = titleMatch[1];
+        const repo = titleMatch[2];
+        console.log(`extract from bazaar issue/PR title: ${owner}/${repo}`);
+        return { owner, repo };
+    }
+
+    const githubUrlMatch = trimmed.match(GITHUB_REPO_URL_RE);
+    if (githubUrlMatch) {
+        const owner = githubUrlMatch[1];
+        let repo = githubUrlMatch[2];
+        if (repo.length >= 4 && repo.slice(-4).toLowerCase() === ".git") {
+            repo = repo.slice(0, -4);
+        }
+        console.log(`extract from GitHub URL: ${owner}/${repo}`);
+        return { owner, repo };
+    }
+
+    const shortFormatMatch = trimmed.match(SHORT_FORMAT_RE);
+    if (shortFormatMatch) {
+        const owner = shortFormatMatch[1];
+        const repo = shortFormatMatch[2];
+        console.log(`extract from short format: ${owner}/${repo}`);
+        return { owner, repo };
+    }
+
+    return null;
+}

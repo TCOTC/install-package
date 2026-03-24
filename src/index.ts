@@ -1,5 +1,5 @@
 import { Dialog, Plugin, showMessage, fetchPost } from "siyuan";
-import { findPluginAsset, getReleaseInfo, getRepositoryInfo } from "./modules/github";
+import { findPluginAsset, getReleaseInfo, getRepositoryInfo, parseOwnerRepo } from "./modules/github";
 import { downloadAndInstallPlugin } from "./modules/packageDetect";
 
 declare global {
@@ -116,27 +116,12 @@ export default class InstallPackage extends Plugin {
         url = url.trim();
         version = version.trim();
 
-        let owner: string;
-        let repo: string;
-
-        // 尝试从 GitHub URL 提取 owner、repo
-        const githubUrlMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)/i);
-        const shortFormatMatch = url.match(/^([^\/\s]+)\/([^\/\s]+)$/);
-        if (githubUrlMatch) {
-            owner = githubUrlMatch[1];
-            repo = githubUrlMatch[2];
-            if (repo.toLowerCase().endsWith(".git")) {
-                repo = repo.slice(0, -4);
-            }
-            console.log(`extract from GitHub URL: ${owner}/${repo}`);
-        } else if (shortFormatMatch) {
-            owner = shortFormatMatch[1];
-            repo = shortFormatMatch[2];
-            console.log(`extract from short format: ${owner}/${repo}`);
-        } else {
+        const parsed = await parseOwnerRepo(url);
+        if (!parsed) {
             this.message(this.i18n.invalidUrl, true);
             return;
         }
+        const { owner, repo } = parsed;
 
         const repoLockKey = `${owner}/${repo}`.toLowerCase();
         if (this.installInFlight.has(repoLockKey)) {

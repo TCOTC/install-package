@@ -1,5 +1,5 @@
 /**
- * 通过内核 API 安装包、路径与启用状态
+ * 通过内核 API 安装集市包
  */
 
 import { fetchSyncPost, getFrontend } from "siyuan";
@@ -132,23 +132,19 @@ export async function setPackageEnabled(
     }
 }
 
-export type KernelInstallResult =
-    | { ok: true; infos: string[]; enableWarnings: string[] }
-    | { ok: false; error: string };
+export type KernelInstallResult = { ok: true; info?: string } | { ok: false; error: string };
 
 export async function installPackageWithKernelAPI(
     data: Uint8Array,
     fileName: string,
     packageType: string,
     packageName: string,
-    enable: boolean,
     i18n: Record<string, string>
 ): Promise<KernelInstallResult> {
     let tempPath = "";
     let extractPath = "";
 
-    const infos: string[] = [];
-    const enableWarnings: string[] = [];
+    let info: string;
 
     try {
         console.log(`Starting package installation: ${fileName}, type: ${packageType}, name: ${packageName}`);
@@ -202,7 +198,7 @@ export async function installPackageWithKernelAPI(
 
         if (await pathExists(installPath)) {
             console.log(`Target directory already exists: ${installPath}`);
-            infos.push(i18n.targetDirExists.replace("{path}", installPath));
+            info = i18n.targetDirExists.replace("{path}", installPath);
 
             await clearDirectory(installPath);
             console.log(`Cleared old package files: ${installPath}`);
@@ -231,14 +227,8 @@ export async function installPackageWithKernelAPI(
             console.error(`Unable to verify installation result: ${installDirResponse.status}`);
         }
 
-        console.log(`Attempting to ${enable ? "enable" : "disable"} package: ${packageType} - ${packageName}`);
-        const enableWarning = await setPackageEnabled(packageType, packageName, enable, i18n);
-        if (enableWarning) {
-            enableWarnings.push(enableWarning);
-        }
-
         console.log(`Package installed successfully: ${packageName}`);
-        return { ok: true, infos, enableWarnings };
+        return { ok: true, info };
     } catch (error) {
         console.error("Package installation failed:", error);
         if (error instanceof Error) {

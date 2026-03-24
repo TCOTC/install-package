@@ -36,9 +36,13 @@ async function fetchGitHubJson<T>(
     }
 }
 
-export async function getRepositoryInfo(owner: string, repo: string): Promise<GitHubRepository | null> {
+export async function getRepositoryInfo(
+    owner: string,
+    repo: string,
+    signal?: AbortSignal
+): Promise<GitHubRepository | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}`;
-    return fetchGitHubJson<GitHubRepository>(url, "Failed to get repository information:");
+    return fetchGitHubJson<GitHubRepository>(url, "Failed to get repository information:", signal);
 }
 
 export async function getReleaseInfo(owner: string, repo: string, version: string): Promise<GitHubRelease | null> {
@@ -47,31 +51,6 @@ export async function getReleaseInfo(owner: string, repo: string, version: strin
         : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
     return fetchGitHubJson<GitHubRelease>(url, "Failed to get Release information:");
 }
-
-/** 查找包文件 package.zip */
-export function findPluginAsset(assets: GitHubRelease["assets"]): GitHubReleaseAsset | null {
-    if (!assets || !Array.isArray(assets)) {
-        return null;
-    }
-
-    const file = assets.find((asset) => asset.name === "package.zip"); // 大小写敏感，跟 bazaar 的逻辑一致
-
-    return file ?? null;
-}
-
-/** 从下载 URL 中提取包名（仓库名） */
-export function extractPackageNameFromUrl(url: string): string {
-    const match = url.match(/github\.com\/[^\/]+\/([^\/]+)/);
-    if (match && match[1]) {
-        return match[1];
-    }
-    throw new Error("Unable to extract package name from URL");
-}
-
-const SHORT_FORMAT_RE = /^([^/\s]+)\/([^/\s]+)$/; // 短格式：`owner/repo`
-const GITHUB_REPO_URL_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)/i; // GitHub URL 格式：`https://github.com/owner/repo`
-const GITHUB_ISSUE_OR_PULL_URL_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:pull|issues)\/(\d+)/i; // GitHub PR / Issue URL：`.../pull/N` 或 `.../issues/N`
-const BAZAAR_PR_TITLE_RE = /([^/\s]+)\/([^/\s]+)/; // bazaar PR 标题：匹配首个 `owner/repo` 形式
 
 async function getGitHubIssueTitle(
     owner: string,
@@ -85,7 +64,7 @@ async function getGitHubIssueTitle(
 }
 
 /**
- * 从用户输入解析 GitHub owner/repo：完整仓库 URL、owner/repo 简写，或 Issue / PR 链接（从标题中解析首个 owner/repo）
+ * 从用户输入解析 GitHub owner/repo：先识别 GitHub URL（仅 `siyuan-note/bazaar` 下 Issue/PR 从标题解析目标仓库），再识别 `owner/repo` 简写；最后用 API 校验仓库存在并输出摘要
  *
  * @param signal 可选；新一次解析前 abort 时可取消未完成的 GitHub API 请求
  */
@@ -93,49 +72,84 @@ export async function parseOwnerRepo(
     input: string,
     signal?: AbortSignal
 ): Promise<{ owner: string; repo: string } | null> {
-    const trimmed = input.trim();
+    input = input.trim();
 
-    const issueOrPullMatch = trimmed.match(GITHUB_ISSUE_OR_PULL_URL_RE);
-    if (issueOrPullMatch) {
-        const ghOwner = issueOrPullMatch[1];
-        const ghRepo = issueOrPullMatch[2];
-        const issueNumber = parseInt(issueOrPullMatch[3], 10);
-        if (!Number.isFinite(issueNumber)) {
-            return null;
-        }
-        const issueTitle = await getGitHubIssueTitle(ghOwner, ghRepo, issueNumber, signal);
-        if (!issueTitle) {
-            return null;
-        }
-        const titleMatch = issueTitle.match(BAZAAR_PR_TITLE_RE);
-        if (!titleMatch) {
-            console.error("Issue/PR title has no owner/repo segment:", issueTitle);
-            return null;
-        }
-        const owner = titleMatch[1];
-        const repo = titleMatch[2];
-        console.log(`extract from bazaar issue/PR title: ${owner}/${repo}`);
-        return { owner, repo };
-    }
-
-    const githubUrlMatch = trimmed.match(GITHUB_REPO_URL_RE);
+    let owner: string;
+    let repo: string;
+    const githubUrlMatch = input.match(/^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)(\/[^?#]*)?/i); // GitHub 仓库 URL：`https://github.com/owner/repo` 及可选后续路径（不含 query/hash）
     if (githubUrlMatch) {
-        const owner = githubUrlMatch[1];
-        let repo = githubUrlMatch[2];
-        if (repo.length >= 4 && repo.slice(-4).toLowerCase() === ".git") {
-            repo = repo.slice(0, -4);
+        owner = githubUrlMatch[1];
+        repo = githubUrlMatch[2];
+        if (owner.toLowerCase() === "siyuan-note" && repo.toLowerCase() === "bazaar") {
+            // 从集市 PR 的标题中提取 owner/repo
+            const issueNumberMatch = (githubUrlMatch[3] ?? "").match(/^\/(?:pull|issues)\/(\d+)/i);
+            if (!issueNumberMatch) {
+                console.error("Issue/PR URL has no issue/pull number:", input);
+                return null;
+            }
+            const issueNumber = parseInt(issueNumberMatch[1], 10);
+            if (!Number.isFinite(issueNumber)) {
+                console.error("Issue/PR number is not a number:", issueNumber);
+                return null;
+            }
+            const issueTitle = await getGitHubIssueTitle(owner, repo, issueNumber, signal);
+            if (!issueTitle) {
+                console.error("Issue/PR title not found:", issueTitle);
+                return null;
+            }
+            const titleMatch = issueTitle.match(/([^/\s]+)\/([^/\s]+)/); // bazaar PR 标题：匹配首个 `owner/repo` 片段
+            if (!titleMatch) {
+                console.error("Issue/PR title has no owner/repo segment:", issueTitle);
+                return null;
+            }
+            owner = titleMatch[1];
+            repo = titleMatch[2];
+            console.log(`extract from bazaar issue/PR title: ${owner}/${repo}`);
+        } else {
+            // 从集市包仓库的 URL 中提取 owner/repo
+            if (repo.length >= 4 && repo.slice(-4).toLowerCase() === ".git") {
+                repo = repo.slice(0, -4);
+            }
+            console.log(`extract from GitHub URL: ${owner}/${repo}`);
         }
-        console.log(`extract from GitHub URL: ${owner}/${repo}`);
-        return { owner, repo };
-    }
-
-    const shortFormatMatch = trimmed.match(SHORT_FORMAT_RE);
-    if (shortFormatMatch) {
-        const owner = shortFormatMatch[1];
-        const repo = shortFormatMatch[2];
+    } else {
+        // 从短格式中提取 owner/repo
+        const shortFormatMatch = input.match(/^([^/\s]+)\/([^/\s]+)$/); // 短格式：`owner/repo`
+        if (!shortFormatMatch) {
+            return null;
+        }
+        owner = shortFormatMatch[1];
+        repo = shortFormatMatch[2];
         console.log(`extract from short format: ${owner}/${repo}`);
-        return { owner, repo };
     }
 
-    return null;
+    const repoInfo = await getRepositoryInfo(owner, repo, signal);
+    if (!repoInfo) {
+        return null;
+    }
+    // 输出仓库摘要
+    console.log("Repository:", repoInfo.full_name);
+    console.log("Description:", repoInfo.description || "");
+    console.log("Stars:", repoInfo.stargazers_count);
+    console.log("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
+    return { owner, repo };
+}
+
+/** 查找包文件 package.zip */
+export function findPluginAsset(assets: GitHubRelease["assets"]): GitHubReleaseAsset | null {
+    if (!assets || !Array.isArray(assets)) {
+        return null;
+    }
+    // 大小写敏感，跟 bazaar 的逻辑一致
+    return assets.find((asset) => asset.name === "package.zip") ?? null;
+}
+
+// TODO 包名不一定等于仓库名
+/** 从下载 URL 中提取包名（仓库名） */
+export function extractPackageNameFromUrl(url: string): string {
+    const match = url.match(/github\.com\/[^\/]+\/([^\/]+)/);
+    if (match && match[1]) {
+        return match[1];
+    }
+    throw new Error("Unable to extract package name from URL");
 }

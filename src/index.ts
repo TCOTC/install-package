@@ -1,6 +1,8 @@
 import { Dialog, Plugin, showMessage, fetchPost } from "siyuan";
-import { findPluginAsset, getReleaseInfo, getRepositoryInfo, parseOwnerRepo } from "./modules/github";
-import { downloadAndInstallPlugin } from "./modules/packageDetect";
+import { findPluginAsset, getReleaseInfo } from "./modules/github";
+import { RepoUrlController } from "./modules/repoUrlController";
+import { downloadAndInstallPackage } from "./modules/packageDetect";
+import { setPackageEnabled } from "./modules/installKernel";
 
 declare global {
     interface Window {
@@ -84,50 +86,16 @@ export default class InstallPackage extends Plugin {
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
         const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
 
-        let repoPreviewAbort: AbortController | undefined;
-        /** 与当前输入一致的 parseOwnerRepo 结果，供确认安装时复用，避免重复请求 */
-        let previewParseCache: { input: string; owner: string; repo: string } | null = null;
-        const refreshRepoPreview = () => {
-            repoPreviewAbort?.abort();
-            repoPreviewAbort = new AbortController();
-            const { signal } = repoPreviewAbort;
-            const value = urlInput.value.trim();
-            if (!value) {
-                previewParseCache = null;
-                repoPreviewEl.textContent = this.i18n.repoPreviewTip;
-                repoPreviewEl.style.color = "";
-                return;
-            }
-            // 避免在 parseOwnerRepo 完成前仍显示上一次解析结果
-            repoPreviewEl.textContent = this.i18n.repoPreviewParsing;
-            repoPreviewEl.style.color = "";
-            void parseOwnerRepo(value, signal).then((parsed) => {
-                if (signal.aborted || !repoPreviewEl.isConnected) {
-                    return;
-                }
-                if (parsed) {
-                    previewParseCache = { input: value, owner: parsed.owner, repo: parsed.repo };
-                    repoPreviewEl.innerHTML = this.i18n.repoPreviewResolved.replace(
-                        "{ownerRepo}",
-                        `<b><a href="https://github.com/${parsed.owner}" target="_blank">${parsed.owner}</a></b> / <b><a href="https://github.com/${parsed.owner}/${parsed.repo}" target="_blank">${parsed.repo}</a></b>`
-                    );
-                    repoPreviewEl.style.color = "";
-                } else {
-                    previewParseCache = null;
-                    repoPreviewEl.textContent = this.i18n.repoPreviewInvalid;
-                    repoPreviewEl.style.color = "var(--b3-theme-error)";
-                }
-            });
-        };
-        urlInput.addEventListener("input", refreshRepoPreview);
+        const repoUrlController = new RepoUrlController(urlInput, repoPreviewEl, this.i18n);
+        urlInput.addEventListener("input", () => repoUrlController.refresh());
         
         const getEnableValue = () => enableSelect.value === "enable";
         
         dialog.bindInput(urlInput, () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), previewParseCache);
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
         });
         dialog.bindInput(versionInput, () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), previewParseCache);
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
         });
         urlInput.select();
 
@@ -137,7 +105,7 @@ export default class InstallPackage extends Plugin {
         });
         const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
         confirmButton.addEventListener("click", () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), previewParseCache);
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
         });
         
         const openPluginsButton = dialog.element.querySelector("button[data-type='open-plugins']") as HTMLButtonElement;
@@ -156,15 +124,12 @@ export default class InstallPackage extends Plugin {
         url: string,
         version: string,
         enable: boolean,
-        previewParseCache?: { input: string; owner: string; repo: string } | null
+        repoUrlController: RepoUrlController
     ) => {
         url = url.trim();
         version = version.trim();
 
-        const parsed =
-            previewParseCache && previewParseCache.input === url
-                ? { owner: previewParseCache.owner, repo: previewParseCache.repo }
-                : await parseOwnerRepo(url);
+        const parsed = await repoUrlController.ownerRepoForUrl(url);
         if (!parsed) {
             this.message(this.i18n.invalidUrl, true);
             return;
@@ -180,36 +145,21 @@ export default class InstallPackage extends Plugin {
 
         try {
             console.log("install package: url=" + url + ", version=" + version + ", enable=" + enable);
-            // 并行获取仓库信息与 Release 信息
-            const [repoInfo, releaseInfo] = await Promise.all([
-                getRepositoryInfo(owner, repo),
-                getReleaseInfo(owner, repo, version),
-            ]);
-            if (!repoInfo) {
-                this.message(this.i18n.repoInfoError, true);
-                return;
-            }
+            const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
-                const versionText = version || "latest";
-                this.message(this.i18n.releaseInfoError.replace("{version}", versionText), true);
+                this.message(this.i18n.releaseInfoError.replace("{version}", version || "latest"), true);
                 return;
             }
+            // Release 信息
+            console.log("Release description:", releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : ""));
 
-            this.message(
-                this.i18n.foundRelease
+            this.message(this.i18n.foundRelease
                 .replace("{tagName}", releaseInfo.tag_name)
                 .replace("{publishedAt}", (
                     releaseInfo.published_at ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
                 ))
             );
 
-            // 仓库信息
-            console.log("Repository:", repoInfo.full_name);
-            console.log("Description:", repoInfo.description || "");
-            console.log("Stars:", repoInfo.stargazers_count);
-            console.log("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
-            // Release 信息
-            console.log("Release description:", releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : ""));
 
             // 查找包文件
             const pluginAsset = findPluginAsset(releaseInfo.assets);
@@ -220,70 +170,49 @@ export default class InstallPackage extends Plugin {
 
             this.message(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", formatFileSize(pluginAsset.size)));
             // TODO 重构到这里
-            const result = await downloadAndInstallPlugin(
-                pluginAsset.browser_download_url,
-                pluginAsset.name,
-                enable,
-                this.i18n
-            );
-
-            if (result.infos) {
-                for (const text of result.infos) {
-                    this.message(text, false);
-                }
-            }
-            if (result.enableWarnings) {
-                for (const text of result.enableWarnings) {
-                    this.message(text, true);
-                }
-            }
-
+            const result = await downloadAndInstallPackage(pluginAsset.browser_download_url, pluginAsset.name, this.i18n);
             if (!result.success) {
-                if (result.error) {
-                    this.message(result.error, true);
-                } else {
-                    this.message(this.i18n.packageInstallFailed, true);
-                }
-                console.error("Failed to download or install package");
+                this.message(result.error ?? this.i18n.packageInstallFailed, true);
                 return;
+            }
+
+            let enableWarning: string;
+            if (result.packageType && result.packageName) {
+                enableWarning = await setPackageEnabled(result.packageType, result.packageName, enable, this.i18n);
+            }
+            if (result.info) {
+                this.message(result.info, false);
+            }
+            if (enableWarning) {
+                this.message(enableWarning, true);
             }
 
             let autoEnabledText = "";
             if (result.packageType === "plugin") {
-                autoEnabledText = enable
-                    ? this.i18n.packageInstalledSuccessAuto
-                    : this.i18n.packageInstalledSuccessManual;
+                autoEnabledText = enable ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
             } else if (result.packageType === "widget" || result.packageType === "template") {
                 // 挂件和模板没有「启用」的概念
             } else if (result.packageType === "theme" || result.packageType === "icon") {
                 autoEnabledText = this.i18n.packageInstalledSuccessManual;
             }
-            this.message(
-                this.i18n.packageInstalledSuccess
-                    .replace("{packageType}", result.packageType ?? "")
-                    .replace("{packageName}", result.packageName ?? "")
-                    .replace("{autoEnabled}", autoEnabledText),
-                false
+            this.message(this.i18n.packageInstalledSuccess
+                .replace("{packageType}", result.packageType ?? "")
+                .replace("{packageName}", result.packageName ?? "")
+                .replace("{autoEnabled}", autoEnabledText)
             );
 
             if (result.shouldReloadIcon) {
                 await this.reloadIcon();
             }
 
-            const autoEnabledTextForLog =
-                enable && result.packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually;
-            console.log(this.i18n.downloadSuccess.replace("{autoEnabled}", autoEnabledTextForLog));
+            console.log(this.i18n.downloadSuccess
+                .replace("{autoEnabled}", enable && result.packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually
+            ));
             dialog.destroy();
             return;
         } catch (error) {
             console.error("InstallPackage error:", error);
-            this.message(
-                this.i18n.downloadFailed.replace(
-                    "{error}",
-                    error instanceof Error ? error.message : String(error)
-                ),
-                true
-            );
+            this.message(this.i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)), true);
         } finally {
             this.installInFlight.delete(repoLockKey);
         }

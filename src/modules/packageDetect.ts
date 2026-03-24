@@ -13,8 +13,7 @@ export type DownloadInstallResult = {
     /** 安装成功后若为图标包，由插件层调用 reloadIcon */
     shouldReloadIcon: boolean;
     error?: string;
-    infos?: string[];
-    enableWarnings?: string[];
+    info?: string;
 };
 
 export function validatePackageZipFile(data: Uint8Array, fileName: string): boolean {
@@ -126,10 +125,9 @@ export async function detectPackageType(
     }
 }
 
-export async function downloadAndInstallPlugin(
+export async function downloadAndInstallPackage(
     downloadUrl: string,
     fileName: string,
-    enable: boolean,
     i18n: Record<string, string>
 ): Promise<DownloadInstallResult> {
     const empty: DownloadInstallResult = {
@@ -199,7 +197,6 @@ export async function downloadAndInstallPlugin(
             fileName,
             packageType,
             packageName,
-            enable,
             i18n
         );
 
@@ -219,9 +216,7 @@ export async function downloadAndInstallPlugin(
             packageType,
             packageName,
             shouldReloadIcon,
-            infos: kernelResult.infos.length > 0 ? kernelResult.infos : undefined,
-            enableWarnings:
-                kernelResult.enableWarnings.length > 0 ? kernelResult.enableWarnings : undefined,
+            info: kernelResult.info,
         };
     } catch (error) {
         console.error("Failed to download or install plugin:", error);

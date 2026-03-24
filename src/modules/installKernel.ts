@@ -47,11 +47,13 @@ export function getMetadataFileName(packageType: string): string {
     }
 }
 
+export type ExtractMetadataNameResult = { ok: true; name: string } | { ok: false; error: string };
+
 export async function extractPackageNameFromMetadata(
     extractPath: string,
     packageType: string,
     i18n: Record<string, string>
-): Promise<string> {
+): Promise<ExtractMetadataNameResult> {
     console.log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
     const metadataFile = getMetadataFileName(packageType);
@@ -61,36 +63,38 @@ export async function extractPackageNameFromMetadata(
 
     const fileResult = await getFile(metadataPath);
     if (fileResult.ok === false) {
-        throw new Error(
-            i18n.extractPackageNameFromMetadataError.replace(
+        return {
+            ok: false,
+            error: i18n.extractPackageNameFromMetadataError.replace(
                 "{error}",
                 fileResult.msg || `code ${fileResult.code}`,
             ),
-        );
+        };
     }
     let packageMetadata: Record<string, unknown>;
     try {
         packageMetadata = JSON.parse(fileResult.content);
     } catch {
-        throw new Error(
-            i18n.extractPackageNameFromMetadataError.replace("{error}", i18n.metadataFileInvalidJson),
-        );
+        return {
+            ok: false,
+            error: i18n.extractPackageNameFromMetadataError.replace("{error}", i18n.metadataFileInvalidJson),
+        };
     }
     console.log("Package metadata:", packageMetadata);
 
     const packageName = (packageMetadata.name ?? packageMetadata.packageName) as string | undefined;
 
     if (!packageName) {
-        throw new Error(i18n.packageNameNotFoundInMetadata);
+        return { ok: false, error: i18n.packageNameNotFoundInMetadata };
     }
 
     console.log(`Package name extracted from metadata: ${packageName}`);
 
     if (typeof packageName !== "string" || packageName.trim() === "") {
-        throw new Error(i18n.invalidPackageName.replace("{name}", String(packageName)));
+        return { ok: false, error: i18n.invalidPackageName.replace("{name}", String(packageName)) };
     }
 
-    return packageName.trim();
+    return { ok: true, name: packageName.trim() };
 }
 
 /**
@@ -231,80 +235,95 @@ export async function installPackageWithKernelAPI(
     let tempPath = "";
     let extractPath = "";
 
-    let info: string;
-
-    try {
-        console.log(`Starting package installation: ${fileName}, type: ${packageType}, name: ${packageName}`);
-
-        const tempFileName = `temp_${Date.now()}_${fileName}`;
-        tempPath = `temp/export/${tempFileName}`;
-        console.log(`Creating temporary file: ${tempPath}`);
-
-        await writeTempFile(data, tempPath);
-        console.log(`Temporary file written successfully: ${tempPath}`);
-
-        extractPath = `temp/export/extract_${Date.now()}/${packageName}`;
-        console.log(`Extracting to final directory: ${extractPath}`);
-        await unzipFile(tempPath, extractPath);
-        console.log(`Extraction completed: ${extractPath}`);
-
-        const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
-        console.log("Extracted directory contents:", extractDirData);
-
-        const metadataPackageName = await extractPackageNameFromMetadata(extractPath, packageType, i18n);
-        console.log(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
-
-        if (metadataPackageName !== packageName) {
-            const errorMsg = `Package name mismatch: metadata ${metadataPackageName}, repo ${packageName}`;
-            console.error(errorMsg);
-            return {
-                ok: false,
-                error: i18n.packageNameMismatch
-                    .replace("{metadataName}", metadataPackageName)
-                    .replace("{repoName}", packageName),
-            };
-        }
-
-        console.log("Package name verification passed");
-
-        const installPath = getInstallPath(packageType, packageName);
-        console.log(`Final package name: ${packageName}`);
-        console.log(`Target installation path: ${installPath}`);
-
-        if (await pathExists(installPath)) {
-            console.log(`Target directory already exists: ${installPath}`);
-            info = i18n.targetDirExists.replace("{path}", installPath);
-
-            await clearDirectory(installPath);
-            console.log(`Cleared old package files: ${installPath}`);
-        } else {
-            console.log(`Target directory does not exist: ${installPath}`);
-        }
-
-        console.log(`Starting to copy files from ${extractPath} to ${installPath}`);
-        await copyToInstallPath(extractPath, installPath);
-        console.log(`File copy completed: ${installPath}`);
-
-        const installDirData = await fetchSyncPost("/api/file/readDir", { path: installPath });
-        console.log("Post-installation directory contents:", installDirData);
-
-        console.log(`Package installed successfully: ${packageName}`);
-        return { ok: true, info };
-    } catch (error) {
-        console.error("Package installation failed:", error);
-        if (error instanceof Error) {
-            return { ok: false, error: error.message };
-        }
-        return {
-            ok: false,
-            error: i18n.installationFailed.replace("{error}", String(error)),
-        };
-    } finally {
+    const runCleanup = async () => {
         const extractBaseDir = extractPath ? extractPath.substring(0, extractPath.lastIndexOf("/")) : "";
         const pathsToClean = [tempPath, extractBaseDir].filter(Boolean);
         if (pathsToClean.length > 0) {
             console.log(`Cleaning up temporary files: ${pathsToClean.join(", ")}`);
             await cleanupTempFiles(pathsToClean);
         }
+    };
+
+    const fail = async (error: string): Promise<KernelInstallResult> => {
+        await runCleanup();
+        return { ok: false, error };
+    };
+
+    const succeed = async (info?: string): Promise<KernelInstallResult> => {
+        await runCleanup();
+        return { ok: true, info };
+    };
+
+    console.log(`Starting package installation: ${fileName}, type: ${packageType}, name: ${packageName}`);
+
+    const tempFileName = `temp_${Date.now()}_${fileName}`;
+    tempPath = `temp/export/${tempFileName}`;
+    console.log(`Creating temporary file: ${tempPath}`);
+
+    const writeResult = await writeTempFile(data, tempPath);
+    if (writeResult.ok === false) {
+        return fail(writeResult.error);
     }
+    console.log(`Temporary file written successfully: ${tempPath}`);
+
+    extractPath = `temp/export/extract_${Date.now()}/${packageName}`;
+    console.log(`Extracting to final directory: ${extractPath}`);
+    const unzipResult = await unzipFile(tempPath, extractPath);
+    if (unzipResult.ok === false) {
+        return fail(unzipResult.error);
+    }
+    console.log(`Extraction completed: ${extractPath}`);
+
+    const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
+    console.log("Extracted directory contents:", extractDirData);
+
+    const metadataResult = await extractPackageNameFromMetadata(extractPath, packageType, i18n);
+    if (metadataResult.ok === false) {
+        return fail(metadataResult.error);
+    }
+    const metadataPackageName = metadataResult.name;
+    console.log(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
+
+    if (metadataPackageName !== packageName) {
+        const errorMsg = `Package name mismatch: metadata ${metadataPackageName}, repo ${packageName}`;
+        console.error(errorMsg);
+        return fail(
+            i18n.packageNameMismatch
+                .replace("{metadataName}", metadataPackageName)
+                .replace("{repoName}", packageName),
+        );
+    }
+
+    console.log("Package name verification passed");
+
+    const installPath = getInstallPath(packageType, packageName);
+    console.log(`Final package name: ${packageName}`);
+    console.log(`Target installation path: ${installPath}`);
+
+    let info: string | undefined;
+    if (await pathExists(installPath)) {
+        console.log(`Target directory already exists: ${installPath}`);
+        info = i18n.targetDirExists.replace("{path}", installPath);
+
+        const clearResult = await clearDirectory(installPath);
+        if (clearResult.ok === false) {
+            return fail(clearResult.error);
+        }
+        console.log(`Cleared old package files: ${installPath}`);
+    } else {
+        console.log(`Target directory does not exist: ${installPath}`);
+    }
+
+    console.log(`Starting to copy files from ${extractPath} to ${installPath}`);
+    const copyResult = await copyToInstallPath(extractPath, installPath);
+    if (copyResult.ok === false) {
+        return fail(copyResult.error);
+    }
+    console.log(`File copy completed: ${installPath}`);
+
+    const installDirData = await fetchSyncPost("/api/file/readDir", { path: installPath });
+    console.log("Post-installation directory contents:", installDirData);
+
+    console.log(`Package installed successfully: ${packageName}`);
+    return succeed(info);
 }

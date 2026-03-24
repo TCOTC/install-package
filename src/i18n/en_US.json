@@ -48,6 +48,7 @@
   "iconReloadDialogContent": "To ensure the icon package takes full effect, it is recommended to reload the interface. Reload now?",
   "latest": "latest",
   "downloadTimeout": "Download timeout (30s), please check network connection",
+  "packageNameFromUrlFailed": "Unable to extract repository name from download URL",
   "extractedDirEmpty": "Extracted directory is empty or format is incorrect",
   "packageNameMismatch": "Package name mismatch: package name in metadata is [{metadataName}], but repository name is [{repoName}]. Package name must match repository name.",
   "openPluginsDir": "Open Plugins Directory",

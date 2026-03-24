@@ -17,7 +17,7 @@ export type DownloadInstallResult = {
     enableWarnings?: string[];
 };
 
-export function validatePluginFile(data: Uint8Array, fileName: string): boolean {
+export function validatePackageZipFile(data: Uint8Array, fileName: string): boolean {
     try {
         if (data.length === 0) {
             console.error("File size is 0");
@@ -140,13 +140,12 @@ export async function downloadAndInstallPlugin(
     };
 
     try {
-        console.log("Downloading file from GitHub...");
-
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s 超时
 
         let response: Response;
         try {
+            console.log("Downloading file from GitHub:", downloadUrl);
             response = await fetch(downloadUrl, {
                 signal: controller.signal,
             });
@@ -170,7 +169,7 @@ export async function downloadAndInstallPlugin(
         const arrayBuffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
 
-        if (!validatePluginFile(uint8Array, fileName)) {
+        if (!validatePackageZipFile(uint8Array, fileName)) {
             return {
                 ...empty,
                 error: i18n.fileValidationFailed,

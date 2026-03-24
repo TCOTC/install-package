@@ -180,27 +180,21 @@ export default class InstallPackage extends Plugin {
 
         try {
             console.log("install package: url=" + url + ", version=" + version + ", enable=" + enable);
-            // 获取仓库信息
-            const repoInfo = await getRepositoryInfo(owner, repo);
+            // 并行获取仓库信息与 Release 信息
+            const [repoInfo, releaseInfo] = await Promise.all([
+                getRepositoryInfo(owner, repo),
+                getReleaseInfo(owner, repo, version),
+            ]);
             if (!repoInfo) {
                 this.message(this.i18n.repoInfoError, true);
                 return;
             }
-            
-            // 显示仓库信息
-            console.log(`Repository: ${repoInfo.full_name}`);
-            console.log(`Description: ${repoInfo.description || ""}`);
-            console.log(`Stars: ${repoInfo.stargazers_count}`);
-            console.log(`Last updated: ${new Date(repoInfo.updated_at).toLocaleDateString()}`);
-            
-            // 获取 Release 信息
-            const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
                 const versionText = version || "latest";
                 this.message(this.i18n.releaseInfoError.replace("{version}", versionText), true);
                 return;
             }
-            
+
             this.message(
                 this.i18n.foundRelease
                 .replace("{tagName}", releaseInfo.tag_name)
@@ -208,27 +202,26 @@ export default class InstallPackage extends Plugin {
                     releaseInfo.published_at ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
                 ))
             );
-            
-            // 显示 Release 描述（如果有的话）
-            if (releaseInfo.body && releaseInfo.body.trim()) {
-                console.log(`Release description: ${releaseInfo.body.substring(0, 200)}${releaseInfo.body.length > 200 ? "..." : ""}`);
-            }
-            
+
+            // 仓库信息
+            console.log("Repository:", repoInfo.full_name);
+            console.log("Description:", repoInfo.description || "");
+            console.log("Stars:", repoInfo.stargazers_count);
+            console.log("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
+            // Release 信息
+            console.log("Release description:", releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : ""));
+
             // 查找包文件
             const pluginAsset = findPluginAsset(releaseInfo.assets);
             if (!pluginAsset) {
                 this.message(this.i18n.packageZipNotFound, true);
                 return;
             }
-            
-            this.message(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", this.formatFileSize(pluginAsset.size)));
-            
-            // 使用 GitHub 下载 URL
-            const downloadUrl = pluginAsset.browser_download_url;
-            
-            console.log("downloadUrl", downloadUrl);
+
+            this.message(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", formatFileSize(pluginAsset.size)));
+            // TODO 重构到这里
             const result = await downloadAndInstallPlugin(
-                downloadUrl,
+                pluginAsset.browser_download_url,
                 pluginAsset.name,
                 enable,
                 this.i18n
@@ -299,17 +292,6 @@ export default class InstallPackage extends Plugin {
     private message(text: string, isError?: boolean): void {
         const type = isError ? "error" : "info";
         showMessage(this.displayName + ": " + text, isError ? 10000 : 3000, type);
-    }
-
-    /**
-     * 格式化文件大小
-     */
-    private formatFileSize(bytes: number): string {
-        if (bytes === 0) return "0 B";
-        const k = 1024;
-        const sizes = ["B", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     }
 
     /**
@@ -417,4 +399,15 @@ export default class InstallPackage extends Plugin {
 
 function isMobile() {
     return !!window.siyuan.mobile;
+}
+
+/**
+ * 格式化文件大小
+ */
+function formatFileSize(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }

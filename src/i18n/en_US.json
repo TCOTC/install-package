@@ -1,7 +1,11 @@
 {
   "title": "Install Package",
-  "urlLabel": "GitHub repository URL or user/repo",
-  "urlPlaceholder": "format: https://github.com/user/repo or user/repo",
+  "urlLabel": "Bazaar PR URL or GitHub repository URL",
+  "urlPlaceholder": "https://github.com/user/repo",
+  "repoPreviewTip": "Auto-parse repository information after input",
+  "repoPreviewParsing": "Parsing repository information...",
+  "repoPreviewResolved": "Repository: {ownerRepo}",
+  "repoPreviewInvalid": "Cannot parse as a valid GitHub repository",
   "versionLabel": "Version (Git Tag) of the package (optional)",
   "versionPlaceholder": "install latest version by default",
   "enableLabel": "After install",

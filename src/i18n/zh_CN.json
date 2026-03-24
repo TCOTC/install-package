@@ -1,7 +1,11 @@
 {
   "title": "安装集市包",
-  "urlLabel": "GitHub 仓库 URL 或 user/repo",
-  "urlPlaceholder": "格式：https://github.com/user/repo 或 user/repo",
+  "urlLabel": "集市 PR URL 或 GitHub 仓库 URL",
+  "urlPlaceholder": "https://github.com/user/repo",
+  "repoPreviewTip": "输入后自动解析仓库信息",
+  "repoPreviewParsing": "正在解析仓库信息...",
+  "repoPreviewResolved": "仓库：{ownerRepo}",
+  "repoPreviewInvalid": "无法解析为有效的 GitHub 仓库",
   "versionLabel": "集市包的版本（Git Tag）（可选）",
   "versionPlaceholder": "默认安装最新版本",
   "enableLabel": "安装后",

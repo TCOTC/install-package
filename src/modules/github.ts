@@ -14,15 +14,24 @@ export type GitHubRelease = operations["repos/get-latest-release"]["responses"][
 
 export type GitHubReleaseAsset = NonNullable<GitHubRelease["assets"]>[number];
 
-async function fetchGitHubJson<T>(url: string, errorLabel: string): Promise<T | null> {
+/** GET /repos/{owner}/{repo}/issues/{issue_number} 的 200 响应体（含 PR，可通过 pull_request 区分） */
+export type GitHubIssue = operations["issues/get"]["responses"][200]["content"]["application/json"];
+
+async function fetchGitHubJson<T>(
+    url: string,
+    errorLabel: string,
+    signal?: AbortSignal
+): Promise<T | null> {
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, signal ? { signal } : undefined);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         return (await response.json()) as T;
     } catch (error) {
-        console.error(errorLabel, error);
+        if (!(error instanceof Error && error.name === "AbortError")) {
+            console.error(errorLabel, error);
+        }
         return null;
     }
 }
@@ -64,17 +73,27 @@ const GITHUB_REPO_URL_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)/i; // Gi
 const GITHUB_ISSUE_OR_PULL_URL_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:pull|issues)\/(\d+)/i; // GitHub PR / Issue URL：`.../pull/N` 或 `.../issues/N`
 const BAZAAR_PR_TITLE_RE = /([^/\s]+)\/([^/\s]+)/; // bazaar PR 标题：匹配首个 `owner/repo` 形式
 
-async function getGitHubIssueTitle(owner: string, repo: string, issueNumber: number): Promise<string | null> {
+async function getGitHubIssueTitle(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    signal?: AbortSignal
+): Promise<string | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
-    const data = await fetchGitHubJson<{ title: string }>(url, "Failed to get GitHub issue:");
+    const data = await fetchGitHubJson<GitHubIssue>(url, "Failed to get GitHub issue:", signal);
     console.log(`get GitHub issue:`, url, data);
     return data?.title ?? null;
 }
 
 /**
  * 从用户输入解析 GitHub owner/repo：完整仓库 URL、owner/repo 简写，或 Issue / PR 链接（从标题中解析首个 owner/repo）
+ *
+ * @param signal 可选；新一次解析前 abort 时可取消未完成的 GitHub API 请求
  */
-export async function parseOwnerRepo(input: string): Promise<{ owner: string; repo: string } | null> {
+export async function parseOwnerRepo(
+    input: string,
+    signal?: AbortSignal
+): Promise<{ owner: string; repo: string } | null> {
     const trimmed = input.trim();
 
     const issueOrPullMatch = trimmed.match(GITHUB_ISSUE_OR_PULL_URL_RE);
@@ -85,7 +104,7 @@ export async function parseOwnerRepo(input: string): Promise<{ owner: string; re
         if (!Number.isFinite(issueNumber)) {
             return null;
         }
-        const issueTitle = await getGitHubIssueTitle(ghOwner, ghRepo, issueNumber);
+        const issueTitle = await getGitHubIssueTitle(ghOwner, ghRepo, issueNumber, signal);
         if (!issueTitle) {
             return null;
         }

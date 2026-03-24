@@ -52,6 +52,7 @@ export default class InstallPackage extends Plugin {
     ${this.i18n.urlLabel}
     <div class="fn__hr"></div>
     <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${this.i18n.urlPlaceholder}" spellcheck="false">
+    <div data-type="repo-preview" class="b3-label__text">${this.i18n.repoPreviewTip}</div>
     <div class="fn__hr"></div>
     ${this.i18n.versionLabel}
     <div class="fn__hr"></div>
@@ -79,8 +80,41 @@ export default class InstallPackage extends Plugin {
 </div>`,
         });
         const urlInput = dialog.element.querySelector("input[data-type='url']") as HTMLInputElement;
+        const repoPreviewEl = dialog.element.querySelector("div[data-type='repo-preview']") as HTMLDivElement;
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
         const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
+
+        let repoPreviewAbort: AbortController | undefined;
+        const refreshRepoPreview = () => {
+            repoPreviewAbort?.abort();
+            repoPreviewAbort = new AbortController();
+            const { signal } = repoPreviewAbort;
+            const v = urlInput.value.trim();
+            if (!v) {
+                repoPreviewEl.textContent = this.i18n.repoPreviewTip;
+                repoPreviewEl.style.color = "";
+                return;
+            }
+            // 避免在 parseOwnerRepo 完成前仍显示上一次解析结果
+            repoPreviewEl.textContent = this.i18n.repoPreviewParsing;
+            repoPreviewEl.style.color = "";
+            void parseOwnerRepo(v, signal).then((parsed) => {
+                if (signal.aborted || !repoPreviewEl.isConnected) {
+                    return;
+                }
+                if (parsed) {
+                    repoPreviewEl.textContent = this.i18n.repoPreviewResolved.replace(
+                        "{ownerRepo}",
+                        `${parsed.owner}/${parsed.repo}`
+                    );
+                    repoPreviewEl.style.color = "";
+                } else {
+                    repoPreviewEl.textContent = this.i18n.repoPreviewInvalid;
+                    repoPreviewEl.style.color = "var(--b3-theme-error)";
+                }
+            });
+        };
+        urlInput.addEventListener("input", refreshRepoPreview);
         
         const getEnableValue = () => enableSelect.value === "enable";
         

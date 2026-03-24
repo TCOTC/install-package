@@ -5,13 +5,12 @@
 import { extractPackageNameFromUrl } from "./github";
 import { cleanupTempFiles, unzipFile, writeTempFile } from "./fsKernel";
 import { installPackageWithKernelAPI } from "./installKernel";
+import { fetchSyncPost } from "./fetchKernel";
 
 export type DownloadInstallResult = {
     success: boolean;
     packageType: string | null;
     packageName: string | null;
-    /** 安装成功后若为图标包，由插件层调用 reloadIcon */
-    shouldReloadIcon: boolean;
     error?: string;
     info?: string;
 };
@@ -40,37 +39,23 @@ export function validatePackageZipFile(data: Uint8Array, fileName: string): bool
     }
 }
 
-export async function detectPackageTypeFromContent(
+export async function detectPackageTypeFromMetadata(
     extractPath: string,
     i18n: Record<string, string>
 ): Promise<string> {
     console.log(`Checking extracted directory: ${extractPath}`);
 
-    const dirResponse = await fetch("/api/file/readDir", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            path: extractPath,
-        }),
-    });
+    const response = await fetchSyncPost("/api/file/readDir", { path: extractPath });
+    console.log("Extracted directory contents:", response);
 
-    if (!dirResponse.ok) {
+    if (response.code !== 0 || !Array.isArray(response.data)) {
         throw new Error(i18n.extractedDirEmpty);
     }
 
-    const dirData = await dirResponse.json();
-    console.log("Extracted directory contents:", dirData);
-
-    if (!dirData.data || !Array.isArray(dirData.data)) {
-        throw new Error(i18n.extractedDirEmpty);
-    }
-
-    const fileNames = dirData.data.map((item: any) => item.name || item);
+    const fileNames = response.data.map((item: any) => item.name || item);
     console.log("File list:", fileNames);
 
-    const configFiles = [
+    const metadataFileIndex = [
         { file: "plugin.json", type: "plugin" },
         { file: "widget.json", type: "widget" },
         { file: "template.json", type: "template" },
@@ -78,25 +63,25 @@ export async function detectPackageTypeFromContent(
         { file: "icon.json", type: "icon" },
     ];
 
-    const foundConfigs: string[] = [];
+    const foundPackageTypes: string[] = [];
 
-    for (const config of configFiles) {
-        if (fileNames.includes(config.file)) {
-            foundConfigs.push(config.type);
-            console.log(`Found configuration file: ${config.type}`);
+    for (const entry of metadataFileIndex) {
+        if (fileNames.includes(entry.file)) {
+            foundPackageTypes.push(entry.type);
+            console.log(`Found package metadata file (${entry.type}): ${entry.file}`);
         }
     }
 
-    console.log("Found configuration files:", foundConfigs);
+    console.log("Package types inferred from metadata files:", foundPackageTypes);
 
-    if (foundConfigs.length === 0) {
-        throw new Error(i18n.noConfigFiles);
+    if (foundPackageTypes.length === 0) {
+        throw new Error(i18n.noMetadataFiles);
     }
-    if (foundConfigs.length > 1) {
-        throw new Error(i18n.multipleConfigFiles.replace("{files}", foundConfigs.join(", ")));
+    if (foundPackageTypes.length > 1) {
+        throw new Error(i18n.multipleMetadataFiles.replace("{files}", foundPackageTypes.join(", ")));
     }
 
-    return foundConfigs[0];
+    return foundPackageTypes[0];
 }
 
 export async function detectPackageType(
@@ -116,7 +101,7 @@ export async function detectPackageType(
         extractPath = `temp/export/extract_${Date.now()}`;
         await unzipFile(tempPath, extractPath);
 
-        return await detectPackageTypeFromContent(extractPath, i18n);
+        return await detectPackageTypeFromMetadata(extractPath, i18n);
     } finally {
         if (tempPath || extractPath) {
             console.log(`Cleaning up temporary files: ${tempPath}, ${extractPath}`);
@@ -134,7 +119,6 @@ export async function downloadAndInstallPackage(
         success: false,
         packageType: null,
         packageName: null,
-        shouldReloadIcon: false,
     };
 
     try {
@@ -205,17 +189,14 @@ export async function downloadAndInstallPackage(
                 success: false,
                 packageType,
                 packageName,
-                shouldReloadIcon: false,
                 error: kernelResult.error,
             };
         }
 
-        const shouldReloadIcon = packageType === "icon";
         return {
             success: true,
             packageType,
             packageName,
-            shouldReloadIcon,
             info: kernelResult.info,
         };
     } catch (error) {

@@ -30,8 +30,8 @@ importers:
         specifier: ^6.7.1
         version: 6.7.1(webpack@5.76.0)
       electron:
-        specifier: ^41.0.3
-        version: 41.0.3
+        specifier: 40.8.3
+        version: 40.8.3
       esbuild-loader:
         specifier: ^3.0.1
         version: 3.0.1(webpack@5.76.0)
@@ -685,8 +685,8 @@ packages:
   electron-to-chromium@1.5.205:
     resolution: {integrity: sha512-gBtbT7IgOHu7CwdtIiXwbNRD1l6oG6GAyanmwMCLVqaoGy92Jfe1dSHLiSj8xUEZNxOTIVlXuaAalMMD+S4y0w==}
 
-  electron@41.0.3:
-    resolution: {integrity: sha512-IDjx8liW1q+r7+MOip5W1Eo1eMwJzVObmYrd9yz2dPCkS7XlgLq3qPVMR80TpiROFp73iY30kTzMdpA6fEVs3A==}
+  electron@40.8.3:
+    resolution: {integrity: sha512-MH6LK4xM6VVmmtz0nRE0Fe8l2jTKSYTvH1t0ZfbNLw3o6dlBCVTRqQha6uL8ZQVoMy74JyLguGwK7dU7rCKIhw==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -2206,7 +2206,7 @@ snapshots:
 
   electron-to-chromium@1.5.205: {}
 
-  electron@41.0.3:
+  electron@40.8.3:
     dependencies:
       '@electron/get': 2.0.3
       '@types/node': 24.12.0

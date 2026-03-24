@@ -1,4 +1,4 @@
-import { Dialog, Plugin, showMessage, fetchPost } from "siyuan";
+import { Dialog, Plugin, showMessage } from "siyuan";
 import { findPluginAsset, getReleaseInfo } from "./modules/github";
 import { RepoUrlController } from "./modules/repoUrlController";
 import { downloadAndInstallPackage } from "./modules/packageDetect";
@@ -81,6 +81,7 @@ export default class InstallPackage extends Plugin {
     <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
 </div>`,
         });
+        // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
         const urlInput = dialog.element.querySelector("input[data-type='url']") as HTMLInputElement;
         const repoPreviewEl = dialog.element.querySelector("div[data-type='repo-preview']") as HTMLDivElement;
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
@@ -144,7 +145,7 @@ export default class InstallPackage extends Plugin {
         this.installInFlight.add(repoLockKey);
 
         try {
-            console.log("install package: url=" + url + ", version=" + version + ", enable=" + enable);
+            console.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
             const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
                 this.message(this.i18n.releaseInfoError.replace("{version}", version || "latest"), true);
@@ -188,12 +189,12 @@ export default class InstallPackage extends Plugin {
             }
 
             let autoEnabledText = "";
-            if (result.packageType === "plugin") {
-                autoEnabledText = enable ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
-            } else if (result.packageType === "widget" || result.packageType === "template") {
+            if (["plugin", "theme", "icon"].includes(result.packageType)) {
                 // 挂件和模板没有「启用」的概念
-            } else if (result.packageType === "theme" || result.packageType === "icon") {
-                autoEnabledText = this.i18n.packageInstalledSuccessManual;
+                autoEnabledText = enable ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
+                console.log(this.i18n.downloadSuccess
+                    .replace("{autoEnabled}", enable ? this.i18n.autoEnabled : this.i18n.enableManually
+                ));
             }
             this.message(this.i18n.packageInstalledSuccess
                 .replace("{packageType}", result.packageType ?? "")
@@ -201,13 +202,6 @@ export default class InstallPackage extends Plugin {
                 .replace("{autoEnabled}", autoEnabledText)
             );
 
-            if (result.shouldReloadIcon) {
-                await this.reloadIcon();
-            }
-
-            console.log(this.i18n.downloadSuccess
-                .replace("{autoEnabled}", enable && result.packageType === "plugin" ? this.i18n.autoEnabled : this.i18n.enableManually
-            ));
             dialog.destroy();
             return;
         } catch (error) {
@@ -224,69 +218,6 @@ export default class InstallPackage extends Plugin {
     }
 
     /**
-     * 重新加载图标
-     */
-    private async reloadIcon(): Promise<void> {
-        try {
-            console.log("Calling /api/ui/reloadIcon API...");
-            
-            const response = await fetch("/api/ui/reloadIcon", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                }
-            });
-            
-            if (response.ok) {
-                console.log("Icon reload API called successfully");
-                this.message(this.i18n.iconReloadSuccess);
-                
-                // 显示确认对话框，询问是否重新加载界面
-                setTimeout(() => {
-                    this.showIconReloadDialog();
-                }, 200);
-            } else {
-                console.error(`Failed to call reloadIcon API: ${response.status}`);
-                this.message(this.i18n.iconReloadFailed, true);
-            }
-        } catch (error) {
-            console.error("Failed to call reloadIcon API:", error);
-            this.message(this.i18n.iconReloadFailed, true);
-        }
-    }
-
-    /**
-     * 显示图标包重新加载确认对话框
-     */
-    private showIconReloadDialog(): void {
-        const dialog = new Dialog({
-            title: this.i18n.iconPackageInstalled,
-            content: 
-`<div class="b3-dialog__content">
-    <div>${this.i18n.iconPackageInstalled}</div>
-    <div class="b3-label__text">${this.i18n.iconReloadDialogContent}</div>
-</div>
-<div class="b3-dialog__action">
-    <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
-    <div class="fn__space"></div>
-    <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
-</div>`,
-            width: "400px"
-        });
-
-        dialog.element.querySelector('[data-type="cancel"]').addEventListener("click", () => {
-            dialog.destroy();
-        });
-
-        dialog.element.querySelector('[data-type="confirm"]').addEventListener("click", () => {
-            dialog.destroy();
-            // 使用 reloadUI API 刷新界面
-            console.log("User confirmed UI reload, calling /api/system/reloadUI API...");
-            fetchPost("/api/system/reloadUI");
-        });
-    }
-
-    /**
      * 打开目录（仅在 Electron 环境下调用）
      */
     private async openDirectory(relPath: string): Promise<void> {
@@ -298,7 +229,7 @@ export default class InstallPackage extends Plugin {
                 return;
             }
 
-            const workspaceDir = (window.siyuan?.config?.system?.workspaceDir ?? "").trim();
+            const workspaceDir = (window.siyuan.config.system.workspaceDir ?? "").trim();
             if (!workspaceDir) {
                 this.message(this.i18n.openDirectoryFailed + this.i18n.openDirectoryNoWorkspace, true);
                 return;

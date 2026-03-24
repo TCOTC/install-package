@@ -2,7 +2,7 @@
  * 通过内核 API 安装集市包
  */
 
-import { fetchSyncPost, getFrontend } from "siyuan";
+import { getFrontend } from "siyuan";
 import {
     cleanupTempFiles,
     clearDirectory,
@@ -11,6 +11,7 @@ import {
     unzipFile,
     writeTempFile,
 } from "./fsKernel";
+import { fetchSyncPost, getFile } from "./fetchKernel";
 
 export function getInstallPath(packageType: string, packageName: string): string {
     switch (packageType) {
@@ -29,7 +30,7 @@ export function getInstallPath(packageType: string, packageName: string): string
     }
 }
 
-export function getConfigFileName(packageType: string): string {
+export function getMetadataFileName(packageType: string): string {
     switch (packageType) {
         case "plugin":
             return "plugin.json";
@@ -46,47 +47,44 @@ export function getConfigFileName(packageType: string): string {
     }
 }
 
-export async function extractPackageNameFromContent(
+export async function extractPackageNameFromMetadata(
     extractPath: string,
     packageType: string,
     i18n: Record<string, string>
 ): Promise<string> {
-    console.log(`Extracting package name from content: ${extractPath}, type: ${packageType}`);
+    console.log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
-    const configFile = getConfigFileName(packageType);
-    const configPath = `${extractPath}/${configFile}`;
+    const metadataFile = getMetadataFileName(packageType);
+    const metadataPath = `${extractPath}/${metadataFile}`;
 
-    console.log(`Reading configuration file: ${configPath}`);
+    console.log(`Reading package metadata file: ${metadataPath}`);
 
-    const response = await fetch("/api/file/getFile", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            path: configPath,
-        }),
-    });
-
-    if (response.status !== 200) {
+    const fileResult = await getFile(metadataPath);
+    if (fileResult.ok === false) {
         throw new Error(
-            i18n.extractPackageNameError.replace(
+            i18n.extractPackageNameFromMetadataError.replace(
                 "{error}",
-                `read ${configFile}: HTTP ${response.status}`
-            )
+                fileResult.msg || `code ${fileResult.code}`,
+            ),
         );
     }
+    let packageMetadata: Record<string, unknown>;
+    try {
+        packageMetadata = JSON.parse(fileResult.content);
+    } catch {
+        throw new Error(
+            i18n.extractPackageNameFromMetadataError.replace("{error}", i18n.metadataFileInvalidJson),
+        );
+    }
+    console.log("Package metadata:", packageMetadata);
 
-    const configData = await response.json();
-    console.log("Configuration file content:", configData);
-
-    const packageName = configData.name || configData.packageName;
+    const packageName = (packageMetadata.name ?? packageMetadata.packageName) as string | undefined;
 
     if (!packageName) {
-        throw new Error(i18n.packageNameNotFound);
+        throw new Error(i18n.packageNameNotFoundInMetadata);
     }
 
-    console.log(`Package name extracted from configuration file: ${packageName}`);
+    console.log(`Package name extracted from metadata: ${packageName}`);
 
     if (typeof packageName !== "string" || packageName.trim() === "") {
         throw new Error(i18n.invalidPackageName.replace("{name}", String(packageName)));
@@ -95,40 +93,129 @@ export async function extractPackageNameFromContent(
     return packageName.trim();
 }
 
+/**
+ * 根据已安装主题的 theme.json 得到主题支持的所有外观模式数组（0 明亮，1 暗黑）
+ * 
+ * 出错时返回 [0, 1]，最多只会有内核错误日志，行为不会发生异常
+ */
+async function getSetThemeModes(packageName: string): Promise<number[]> {
+    const themeMetadataPath = `${getInstallPath("theme", packageName)}/theme.json`;
+    const fileResult = await getFile(themeMetadataPath);
+    if (!fileResult.ok) {
+        return [0, 1];
+    }
+    let parsed: { modes?: unknown };
+    try {
+        parsed = JSON.parse(fileResult.content) as { modes?: unknown };
+    } catch {
+        return [0, 1];
+    }
+    const modesRaw = parsed.modes;
+    if (!Array.isArray(modesRaw)) {
+        // 没有 modes 字段，视为支持所有外观模式
+        return [0, 1];
+    }
+    const modes: number[] = [];
+    if (modesRaw.includes("light")) {
+        modes.push(0);
+    }
+    if (modesRaw.includes("dark")) {
+        modes.push(1);
+    }
+    return modes;
+}
+
+/**
+ * 根据主题支持的所有外观模式数组和当前外观模式，得到需要切换的外观模式，不需要切换时返回空字符串
+ */
+function getSwitchAppearanceMode(modes: number[]): string {
+    if (modes.includes(window.siyuan.config.appearance.mode)) {
+        return "";
+    }
+    if (modes.includes(0)) {
+        return "light";
+    }
+    if (modes.includes(1)) {
+        return "dark";
+    }
+    return "";
+}
+
 export async function setPackageEnabled(
     packageType: string,
     packageName: string,
     enabled: boolean,
     i18n: Record<string, string>
 ): Promise<string | undefined> {
-    try {
-        switch (packageType) {
-            case "plugin": {
-                const action = enabled ? "enable" : "disable";
-                console.log(`Attempting to ${action} plugin: ${packageName}`);
-                const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
-                    packageName: packageName,
-                    enabled: enabled,
-                    frontend: getFrontend(),
+    switch (packageType) {
+        case "plugin": {
+            const action = enabled ? "enable" : "disable";
+            console.log(`Attempting to ${action} plugin: ${packageName}`);
+            const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
+                packageName: packageName,
+                enabled: enabled,
+                frontend: getFrontend(),
+            });
+            if (response.code === 0) {
+                console.log(`Plugin ${packageName} ${action}d successfully`);
+                return undefined;
+            }
+            console.error(`Failed to ${action} plugin: ${response.msg}`);
+            const tpl = enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed;
+            return tpl.replace("{error}", String(response.msg ?? ""));
+        }
+        case "theme": {
+            const response = await fetchSyncPost("/api/ui/reloadTheme", {});
+            if (response.code !== 0) {
+                console.error(`reloadTheme before setTheme failed: ${response.msg}`);
+                return i18n.themeReloadFailed;
+            }
+            if (enabled) {
+                const modes = await getSetThemeModes(packageName);
+                const appearanceMode = getSwitchAppearanceMode(modes);
+                console.log(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
+                const response = await fetchSyncPost("/api/setting/setTheme", {
+                    theme: packageName,
+                    modes,
+                    appearanceMode, // 值为空字符串时不影响内核处理
                 });
                 if (response.code === 0) {
-                    console.log(`Plugin ${packageName} ${action}d successfully`);
+                    console.log(`Theme ${packageName} applied successfully`);
                     return undefined;
                 }
-                console.error(`Failed to ${action} plugin: ${response.msg}`);
-                const tpl = enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed;
-                return tpl.replace("{error}", String(response.msg ?? ""));
-            }
-            default:
-                console.log(`${packageType} ${packageName} installed`);
+                console.error(`Failed to apply theme: ${response.msg}`);
+                return i18n.enablePackageFailed.replace("{error}", String(response.msg ?? ""));
+            } else {
+                // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题
+                console.log(`Theme ${packageName} installed (not switching)`);
                 return undefined;
+            }
         }
-    } catch (error) {
-        const action = enabled ? "enable" : "disable";
-        console.error(`Failed to ${action} package:`, error);
-        const msg = error instanceof Error ? error.message : String(error);
-        const tpl = enabled ? i18n.enablePackageFailed : i18n.disablePackageFailed;
-        return tpl.replace("{error}", msg);
+        case "icon": {
+            const response = await fetchSyncPost("/api/ui/reloadIcon", {});
+            if (response.code !== 0) {
+                console.error(`reloadIcon before setAppearance failed: ${response.msg}`);
+                return i18n.iconReloadFailed;
+            }
+            if (enabled) {
+                // TODO 改成 fetch "/api/setting/setIcon" 参数为 icon: packageName
+                const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
+                if (response.code === 0) {
+                    console.log(`Icon ${packageName} applied successfully`);
+                    return undefined;
+                }
+                console.error(`Failed to apply icon: ${response.msg}`);
+                return i18n.enablePackageFailed.replace("{error}", String(response.msg ?? ""));
+            } else {
+                // TODO 如果当前正在使用该图标，需要将图标切换回默认图标
+                console.log(`Icon ${packageName} installed (not switching)`);
+                return undefined;
+            }
+        }
+        default: {
+            console.log(`${packageType} ${packageName} installed`);
+            return undefined;
+        }
     }
 }
 
@@ -161,31 +248,19 @@ export async function installPackageWithKernelAPI(
         await unzipFile(tempPath, extractPath);
         console.log(`Extraction completed: ${extractPath}`);
 
-        const extractDirResponse = await fetch("/api/file/readDir", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                path: extractPath,
-            }),
-        });
+        const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
+        console.log("Extracted directory contents:", extractDirData);
 
-        if (extractDirResponse.ok) {
-            const extractDirData = await extractDirResponse.json();
-            console.log("Extracted directory contents:", extractDirData);
-        }
+        const metadataPackageName = await extractPackageNameFromMetadata(extractPath, packageType, i18n);
+        console.log(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
 
-        const configPackageName = await extractPackageNameFromContent(extractPath, packageType, i18n);
-        console.log(`Package name from config: ${configPackageName}, repository name: ${packageName}`);
-
-        if (configPackageName !== packageName) {
-            const errorMsg = `Package name mismatch: config ${configPackageName}, repo ${packageName}`;
+        if (metadataPackageName !== packageName) {
+            const errorMsg = `Package name mismatch: metadata ${metadataPackageName}, repo ${packageName}`;
             console.error(errorMsg);
             return {
                 ok: false,
                 error: i18n.packageNameMismatch
-                    .replace("{configName}", configPackageName)
+                    .replace("{metadataName}", metadataPackageName)
                     .replace("{repoName}", packageName),
             };
         }
@@ -210,22 +285,8 @@ export async function installPackageWithKernelAPI(
         await copyToInstallPath(extractPath, installPath);
         console.log(`File copy completed: ${installPath}`);
 
-        const installDirResponse = await fetch("/api/file/readDir", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                path: installPath,
-            }),
-        });
-
-        if (installDirResponse.ok) {
-            const installDirData = await installDirResponse.json();
-            console.log("Post-installation directory contents:", installDirData);
-        } else {
-            console.error(`Unable to verify installation result: ${installDirResponse.status}`);
-        }
+        const installDirData = await fetchSyncPost("/api/file/readDir", { path: installPath });
+        console.log("Post-installation directory contents:", installDirData);
 
         console.log(`Package installed successfully: ${packageName}`);
         return { ok: true, info };

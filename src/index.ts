@@ -85,12 +85,15 @@ export default class InstallPackage extends Plugin {
         const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
 
         let repoPreviewAbort: AbortController | undefined;
+        /** 与当前输入一致的 parseOwnerRepo 结果，供确认安装时复用，避免重复请求 */
+        let previewParseCache: { input: string; owner: string; repo: string } | null = null;
         const refreshRepoPreview = () => {
             repoPreviewAbort?.abort();
             repoPreviewAbort = new AbortController();
             const { signal } = repoPreviewAbort;
-            const v = urlInput.value.trim();
-            if (!v) {
+            const value = urlInput.value.trim();
+            if (!value) {
+                previewParseCache = null;
                 repoPreviewEl.textContent = this.i18n.repoPreviewTip;
                 repoPreviewEl.style.color = "";
                 return;
@@ -98,17 +101,19 @@ export default class InstallPackage extends Plugin {
             // 避免在 parseOwnerRepo 完成前仍显示上一次解析结果
             repoPreviewEl.textContent = this.i18n.repoPreviewParsing;
             repoPreviewEl.style.color = "";
-            void parseOwnerRepo(v, signal).then((parsed) => {
+            void parseOwnerRepo(value, signal).then((parsed) => {
                 if (signal.aborted || !repoPreviewEl.isConnected) {
                     return;
                 }
                 if (parsed) {
-                    repoPreviewEl.textContent = this.i18n.repoPreviewResolved.replace(
+                    previewParseCache = { input: value, owner: parsed.owner, repo: parsed.repo };
+                    repoPreviewEl.innerHTML = this.i18n.repoPreviewResolved.replace(
                         "{ownerRepo}",
-                        `${parsed.owner}/${parsed.repo}`
+                        `<b><a href="https://github.com/${parsed.owner}" target="_blank">${parsed.owner}</a></b> / <b><a href="https://github.com/${parsed.owner}/${parsed.repo}" target="_blank">${parsed.repo}</a></b>`
                     );
                     repoPreviewEl.style.color = "";
                 } else {
+                    previewParseCache = null;
                     repoPreviewEl.textContent = this.i18n.repoPreviewInvalid;
                     repoPreviewEl.style.color = "var(--b3-theme-error)";
                 }
@@ -119,10 +124,10 @@ export default class InstallPackage extends Plugin {
         const getEnableValue = () => enableSelect.value === "enable";
         
         dialog.bindInput(urlInput, () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue());
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), previewParseCache);
         });
         dialog.bindInput(versionInput, () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue());
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), previewParseCache);
         });
         urlInput.select();
 
@@ -132,7 +137,7 @@ export default class InstallPackage extends Plugin {
         });
         const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
         confirmButton.addEventListener("click", () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue());
+            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), previewParseCache);
         });
         
         const openPluginsButton = dialog.element.querySelector("button[data-type='open-plugins']") as HTMLButtonElement;
@@ -146,11 +151,20 @@ export default class InstallPackage extends Plugin {
         });
     };
 
-    private installPackage = async (dialog: Dialog, url: string, version: string, enable: boolean) => {
+    private installPackage = async (
+        dialog: Dialog,
+        url: string,
+        version: string,
+        enable: boolean,
+        previewParseCache?: { input: string; owner: string; repo: string } | null
+    ) => {
         url = url.trim();
         version = version.trim();
 
-        const parsed = await parseOwnerRepo(url);
+        const parsed =
+            previewParseCache && previewParseCache.input === url
+                ? { owner: previewParseCache.owner, repo: previewParseCache.repo }
+                : await parseOwnerRepo(url);
         if (!parsed) {
             this.message(this.i18n.invalidUrl, true);
             return;

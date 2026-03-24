@@ -11,7 +11,7 @@
   "enableLabel": "After install",
   "enableOptionEnable": "Enable package (plugin, theme, icon)",
   "enableOptionDisable": "Disable package (plugin, theme, icon)",
-  "invalidUrl": "Please enter a valid GitHub repository URL or user/repo format, e.g.: https://github.com/user/repo or user/repo",
+  "invalidUrl": "Please enter a valid GitHub repository URL or user/repo format, e.g.: https://github.com/siyuan-note/bazaar/pull/xxxx or https://github.com/user/repo or user/repo",
   "repoInfoError": "Unable to get repository information, please check if the repository exists",
   "releaseInfoError": "Unable to get Release information for version {version}",
   "releaseInfoErrorLatest": "Unable to get Release information for latest version",

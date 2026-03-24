@@ -81,7 +81,6 @@ async function getGitHubIssueTitle(
 ): Promise<string | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
     const data = await fetchGitHubJson<GitHubIssue>(url, "Failed to get GitHub issue:", signal);
-    console.log(`get GitHub issue:`, url, data);
     return data?.title ?? null;
 }
 

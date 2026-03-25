@@ -1,8 +1,9 @@
 import { Constants, Dialog, Plugin, showMessage } from "siyuan";
+import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
 import { findPluginAsset, getReleaseInfo } from "./modules/github";
 import { RepoParser } from "./modules/repoParser";
-import { downloadAndInstallPackage } from "./modules/download";
-import { setPackageEnabled } from "./modules/install";
+import { downloadPackage } from "./modules/download";
+import { installPackage, setPackageEnabled } from "./modules/install";
 
 declare global {
     interface Window {
@@ -24,12 +25,14 @@ export default class InstallPackage extends Plugin {
     private installInFlight = new Set<string>();
 
     onload() {
+        setMessagePrefix(this.displayName);
+        setI18n(this.i18n as PluginI18n);
         this.addTopBar({
             // 图标来源 https://www.svgrepo.com/svg/355075/install
             icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
 </svg>`,
-            title: this.i18n.title,
+            title: i18n.title,
             position: "right",
             callback: this.topBarHandler,
         });
@@ -50,38 +53,38 @@ export default class InstallPackage extends Plugin {
         electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "openDevTools");
 
         const dialog = new Dialog({
-            title: this.i18n.title,
+            title: i18n.title,
             width: isMobile() ? "92vw" : "520px",
             content: 
 `<div class="b3-dialog__content">
-    ${this.i18n.urlLabel}
+    ${i18n.urlLabel}
     <div class="fn__hr"></div>
-    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${this.i18n.urlPlaceholder}" spellcheck="false">
-    <div data-type="repo-preview" class="b3-label__text">${this.i18n.repoPreviewTip}</div>
+    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${i18n.urlPlaceholder}" spellcheck="false">
+    <div data-type="repo-preview" class="b3-label__text">${i18n.repoPreviewTip}</div>
     <div class="fn__hr"></div>
-    ${this.i18n.versionLabel}
+    ${i18n.versionLabel}
     <div class="fn__hr"></div>
-    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${this.i18n.versionPlaceholder}" spellcheck="false">
+    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
     <div class="fn__hr"></div>
-    ${this.i18n.enableLabel}
+    ${i18n.enableLabel}
     <div class="fn__hr"></div>
     <select data-type="enable" class="b3-select fn__block">
-        <option value="enable">${this.i18n.enableOptionEnable}</option>
-        <option value="disable">${this.i18n.enableOptionDisable}</option>
+        <option value="enable">${i18n.enableOptionEnable}</option>
+        <option value="disable">${i18n.enableOptionDisable}</option>
     </select>
     ${
         // 只在 Electron 环境下显示打开目录按钮
         !electron ? "" : `
         <div class="fn__hr"></div>
         <div class="fn__flex" style="gap: 8px;">
-            <button data-type="open-plugins" class="b3-button b3-button--outline">${this.i18n.openPluginsDir}</button>
-            <button data-type="open-petal" class="b3-button b3-button--outline">${this.i18n.openPetalDir}</button>
+            <button data-type="open-plugins" class="b3-button b3-button--outline">${i18n.openPluginsDir}</button>
+            <button data-type="open-petal" class="b3-button b3-button--outline">${i18n.openPetalDir}</button>
         </div>`
     }
 </div>
 <div class="b3-dialog__action">
-    <button data-type="cancel" class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
-    <button data-type="confirm" class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
+    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
+    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
 </div>`,
         });
         // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
@@ -90,7 +93,7 @@ export default class InstallPackage extends Plugin {
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
         const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
 
-        const repoUrlController = new RepoParser(urlInput, repoPreviewEl, this.i18n);
+        const repoUrlController = new RepoParser(urlInput, repoPreviewEl);
         urlInput.addEventListener("input", () => repoUrlController.refresh());
         
         const getEnableValue = () => enableSelect.value === "enable";
@@ -135,7 +138,7 @@ export default class InstallPackage extends Plugin {
 
         const parsed = await repoUrlController.ownerRepoForUrl(url);
         if (!parsed) {
-            this.message(this.i18n.invalidUrl, true);
+            message(i18n.invalidUrl, true);
             return;
         }
         const { owner, repo } = parsed;
@@ -151,16 +154,16 @@ export default class InstallPackage extends Plugin {
             console.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
             const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
-                this.message(this.i18n.releaseInfoError.replace("{version}", version || "latest"), true);
+                message(i18n.releaseInfoError.replace("{version}", version || "latest"), true);
                 return;
             }
             // Release 信息
             console.log("Release description:", releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : ""));
 
-            this.message(this.i18n.foundRelease
+            message(i18n.foundRelease
                 .replace("{tagName}", releaseInfo.tag_name)
                 .replace("{publishedAt}", (
-                    releaseInfo.published_at ? this.i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
+                    releaseInfo.published_at ? i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
                 ))
             );
 
@@ -168,40 +171,53 @@ export default class InstallPackage extends Plugin {
             // 查找包文件
             const pluginAsset = findPluginAsset(releaseInfo.assets);
             if (!pluginAsset) {
-                this.message(this.i18n.packageZipNotFound, true);
+                message(i18n.packageZipNotFound, true);
                 return;
             }
 
-            this.message(this.i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", formatFileSize(pluginAsset.size)));
-            // TODO 重构到这里
-            const result = await downloadAndInstallPackage(pluginAsset.browser_download_url, pluginAsset.name, this.i18n);
-            if (!result.success) {
-                this.message(result.error ?? this.i18n.packageInstallFailed, true);
+            message(i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", formatFileSize(pluginAsset.size)));
+            const downloadResult = await downloadPackage(pluginAsset.browser_download_url, pluginAsset.name);
+            if (downloadResult.success === false) {
+                message(downloadResult.error ?? i18n.downloadFailed.replace("{error}", "未知错误"), true);
+                return;
+            }
+
+            const installResult = await installPackage(
+                downloadResult.uint8Array,
+                downloadResult.fileName,
+                downloadResult.packageName
+            );
+            if (installResult.ok === false) {
+                message(installResult.error ?? i18n.packageInstallFailed, true);
                 return;
             }
 
             let enableWarning: string;
-            if (result.packageType && result.packageName) {
-                enableWarning = await setPackageEnabled(result.packageType, result.packageName, enable, this.i18n);
+            if (installResult.packageType && installResult.packageName) {
+                enableWarning = await setPackageEnabled(
+                    installResult.packageType,
+                    installResult.packageName,
+                    enable
+                );
             }
-            if (result.info) {
-                this.message(result.info, false);
+            if (installResult.info) {
+                message(installResult.info, false);
             }
             if (enableWarning) {
-                this.message(enableWarning, true);
+                message(enableWarning, true);
             }
 
             let autoEnabledText = "";
-            if (["plugin", "theme", "icon"].includes(result.packageType)) {
+            if (["plugin", "theme", "icon"].includes(installResult.packageType)) {
                 // 挂件和模板没有「启用」的概念
-                autoEnabledText = enable ? this.i18n.packageInstalledSuccessAuto : this.i18n.packageInstalledSuccessManual;
-                console.log(this.i18n.downloadSuccess
-                    .replace("{autoEnabled}", enable ? this.i18n.autoEnabled : this.i18n.enableManually
+                autoEnabledText = enable ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
+                console.log(i18n.downloadSuccess
+                    .replace("{autoEnabled}", enable ? i18n.autoEnabled : i18n.enableManually
                 ));
             }
-            this.message(this.i18n.packageInstalledSuccess
-                .replace("{packageType}", result.packageType ?? "")
-                .replace("{packageName}", result.packageName ?? "")
+            message(i18n.packageInstalledSuccess
+                .replace("{packageType}", installResult.packageType)
+                .replace("{packageName}", installResult.packageName)
                 .replace("{autoEnabled}", autoEnabledText)
             );
 
@@ -209,16 +225,11 @@ export default class InstallPackage extends Plugin {
             return;
         } catch (error) {
             console.error("InstallPackage error:", error);
-            this.message(this.i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)), true);
+            message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)), true);
         } finally {
             this.installInFlight.delete(repoLockKey);
         }
     };
-
-    private message(text: string, isError?: boolean): void {
-        const type = isError ? "error" : "info";
-        showMessage(this.displayName + ": " + text, isError ? 10000 : 3000, type);
-    }
 
     /**
      * 打开目录（仅在 Electron 环境下调用）
@@ -228,13 +239,13 @@ export default class InstallPackage extends Plugin {
             console.log(`Opening directory: ${relPath}`);
 
             if (!electron) {
-                this.message(this.i18n.openDirectoryFailed + this.i18n.openDirectoryNoElectron, true);
+                message(i18n.openDirectoryFailed + i18n.openDirectoryNoElectron, true);
                 return;
             }
 
             const workspaceDir = (window.siyuan.config.system.workspaceDir ?? "").trim();
             if (!workspaceDir) {
-                this.message(this.i18n.openDirectoryFailed + this.i18n.openDirectoryNoWorkspace, true);
+                message(i18n.openDirectoryFailed + i18n.openDirectoryNoWorkspace, true);
                 return;
             }
 
@@ -255,7 +266,7 @@ export default class InstallPackage extends Plugin {
             }
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
-            this.message(this.i18n.openDirectoryFailed + detail, true);
+            message(i18n.openDirectoryFailed + detail, true);
         }
     }
 }
@@ -274,3 +285,16 @@ function formatFileSize(bytes: number): string {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
+
+let messagePrefix = "";
+
+function setMessagePrefix(name: string): void {
+    messagePrefix = name.trim();
+}
+
+function message(text: string, isError?: boolean): void {
+    const type = isError ? "error" : "info";
+    const label = messagePrefix ? messagePrefix + ": " + text : text;
+    showMessage(label, isError ? 10000 : 3000, type);
+}
+

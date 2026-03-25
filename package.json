@@ -4,10 +4,13 @@
   "description": "Install the specified GitHub repository marketplace package Release",
   "main": ".src/index.js",
   "pnpm": {
-    "neverBuiltDependencies": ["electron"]
+    "neverBuiltDependencies": [
+      "electron"
+    ]
   },
   "scripts": {
     "lint": "eslint . --fix --cache",
+    "typecheck": "tsc --noEmit",
     "dev": "webpack --mode development",
     "build": "webpack --mode production"
   },
@@ -28,6 +31,7 @@
     "electron": "40.8.3",
     "esbuild-loader": "^3.0.1",
     "eslint": "^9.33.0",
+    "fork-ts-checker-webpack-plugin": "^9.1.0",
     "globals": "^16.3.0",
     "mini-css-extract-plugin": "2.3.0",
     "sass": "^1.62.1",

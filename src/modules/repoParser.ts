@@ -1,3 +1,4 @@
+import { i18n } from "./i18n";
 import { parseOwnerRepo } from "./github";
 
 export class RepoParser {
@@ -7,8 +8,7 @@ export class RepoParser {
 
     constructor(
         private readonly urlInput: HTMLInputElement,
-        private readonly repoPreviewEl: HTMLDivElement,
-        private readonly i18n: Record<string, string>
+        private readonly repoPreviewEl: HTMLDivElement
     ) {}
 
     refresh(): Promise<void> {
@@ -18,12 +18,12 @@ export class RepoParser {
         const { signal } = this.previewAbort;
         const input = this.urlInput.value.trim();
         if (!input) {
-            this.repoPreviewEl.textContent = this.i18n.repoPreviewTip;
+            this.repoPreviewEl.textContent = i18n.repoPreviewTip;
             this.repoPreviewEl.style.color = "";
             this.pendingRefresh = Promise.resolve();
             return this.pendingRefresh;
         }
-        this.repoPreviewEl.textContent = this.i18n.repoPreviewParsing;
+        this.repoPreviewEl.textContent = i18n.repoPreviewParsing;
         this.repoPreviewEl.style.color = "";
         const parsePreviewPromise = parseOwnerRepo(input, signal).then((parsed) => {
             if (signal.aborted || !this.repoPreviewEl.isConnected) {
@@ -31,13 +31,13 @@ export class RepoParser {
             }
             if (parsed) {
                 this.lastParsed = { input: input, owner: parsed.owner, repo: parsed.repo };
-                this.repoPreviewEl.innerHTML = this.i18n.repoPreviewResolved.replace(
+                this.repoPreviewEl.innerHTML = i18n.repoPreviewResolved.replace(
                     "{ownerRepo}",
                     `<b><a href="https://github.com/${parsed.owner}" target="_blank">${parsed.owner}</a></b> / <b><a href="https://github.com/${parsed.owner}/${parsed.repo}" target="_blank">${parsed.repo}</a></b>`
                 );
                 this.repoPreviewEl.style.color = "";
             } else {
-                this.repoPreviewEl.textContent = this.i18n.repoPreviewInvalid;
+                this.repoPreviewEl.textContent = i18n.repoPreviewInvalid;
                 this.repoPreviewEl.style.color = "var(--b3-theme-error)";
             }
         });

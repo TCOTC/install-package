@@ -1,12 +1,9 @@
-/**
- * 通过内核 API 安装集市包
- */
-
 import { getFrontend } from "siyuan";
+import { i18n } from "./i18n";
 import {
     fetchSyncPost,
     getFile,
-    cleanupTempFiles,
+    removeFiles,
     clearDirectory,
     copyToInstallPath,
     pathExists,
@@ -14,59 +11,70 @@ import {
     writeTempFile,
 } from "./kernelClient";
 
-export function getInstallPath(packageType: string, packageName: string): string {
+export function getInstallPath(packageType: string): string {
     switch (packageType) {
         case "plugin":
-            return `data/plugins/${packageName}`;
+            return "data/plugins";
         case "widget":
-            return `data/widgets/${packageName}`;
+            return "data/widgets";
         case "template":
-            return `data/templates/${packageName}`;
+            return "data/templates";
         case "theme":
-            return `conf/appearance/themes/${packageName}`;
+            return "conf/appearance/themes";
         case "icon":
-            return `conf/appearance/icons/${packageName}`;
+            return "conf/appearance/icons";
         default:
-            return `data/plugins/${packageName}`;
-    }
-}
-
-export function getMetadataFileName(packageType: string): string {
-    switch (packageType) {
-        case "plugin":
-            return "plugin.json";
-        case "widget":
-            return "widget.json";
-        case "template":
-            return "template.json";
-        case "theme":
-            return "theme.json";
-        case "icon":
-            return "icon.json";
-        default:
-            return "plugin.json";
+            return "data/plugins";
     }
 }
 
 export type ExtractMetadataNameResult = { ok: true; name: string } | { ok: false; error: string };
 
-export async function extractPackageNameFromMetadata(
+const METADATA_JSON_FILES = [
+    "plugin.json",
+    "widget.json",
+    "template.json",
+    "theme.json",
+    "icon.json",
+];
+
+/**
+ * 根据集市包目录内容识别集市包类型（根目录须包含一个元数据 json）
+ */
+export async function getPackageType(
+    packagePath: string
+): Promise<{ ok: true; packageType: string } | { ok: false; error: string }> {
+    const response = await fetchSyncPost("/api/file/readDir", { path: packagePath });
+    if (response.code !== 0 || !Array.isArray(response.data)) {
+        return { ok: false, error: i18n.readDirFailed.replace("{error}", response.msg) };
+    }
+
+    const foundTypes = response.data
+        .filter((item) => !item.isDir && typeof item.name === "string" && METADATA_JSON_FILES.includes(item.name))
+        .map((item) => item.name.slice(0, -5));
+
+    if (foundTypes.length === 0) {
+        return { ok: false, error: i18n.noMetadataFiles };
+    }
+    if (foundTypes.length > 1) {
+        return { ok: false, error: i18n.multipleMetadataFiles.replace("{files}", foundTypes.join(", ")) };
+    }
+    return { ok: true, packageType: foundTypes[0] };
+}
+
+export async function getPackageName(
     extractPath: string,
-    packageType: string,
-    i18n: Record<string, string>
+    packageType: string
 ): Promise<ExtractMetadataNameResult> {
     console.log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
-    const metadataFile = getMetadataFileName(packageType);
-    const metadataPath = `${extractPath}/${metadataFile}`;
-
+    const metadataPath = `${extractPath}/${packageType}.json`;
     console.log(`Reading package metadata file: ${metadataPath}`);
-
     const fileResult = await getFile(metadataPath);
     if (fileResult.ok === false) {
         return {
             ok: false,
-            error: i18n.extractPackageNameFromMetadataError.replace(
+            error: i18n.getPackageNameError.replace(
                 "{error}",
                 fileResult.msg || `code ${fileResult.code}`,
             ),
@@ -78,7 +86,7 @@ export async function extractPackageNameFromMetadata(
     } catch {
         return {
             ok: false,
-            error: i18n.extractPackageNameFromMetadataError.replace("{error}", i18n.metadataFileInvalidJson),
+            error: i18n.getPackageNameError.replace("{error}", i18n.metadataFileInvalidJson),
         };
     }
     console.log("Package metadata:", packageMetadata);
@@ -104,8 +112,7 @@ export async function extractPackageNameFromMetadata(
  * 出错时返回 [0, 1]，最多只会有内核错误日志，行为不会发生异常
  */
 async function getSetThemeModes(packageName: string): Promise<number[]> {
-    const themeMetadataPath = `${getInstallPath("theme", packageName)}/theme.json`;
-    const fileResult = await getFile(themeMetadataPath);
+    const fileResult = await getFile(`${getInstallPath("theme")}/${packageName}/theme.json`);
     if (!fileResult.ok) {
         return [0, 1];
     }
@@ -149,8 +156,7 @@ function getSwitchAppearanceMode(modes: number[]): string {
 export async function setPackageEnabled(
     packageType: string,
     packageName: string,
-    enabled: boolean,
-    i18n: Record<string, string>
+    enabled: boolean
 ): Promise<string | undefined> {
     switch (packageType) {
         case "plugin": {
@@ -191,7 +197,7 @@ export async function setPackageEnabled(
                 console.error(`Failed to apply theme: ${response.msg}`);
                 return i18n.enablePackageFailed.replace("{error}", String(response.msg ?? ""));
             } else {
-                // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题
+                // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题（在调用 reloadTheme 之前获取当前的主题和外观模式，就知道了）
                 console.log(`Theme ${packageName} installed (not switching)`);
                 return undefined;
             }
@@ -203,7 +209,7 @@ export async function setPackageEnabled(
                 return i18n.iconReloadFailed;
             }
             if (enabled) {
-                // TODO 改成 fetch "/api/setting/setIcon" 参数为 icon: packageName
+                // TODO 这个接口在 v3.6.2 才支持，要修改 plugin.json 的 minAppVersion 为 3.6.2
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {
                     console.log(`Icon ${packageName} applied successfully`);
@@ -212,7 +218,7 @@ export async function setPackageEnabled(
                 console.error(`Failed to apply icon: ${response.msg}`);
                 return i18n.enablePackageFailed.replace("{error}", String(response.msg ?? ""));
             } else {
-                // TODO 如果当前正在使用该图标，需要将图标切换回默认图标
+                // TODO 如果当前正在使用该图标，需要将图标切换回默认图标（在调用 reloadIcon 之前获取当前的图标，就知道了）
                 console.log(`Icon ${packageName} installed (not switching)`);
                 return undefined;
             }
@@ -224,14 +230,14 @@ export async function setPackageEnabled(
     }
 }
 
-export type KernelInstallResult = { ok: true; info?: string } | { ok: false; error: string };
+export type KernelInstallResult =
+    | { ok: true; packageType: string; packageName: string; info?: string }
+    | { ok: false; error: string };
 
-export async function installPackageWithKernelAPI(
+export async function installPackage(
     data: Uint8Array,
     fileName: string,
-    packageType: string,
-    packageName: string,
-    i18n: Record<string, string>
+    packageName: string
 ): Promise<KernelInstallResult> {
     let tempPath = "";
     let extractPath = "";
@@ -241,7 +247,7 @@ export async function installPackageWithKernelAPI(
         const pathsToClean = [tempPath, extractBaseDir].filter(Boolean);
         if (pathsToClean.length > 0) {
             console.log(`Cleaning up temporary files: ${pathsToClean.join(", ")}`);
-            await cleanupTempFiles(pathsToClean);
+            await removeFiles(pathsToClean);
         }
     };
 
@@ -250,12 +256,12 @@ export async function installPackageWithKernelAPI(
         return { ok: false, error };
     };
 
-    const succeed = async (info?: string): Promise<KernelInstallResult> => {
+    const succeed = async (packageType: string, pkgName: string, info?: string): Promise<KernelInstallResult> => {
         await runCleanup();
-        return { ok: true, info };
+        return { ok: true, packageType, packageName: pkgName, info };
     };
 
-    console.log(`Starting package installation: ${fileName}, type: ${packageType}, name: ${packageName}`);
+    console.log(`Starting package installation: ${fileName}, name: ${packageName}`);
 
     const tempFileName = `temp_${Date.now()}_${fileName}`;
     tempPath = `temp/export/${tempFileName}`;
@@ -275,10 +281,17 @@ export async function installPackageWithKernelAPI(
     }
     console.log(`Extraction completed: ${extractPath}`);
 
+    const typeResult = await getPackageType(extractPath);
+    if (typeResult.ok === false) {
+        return fail(typeResult.error);
+    }
+    const packageType = typeResult.packageType;
+    console.log(`Package type detected: ${packageType}`);
+
     const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
     console.log("Extracted directory contents:", extractDirData);
 
-    const metadataResult = await extractPackageNameFromMetadata(extractPath, packageType, i18n);
+    const metadataResult = await getPackageName(extractPath, packageType);
     if (metadataResult.ok === false) {
         return fail(metadataResult.error);
     }
@@ -297,7 +310,7 @@ export async function installPackageWithKernelAPI(
 
     console.log("Package name verification passed");
 
-    const installPath = getInstallPath(packageType, packageName);
+    const installPath = `${getInstallPath(packageType)}/${packageName}`;
     console.log(`Final package name: ${packageName}`);
     console.log(`Target installation path: ${installPath}`);
 
@@ -326,5 +339,5 @@ export async function installPackageWithKernelAPI(
     console.log("Post-installation directory contents:", installDirData);
 
     console.log(`Package installed successfully: ${packageName}`);
-    return succeed(info);
+    return succeed(packageType, packageName, info);
 }

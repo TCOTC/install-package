@@ -1,20 +1,18 @@
-/**
- * 下载、校验与包类型识别
- */
-
+import { i18n } from "./i18n";
 import { extractPackageNameFromUrl } from "./github";
-import { fetchSyncPost, cleanupTempFiles, unzipFile, writeTempFile } from "./kernelClient";
-import { installPackageWithKernelAPI } from "./install";
 
-export type DownloadInstallResult = {
-    success: boolean;
-    packageType: string | null;
-    packageName: string | null;
-    error?: string;
-    info?: string;
-};
-
-export type DetectPackageTypeResult = { ok: true; packageType: string } | { ok: false; error: string };
+export type DownloadPackageResult =
+    | {
+          success: true;
+          uint8Array: Uint8Array;
+          fileName: string;
+          packageName: string;
+      }
+    | {
+          success: false;
+          packageName: string | null;
+          error?: string;
+      };
 
 export function validatePackageZipFile(data: Uint8Array, fileName: string): boolean {
     try {
@@ -40,94 +38,9 @@ export function validatePackageZipFile(data: Uint8Array, fileName: string): bool
     }
 }
 
-export async function detectPackageTypeFromMetadata(
-    extractPath: string,
-    i18n: Record<string, string>
-): Promise<DetectPackageTypeResult> {
-    console.log(`Checking extracted directory: ${extractPath}`);
-
-    const response = await fetchSyncPost("/api/file/readDir", { path: extractPath });
-    console.log("Extracted directory contents:", response);
-
-    if (response.code !== 0 || !Array.isArray(response.data)) {
-        return { ok: false, error: i18n.extractedDirEmpty };
-    }
-
-    const fileNames = response.data.map((item: any) => item.name || item);
-    console.log("File list:", fileNames);
-
-    const metadataFileIndex = [
-        { file: "plugin.json", type: "plugin" },
-        { file: "widget.json", type: "widget" },
-        { file: "template.json", type: "template" },
-        { file: "theme.json", type: "theme" },
-        { file: "icon.json", type: "icon" },
-    ];
-
-    const foundPackageTypes: string[] = [];
-
-    for (const entry of metadataFileIndex) {
-        if (fileNames.includes(entry.file)) {
-            foundPackageTypes.push(entry.type);
-            console.log(`Found package metadata file (${entry.type}): ${entry.file}`);
-        }
-    }
-
-    console.log("Package types inferred from metadata files:", foundPackageTypes);
-
-    if (foundPackageTypes.length === 0) {
-        return { ok: false, error: i18n.noMetadataFiles };
-    }
-    if (foundPackageTypes.length > 1) {
-        return {
-            ok: false,
-            error: i18n.multipleMetadataFiles.replace("{files}", foundPackageTypes.join(", ")),
-        };
-    }
-
-    return { ok: true, packageType: foundPackageTypes[0] };
-}
-
-export async function detectPackageType(
-    data: Uint8Array,
-    fileName: string,
-    i18n: Record<string, string>
-): Promise<DetectPackageTypeResult> {
-    let tempPath = "";
-    let extractPath = "";
-
-    try {
-        const tempFileName = `temp_${Date.now()}_${fileName}`;
-        tempPath = `temp/export/${tempFileName}`;
-
-        const writeResult = await writeTempFile(data, tempPath);
-        if (writeResult.ok === false) {
-            return { ok: false, error: writeResult.error };
-        }
-
-        extractPath = `temp/export/extract_${Date.now()}`;
-        const unzipResult = await unzipFile(tempPath, extractPath);
-        if (unzipResult.ok === false) {
-            return { ok: false, error: unzipResult.error };
-        }
-
-        return await detectPackageTypeFromMetadata(extractPath, i18n);
-    } finally {
-        if (tempPath || extractPath) {
-            console.log(`Cleaning up temporary files: ${tempPath}, ${extractPath}`);
-            await cleanupTempFiles([tempPath, extractPath].filter(Boolean));
-        }
-    }
-}
-
-export async function downloadAndInstallPackage(
-    downloadUrl: string,
-    fileName: string,
-    i18n: Record<string, string>
-): Promise<DownloadInstallResult> {
-    const empty: DownloadInstallResult = {
+export async function downloadPackage(downloadUrl: string, fileName: string): Promise<DownloadPackageResult> {
+    const empty: DownloadPackageResult = {
         success: false,
-        packageType: null,
         packageName: null,
     };
 
@@ -182,64 +95,31 @@ export async function downloadAndInstallPackage(
             };
         }
 
-        console.log("File validation passed, detecting package type...");
+        console.log("File validation passed");
 
-        // 检测包类型
-        const packageTypeResult = await detectPackageType(uint8Array, fileName, i18n);
-        if (packageTypeResult.ok === false) {
-            return {
-                ...empty,
-                error: packageTypeResult.error,
-            };
-        }
-        const packageType = packageTypeResult.packageType;
-
-        console.log(`Package type detected: ${packageType}, installing...`);
-
-        // 从 URL 解析包名
+        // 从 URL 解析包名（与 install 阶段解压目录名、元数据校验一致）
         const packageName = extractPackageNameFromUrl(downloadUrl);
         if (!packageName) {
             return {
                 ...empty,
                 error: i18n.packageNameFromUrlFailed,
-                packageType,
             };
         }
         console.log(`Package name extracted from URL: ${packageName}`);
 
-        // 通过内核 API 安装
-        const kernelResult = await installPackageWithKernelAPI(
-            uint8Array,
-            fileName,
-            packageType,
-            packageName,
-            i18n
-        );
-
-        // 安装失败则返回错误
-        if (kernelResult.ok === false) {
-            return {
-                success: false,
-                packageType,
-                packageName,
-                error: kernelResult.error,
-            };
-        }
-
-        // 安装成功
         return {
             success: true,
-            packageType,
+            uint8Array,
+            fileName,
             packageName,
-            info: kernelResult.info,
         };
     } catch (error) {
         // 兜底：未预期的异常
-        console.error("Failed to download or install plugin:", error);
+        console.error("Failed to download package:", error);
         const msg = error instanceof Error ? error.message : String(error);
         return {
             ...empty,
-            error: i18n.installationFailed.replace("{error}", msg),
+            error: i18n.downloadFailed.replace("{error}", msg),
         };
     }
 }

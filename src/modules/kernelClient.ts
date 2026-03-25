@@ -179,16 +179,12 @@ export async function removeFileOrDirectory(path: string): Promise<FsOpResult> {
     return { ok: true };
 }
 
-export async function cleanupTempFiles(paths: string[]): Promise<void> {
-    for (const path of paths) {
-        try {
-            const response = await fetchSyncPost("/api/file/removeFile", { path });
-
-            if (response.code !== 0) {
-                console.warn(`Failed to clean up temporary file: ${path}`);
-            }
-        } catch (error) {
-            console.warn(`Failed to clean up temporary file: ${path}`, error);
+export async function removeFiles(paths: string[]): Promise<void> {
+    const effectivePaths = paths.filter(path => typeof path === "string" && path.trim().length > 0);
+    for (const path of effectivePaths) {
+        const response = await fetchSyncPost("/api/file/removeFile", { path });
+        if (response.code !== 0) {
+            console.warn(`Failed to clean up temporary file: ${path}`);
         }
     }
 }

@@ -4,6 +4,7 @@ const webpack = require("webpack");
 const {EsbuildPlugin} = require("esbuild-loader");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CopyPlugin = require("copy-webpack-plugin");
+const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
 const ZipPlugin = require("zip-webpack-plugin");
 
 module.exports = (env, argv) => {
@@ -11,7 +12,7 @@ module.exports = (env, argv) => {
     const plugins = [
         new MiniCssExtractPlugin({
             filename: isPro ? "dist/index.css" : "index.css",
-        })
+        }),
     ];
     let entry = {
         "index": "./src/index.ts",
@@ -20,6 +21,7 @@ module.exports = (env, argv) => {
         entry = {
             "dist/index": "./src/index.ts",
         };
+        plugins.push(new ForkTsCheckerWebpackPlugin()); // build 时检查 i18n
         plugins.push(new CopyPlugin({
             patterns: [
                 {from: "preview.png", to: "./dist/"},

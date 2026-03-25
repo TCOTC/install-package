@@ -1,4 +1,4 @@
-import { Dialog, Plugin, showMessage } from "siyuan";
+import { Constants, Dialog, Plugin, showMessage } from "siyuan";
 import { findPluginAsset, getReleaseInfo } from "./modules/github";
 import { RepoUrlController } from "./modules/repoUrlController";
 import { downloadAndInstallPackage } from "./modules/packageDetect";
@@ -46,6 +46,9 @@ export default class InstallPackage extends Plugin {
     }
 
     private topBarHandler = () => {
+        // 打开开发者工具
+        electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "openDevTools");
+
         const dialog = new Dialog({
             title: this.i18n.title,
             width: isMobile() ? "92vw" : "520px",
@@ -239,7 +242,7 @@ export default class InstallPackage extends Plugin {
 
             if (electron.ipcRenderer) {
                 // 优先走思源主进程 ipc，避免渲染进程使用 shell.openPath 时资源管理器在后台打开。
-                electron.ipcRenderer.send("siyuan-cmd", {
+                electron.ipcRenderer.send(Constants.SIYUAN_CMD, {
                     cmd: "openPath",
                     filePath: fullPath,
                 });

@@ -3,9 +3,8 @@
  */
 
 import { extractPackageNameFromUrl } from "./github";
-import { cleanupTempFiles, unzipFile, writeTempFile } from "./fsKernel";
-import { installPackageWithKernelAPI } from "./installKernel";
-import { fetchSyncPost } from "./fetchKernel";
+import { fetchSyncPost, cleanupTempFiles, unzipFile, writeTempFile } from "./kernelClient";
+import { installPackageWithKernelAPI } from "./install";
 
 export type DownloadInstallResult = {
     success: boolean;
@@ -133,16 +132,19 @@ export async function downloadAndInstallPackage(
     };
 
     try {
+        // 配置下载超时
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s 超时
 
         let response: Response;
         try {
+            // 下载远程文件
             console.log("Downloading file from GitHub:", downloadUrl);
             response = await fetch(downloadUrl, {
                 signal: controller.signal,
             });
         } catch (error) {
+            // 处理下载异常（超时或网络错误）
             clearTimeout(timeoutId);
             if ((error as Error).name === "AbortError") {
                 return {
@@ -157,8 +159,10 @@ export async function downloadAndInstallPackage(
             };
         }
 
+        // 清除超时定时器
         clearTimeout(timeoutId);
 
+        // 校验 HTTP 响应状态
         if (!response.ok) {
             return {
                 ...empty,
@@ -166,9 +170,11 @@ export async function downloadAndInstallPackage(
             };
         }
 
+        // 读取响应体为二进制数据
         const arrayBuffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
 
+        // 校验 ZIP 包
         if (!validatePackageZipFile(uint8Array, fileName)) {
             return {
                 ...empty,
@@ -178,6 +184,7 @@ export async function downloadAndInstallPackage(
 
         console.log("File validation passed, detecting package type...");
 
+        // 检测包类型
         const packageTypeResult = await detectPackageType(uint8Array, fileName, i18n);
         if (packageTypeResult.ok === false) {
             return {
@@ -189,6 +196,7 @@ export async function downloadAndInstallPackage(
 
         console.log(`Package type detected: ${packageType}, installing...`);
 
+        // 从 URL 解析包名
         const packageName = extractPackageNameFromUrl(downloadUrl);
         if (!packageName) {
             return {
@@ -199,6 +207,7 @@ export async function downloadAndInstallPackage(
         }
         console.log(`Package name extracted from URL: ${packageName}`);
 
+        // 通过内核 API 安装
         const kernelResult = await installPackageWithKernelAPI(
             uint8Array,
             fileName,
@@ -207,6 +216,7 @@ export async function downloadAndInstallPackage(
             i18n
         );
 
+        // 安装失败则返回错误
         if (kernelResult.ok === false) {
             return {
                 success: false,
@@ -216,6 +226,7 @@ export async function downloadAndInstallPackage(
             };
         }
 
+        // 安装成功
         return {
             success: true,
             packageType,
@@ -223,6 +234,7 @@ export async function downloadAndInstallPackage(
             info: kernelResult.info,
         };
     } catch (error) {
+        // 兜底：未预期的异常
         console.error("Failed to download or install plugin:", error);
         const msg = error instanceof Error ? error.message : String(error);
         return {

@@ -4,14 +4,15 @@
 
 import { getFrontend } from "siyuan";
 import {
+    fetchSyncPost,
+    getFile,
     cleanupTempFiles,
     clearDirectory,
     copyToInstallPath,
     pathExists,
     unzipFile,
     writeTempFile,
-} from "./fsKernel";
-import { fetchSyncPost, getFile } from "./fetchKernel";
+} from "./kernelClient";
 
 export function getInstallPath(packageType: string, packageName: string): string {
     switch (packageType) {

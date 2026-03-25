@@ -1,8 +1,8 @@
 import { Constants, Dialog, Plugin, showMessage } from "siyuan";
 import { findPluginAsset, getReleaseInfo } from "./modules/github";
-import { RepoUrlController } from "./modules/repoUrlController";
-import { downloadAndInstallPackage } from "./modules/packageDetect";
-import { setPackageEnabled } from "./modules/installKernel";
+import { RepoParser } from "./modules/repoParser";
+import { downloadAndInstallPackage } from "./modules/download";
+import { setPackageEnabled } from "./modules/install";
 
 declare global {
     interface Window {
@@ -90,7 +90,7 @@ export default class InstallPackage extends Plugin {
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
         const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
 
-        const repoUrlController = new RepoUrlController(urlInput, repoPreviewEl, this.i18n);
+        const repoUrlController = new RepoParser(urlInput, repoPreviewEl, this.i18n);
         urlInput.addEventListener("input", () => repoUrlController.refresh());
         
         const getEnableValue = () => enableSelect.value === "enable";
@@ -128,7 +128,7 @@ export default class InstallPackage extends Plugin {
         url: string,
         version: string,
         enable: boolean,
-        repoUrlController: RepoUrlController
+        repoUrlController: RepoParser
     ) => {
         url = url.trim();
         version = version.trim();

@@ -1,6 +1,6 @@
 import { parseOwnerRepo } from "./github";
 
-export class RepoUrlController {
+export class RepoParser {
     private previewAbort?: AbortController;
     private lastParsed: { input: string; owner: string; repo: string } | null = null;
     private pendingRefresh: Promise<void> = Promise.resolve();

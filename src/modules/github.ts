@@ -136,7 +136,7 @@ export async function parseOwnerRepo(
 }
 
 /** 查找包文件 package.zip */
-export function findPluginAsset(assets: GitHubRelease["assets"]): GitHubReleaseAsset | null {
+export function findPackageZip(assets: GitHubRelease["assets"]): GitHubReleaseAsset | null {
     if (!assets || !Array.isArray(assets)) {
         return null;
     }

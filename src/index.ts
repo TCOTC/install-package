@@ -1,6 +1,6 @@
 import { Constants, Dialog, Plugin, showMessage } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
-import { findPluginAsset, getReleaseInfo } from "./modules/github";
+import { findPackageZip, getReleaseInfo } from "./modules/github";
 import { RepoParser } from "./modules/repoParser";
 import { downloadPackage } from "./modules/download";
 import { installPackage, setPackageEnabled } from "./modules/install";
@@ -167,16 +167,16 @@ export default class InstallPackage extends Plugin {
                 ))
             );
 
-
             // 查找包文件
-            const pluginAsset = findPluginAsset(releaseInfo.assets);
-            if (!pluginAsset) {
+            const packageZip = findPackageZip(releaseInfo.assets);
+            if (!packageZip) {
                 message(i18n.packageZipNotFound, true);
                 return;
             }
 
-            message(i18n.downloading.replace("{fileName}", pluginAsset.name).replace("{fileSize}", formatFileSize(pluginAsset.size)));
-            const downloadResult = await downloadPackage(pluginAsset.browser_download_url, pluginAsset.name);
+            // TODO 重构到这里
+            message(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)));
+            const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name);
             if (downloadResult.success === false) {
                 message(downloadResult.error ?? i18n.downloadFailed.replace("{error}", "未知错误"), true);
                 return;

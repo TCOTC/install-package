@@ -1,7 +1,6 @@
 const path = require("path");
-const fs = require("fs");
-const webpack = require("webpack");
 const {EsbuildPlugin} = require("esbuild-loader");
+const WebpackObfuscator = require("webpack-obfuscator");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CopyPlugin = require("copy-webpack-plugin");
 const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
@@ -39,6 +38,19 @@ module.exports = (env, argv) => {
                 return assetPath.replace("dist/", "");
             },
         }));
+        plugins.push(new WebpackObfuscator({
+            compact: true, // 压缩输出体积，移除不必要空白
+            simplify: true, // 简化表达式，增加反向阅读难度
+            numbersToExpressions: true, // 将数字转换为等价表达式
+            stringArray: true, // 把字符串提取到字符串数组中
+            stringArrayThreshold: 0.75, // 按 75% 概率应用字符串数组替换
+            rotateStringArray: true, // 旋转字符串数组，干扰静态分析
+            splitStrings: true, // 拆分长字符串为多个片段
+            splitStringsChunkLength: 8, // 每个字符串片段长度为 8
+            deadCodeInjection: false, // 关闭死代码注入，避免体积明显膨胀
+            debugProtection: false, // 关闭反调试保护，避免影响运行稳定性
+            disableConsoleOutput: false, // 不禁用 console 输出，便于排查问题
+        }, []));
     } else {
         plugins.push(new CopyPlugin({
             patterns: [

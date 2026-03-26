@@ -1,7 +1,8 @@
 import { Constants, Dialog, Plugin } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
 import { message, setMessagePrefix } from "./modules/message";
-import { findPackageZip, getReleaseInfo } from "./modules/github";
+import { findPackageZip, getReleaseInfo, setGitHubRateLimitSettingHandler } from "./modules/github";
+import { createSetting, loadSetting } from "./modules/setting";
 import { RepoParser } from "./modules/repoParser";
 import { downloadPackage } from "./modules/download";
 import { installPackage, setPackageEnabled } from "./modules/install";
@@ -28,6 +29,10 @@ export default class InstallPackage extends Plugin {
     onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
+        setGitHubRateLimitSettingHandler(() => this.openSetting());
+
+        this.setting = createSetting(this);
+
         this.addTopBar({
             // 图标来源 https://www.svgrepo.com/svg/355075/install
             icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -41,12 +46,19 @@ export default class InstallPackage extends Plugin {
         console.log(this.displayName, "plugin loaded");
     }
 
+    onLayoutReady() {
+        loadSetting(this);
+    }
+
     onunload() {
         // console.log("InstallPackage unloaded");
     }
 
     uninstall() {
-        // console.log("InstallPackage uninstalled");
+        // 删除 Token 密文文件夹
+        this.removeData("secret");
+
+        console.log(this.displayName, "plugin uninstalled");
     }
 
     private topBarHandler = () => {
@@ -107,22 +119,16 @@ export default class InstallPackage extends Plugin {
         });
         urlInput.select();
 
-        const cancelButton = dialog.element.querySelector("button[data-type='cancel']") as HTMLButtonElement;
-        cancelButton.addEventListener("click", () => {
+        dialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
             dialog.destroy();
         });
-        const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
-        confirmButton.addEventListener("click", () => {
+        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
             this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
         });
-        
-        const openPluginsButton = dialog.element.querySelector("button[data-type='open-plugins']") as HTMLButtonElement;
-        openPluginsButton?.addEventListener("click", () => {
+        dialog.element.querySelector("button[data-type='open-plugins']")?.addEventListener("click", () => {
             this.openDirectory("data/plugins");
         });
-        
-        const openPetalButton = dialog.element.querySelector("button[data-type='open-petal']") as HTMLButtonElement;
-        openPetalButton?.addEventListener("click", () => {
+        dialog.element.querySelector("button[data-type='open-petal']")?.addEventListener("click", () => {
             this.openDirectory("data/storage/petal");
         });
     };
@@ -240,10 +246,7 @@ export default class InstallPackage extends Plugin {
      */
     private confirmDownload(fileName: string, sizeBytes: number, thresholdBytes: number): Promise<boolean> {
         return new Promise((resolve) => {
-            const finish = (ok: boolean) => {
-                confirmDialog.destroy();
-                resolve(ok);
-            };
+            let result = false;
             const confirmDialog = new Dialog({
                 title: i18n.largePackageConfirmTitle,
                 width: isMobile() ? "92vw" : "480px",
@@ -262,11 +265,16 @@ export default class InstallPackage extends Plugin {
                         <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
                     </div>`,
                 destroyCallback: () => {
-                    finish(false);
+                    resolve(result);
                 },
             });
-            confirmDialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => finish(false));
-            confirmDialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => finish(true));
+            confirmDialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
+                confirmDialog.destroy();
+            });
+            confirmDialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
+                result = true;
+                confirmDialog.destroy();
+            });
         });
     }
 

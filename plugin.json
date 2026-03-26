@@ -5,7 +5,7 @@
   "version": "0.3.0",
   "minAppVersion": "3.6.1",
   "backends": ["windows","linux","darwin"],
-  "frontends": ["desktop", "browser-desktop", "browser-mobile"],
+  "frontends": ["desktop"],
   "disabledInPublish": true,
   "displayName": {
     "default": "Install Marketplace Package",

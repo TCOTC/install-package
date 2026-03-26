@@ -2,32 +2,8 @@ import { i18n } from "./i18n";
 import { extractPackageNameFromUrl } from "./github";
 import { message } from "./message";
 
-export function validatePackageZipFile(data: Uint8Array, fileName: string): boolean {
-    try {
-        if (data.length === 0) {
-            console.error("File size is 0");
-            return false;
-        }
-
-        if (fileName.toLowerCase() !== "package.zip") {
-            console.error("File name must be package.zip");
-            return false;
-        }
-
-        if (data.length >= 2 && data[0] === 0x50 && data[1] === 0x4b) {
-            return true;
-        } else {
-            console.error("ZIP file header validation failed");
-            return false;
-        }
-    } catch (error) {
-        console.error("File validation failed:", error);
-        return false;
-    }
-}
-
 export async function downloadPackage(downloadUrl: string, fileName: string): Promise<{
-    uint8Array: Uint8Array;
+    blob: Blob;
     fileName: string;
     packageName: string;
 } | null> {
@@ -64,12 +40,9 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
             return null;
         }
 
-        // 读取响应体为二进制数据
-        const arrayBuffer = await response.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-
-        // 校验 ZIP 包
-        if (!validatePackageZipFile(uint8Array, fileName)) {
+        // 读取并校验 ZIP 文件
+        const blob = await readZipBody(response);
+        if (!blob) {
             message(i18n.fileValidationFailed);
             return null;
         }
@@ -84,12 +57,95 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
         }
         console.log(`Package name extracted from URL: ${packageName}`);
 
-        return { uint8Array, fileName, packageName };
+        return { blob, fileName, packageName };
     } catch (error) {
         // 兜底：未预期的异常
         console.error("Failed to download package:", error);
         const msg = error instanceof Error ? error.message : String(error);
         message(i18n.downloadFailed.replace("{error}", msg));
+        return null;
+    }
+}
+
+/** ZIP 本地文件头签名：PK\x03\x04 */
+const ZIP_LOCAL_FILE_HEADER = [0x50, 0x4b, 0x03, 0x04] as const;
+
+function isZipSig(data: Uint8Array): boolean {
+    return (
+        data.length >= 4 &&
+        data[0] === ZIP_LOCAL_FILE_HEADER[0] &&
+        data[1] === ZIP_LOCAL_FILE_HEADER[1] &&
+        data[2] === ZIP_LOCAL_FILE_HEADER[2] &&
+        data[3] === ZIP_LOCAL_FILE_HEADER[3]
+    );
+}
+
+/**
+ * 流式读满 4 字节校验 ZIP 本地文件头后再读完，避免整包读入后再发现非 ZIP；非 ZIP 时尽早 cancel。
+ * 校验通过后以 chunk 拼成 Blob，避免再分配整块 Uint8Array 拷贝。
+ */
+async function readZipBody(response: Response): Promise<Blob | null> {
+    try {
+        // 正常 GET 成功时 body 为 ReadableStream；为 null 时无法按块读取
+        const stream = response.body;
+        if (!stream) {
+            console.error("Response body stream is unavailable");
+            return null;
+        }
+
+        // 每个 Response.body 只能被一个 reader 消费，read() 按 chunk 拉取
+        const reader = stream.getReader();
+        const prefix = new Uint8Array(4);
+        let prefixFilled = 0;
+        const restChunks: Uint8Array[] = [];
+
+        // 阶段 1：凑满 4 字节再验签；单块超过「当前还缺的几字节」时，尾部先放进 restChunks，保证字节序连续
+        while (prefixFilled < 4) {
+            const { done, value } = await reader.read();
+            if (value && value.length > 0) {
+                const need = 4 - prefixFilled;
+                const take = Math.min(need, value.length);
+                prefix.set(value.subarray(0, take), prefixFilled);
+                prefixFilled += take;
+                if (value.length > take) {
+                    restChunks.push(value.subarray(take));
+                }
+            }
+            if (done) {
+                if (prefixFilled === 0) {
+                    console.error("File size is 0");
+                    return null;
+                }
+                if (prefixFilled < 4) {
+                    console.error("ZIP file header validation failed");
+                    return null;
+                }
+                break;
+            }
+        }
+
+        // 非 ZIP 本地文件头（PK\x03\x04）则取消流，避免继续拉取整包无效数据
+        if (!isZipSig(prefix)) {
+            await reader.cancel();
+            console.error("ZIP file header validation failed");
+            return null;
+        }
+
+        // 阶段 2：读完流中剩余 chunk（阶段 1 已把「跨过前 4 字节的尾巴」放进 restChunks）
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+            if (value && value.length > 0) {
+                restChunks.push(value);
+            }
+        }
+
+        // TS 5.7+ 中 Uint8Array 默认带 ArrayBufferLike，与 BlobPart 的 ArrayBuffer 狭义定义不兼容，运行时与流式 chunk 一致
+        return new Blob([prefix, ...restChunks] as BlobPart[]);
+    } catch (error) {
+        console.error("File validation failed:", error);
         return null;
     }
 }

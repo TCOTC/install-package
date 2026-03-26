@@ -183,29 +183,17 @@ export default class InstallPackage extends Plugin {
                 return;
             }
 
-            const installResult = await installPackage(
-                downloadResult.uint8Array,
-                downloadResult.fileName,
-                downloadResult.packageName
-            );
-            if (installResult.ok === false) {
-                message(installResult.error ?? i18n.packageInstallFailed);
+            const installResult = await installPackage(downloadResult);
+            if (!installResult) {
                 return;
             }
 
-            let enableWarning: string;
             if (installResult.packageType && installResult.packageName) {
-                enableWarning = await setPackageEnabled(
+                await setPackageEnabled(
                     installResult.packageType,
                     installResult.packageName,
                     enable
                 );
-            }
-            if (installResult.info) {
-                message(installResult.info, true);
-            }
-            if (enableWarning) {
-                message(enableWarning);
             }
 
             let autoEnabledText = "";

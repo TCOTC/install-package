@@ -1,6 +1,8 @@
 /**
- * 思源内核 HTTP 封装：JSON POST（fetchSyncPost）、getFile、multipart putFile
+ * 思源内核 HTTP 封装
  */
+
+import { message } from "./message";
 
 export interface KernelApiResponse {
     code: number;
@@ -34,7 +36,7 @@ export async function fetchSyncPost(url: string, data?: object): Promise<KernelA
  * `/api/file/putFile`：HTTP Multipart
  * - path：工作空间路径下的文件路径
  * - isDir：为 true 时仅创建文件夹，忽略 file
- * - modTime：最近访问和修改时间，Unix 时间戳（秒）；默认当前时间
+ * - modTime：最近访问和修改时间，Unix 毫秒时间戳（与内核 millisecond2Time 一致）；默认当前时间
  * - file：上传的文件（isDir 为 true 时不应依赖此字段）
  * 返回值：{ code, msg, data }
  */
@@ -49,7 +51,7 @@ export async function putFile(params: PutFileParams): Promise<KernelApiResponse>
     const formData = new FormData();
     formData.append("path", params.path);
     formData.append("isDir", String(params.isDir ?? false));
-    formData.append("modTime", String(params.modTime ?? Math.floor(Date.now() / 1000)));
+    formData.append("modTime", String(params.modTime ?? Date.now()));
     if (params.file && !(params.isDir ?? false)) {
         const fileName = params.path.split("/").pop() || "file";
         formData.append("file", params.file, fileName);
@@ -115,40 +117,33 @@ export async function getFile(path: string): Promise<GetFileResult> {
     }
 }
 
-/** 文件操作结果（不通过抛错表示失败） */
-export type FsOpResult = { ok: true } | { ok: false; error: string };
-
 export async function pathExists(path: string): Promise<boolean> {
     const response = await fetchSyncPost("/api/file/readDir", { path });
     return response.code === 0 && Array.isArray(response.data);
 }
 
-export async function writeTempFile(data: Uint8Array, path: string): Promise<FsOpResult> {
-    console.log(`Writing temporary file: ${path}, data size: ${data.length} bytes`);
-
-    // Uint8Array.buffer 类型为 ArrayBufferLike，与 BlobPart 定义不兼容，运行时作为 Blob 片段合法
-    const blob = new Blob([data as BlobPart], { type: "application/octet-stream" });
-    const fileName = path.split("/").pop() || "temp_file";
-    console.log(`putFile: file=${fileName}, path=${path}`);
+export async function writeTempFile(fileBlob: Blob, path: string): Promise<boolean> {
+    console.log(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
 
     const result = await putFile({
         path,
         isDir: false,
-        file: blob,
+        file: fileBlob,
     });
 
     console.log(`Write temporary file response: code=${result.code}`);
 
     if (result.code !== 0) {
         console.error(`Failed to write temporary file: ${result.msg}`);
-        return { ok: false, error: `Failed to write temporary file: ${result.msg}` };
+        message(`Failed to write temporary file: ${result.msg}`);
+        return false;
     }
 
     console.log(`Temporary file written successfully: ${path}`);
-    return { ok: true };
+    return true;
 }
 
-export async function unzipFile(zipPath: string, extractPath: string): Promise<FsOpResult> {
+export async function unzipFile(zipPath: string, extractPath: string): Promise<boolean> {
     console.log(`Unzipping file: ${zipPath} -> ${extractPath}`);
 
     const response = await fetchSyncPost("/api/archive/unzip", {
@@ -160,23 +155,25 @@ export async function unzipFile(zipPath: string, extractPath: string): Promise<F
 
     if (response.code !== 0) {
         console.error(`Failed to unzip file: ${response.msg}`);
-        return { ok: false, error: `Failed to unzip file: ${response.msg}` };
+        message(`Failed to unzip file: ${response.msg}`);
+        return false;
     }
 
     console.log(`File unzipped successfully: ${zipPath} -> ${extractPath}`);
-    return { ok: true };
+    return true;
 }
 
-export async function removeFileOrDirectory(path: string): Promise<FsOpResult> {
+export async function removeFileOrDirectory(path: string): Promise<boolean> {
     const response = await fetchSyncPost("/api/file/removeFile", { path });
 
     if (response.code !== 0) {
         console.warn(`Delete failed: ${path} - ${response.msg}`);
-        return { ok: false, error: `Delete failed: ${response.msg}` };
+        message(`Delete failed: ${response.msg}`);
+        return false;
     }
 
     console.log(`Delete successful: ${path}`);
-    return { ok: true };
+    return true;
 }
 
 export async function removeFiles(paths: string[]): Promise<void> {
@@ -190,29 +187,29 @@ export async function removeFiles(paths: string[]): Promise<void> {
 }
 
 /** 删除目录（包括非空目录） */
-export async function clearDirectory(dirPath: string): Promise<FsOpResult> {
+export async function clearDirectory(dirPath: string): Promise<boolean> {
     console.log(`Starting to delete directory: ${dirPath}`);
 
     if (!(await pathExists(dirPath))) {
         console.log(`Directory does not exist: ${dirPath}, no need to delete`);
-        return { ok: true };
+        return true;
     }
 
     console.log(`Deleting directory: ${dirPath}`);
     const rm = await removeFileOrDirectory(dirPath);
-    if (rm.ok === false) {
-        console.error(`Failed to delete directory: ${dirPath}`, rm.error);
-        return { ok: false, error: `Failed to delete directory: ${rm.error}` };
+    if (!rm) {
+        console.error(`Failed to delete directory: ${dirPath}`);
+        return false;
     }
 
     console.log(`Directory deleted successfully: ${dirPath}`);
-    return { ok: true };
+    return true;
 }
 
 /**
  * 复制到安装路径（整个目录复制，globalCopyFiles 会保留源目录名）
  */
-export async function copyToInstallPath(sourcePath: string, targetPath: string): Promise<FsOpResult> {
+export async function copyToInstallPath(sourcePath: string, targetPath: string): Promise<boolean> {
     console.log(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
 
     const workspaceDir = window.siyuan.config.system.workspaceDir || "";
@@ -238,7 +235,8 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
     console.log(`Copy directory response: code=${response.code}`, response);
 
     if (response.code !== 0) {
-        return { ok: false, error: `Failed to copy directory: ${response.msg}` };
+        message(`Failed to copy directory: ${response.msg}`);
+        return false;
     }
 
     console.log(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
@@ -249,7 +247,7 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
     }
 
     console.log(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
-    return { ok: true };
+    return true;
 }
 
 // /**

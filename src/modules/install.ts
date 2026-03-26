@@ -1,5 +1,6 @@
 import { getFrontend } from "siyuan";
 import { i18n } from "./i18n";
+import { message } from "./message";
 import {
     fetchSyncPost,
     getFile,
@@ -28,8 +29,6 @@ export function getInstallPath(packageType: string): string {
     }
 }
 
-export type ExtractMetadataNameResult = { ok: true; name: string } | { ok: false; error: string };
-
 const METADATA_JSON_FILES = [
     "plugin.json",
     "widget.json",
@@ -41,12 +40,11 @@ const METADATA_JSON_FILES = [
 /**
  * 根据集市包目录内容识别集市包类型（根目录须包含一个元数据 json）
  */
-export async function getPackageType(
-    packagePath: string
-): Promise<{ ok: true; packageType: string } | { ok: false; error: string }> {
+export async function getPackageType(packagePath: string): Promise<string | null> {
     const response = await fetchSyncPost("/api/file/readDir", { path: packagePath });
     if (response.code !== 0 || !Array.isArray(response.data)) {
-        return { ok: false, error: i18n.readDirFailed.replace("{error}", response.msg) };
+        message(i18n.readDirFailed.replace("{error}", response.msg));
+        return null;
     }
 
     const foundTypes = response.data
@@ -54,56 +52,50 @@ export async function getPackageType(
         .map((item) => item.name.slice(0, -5));
 
     if (foundTypes.length === 0) {
-        return { ok: false, error: i18n.noMetadataFiles };
+        message(i18n.noMetadataFiles);
+        return null;
     }
     if (foundTypes.length > 1) {
-        return { ok: false, error: i18n.multipleMetadataFiles.replace("{files}", foundTypes.join(", ")) };
+        message(i18n.multipleMetadataFiles.replace("{files}", foundTypes.join(", ")));
+        return null;
     }
-    return { ok: true, packageType: foundTypes[0] };
+    return foundTypes[0];
 }
 
-export async function getPackageName(
-    extractPath: string,
-    packageType: string
-): Promise<ExtractMetadataNameResult> {
+export async function getPackageName(extractPath: string, packageType: string): Promise<string | null> {
     console.log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
     const metadataPath = `${extractPath}/${packageType}.json`;
     console.log(`Reading package metadata file: ${metadataPath}`);
     const fileResult = await getFile(metadataPath);
     if (fileResult.ok === false) {
-        return {
-            ok: false,
-            error: i18n.getPackageNameError.replace(
-                "{error}",
-                fileResult.msg || `code ${fileResult.code}`,
-            ),
-        };
+        message(i18n.getPackageNameError.replace("{error}", fileResult.msg || `code ${fileResult.code}`,));
+        return null;
     }
     let packageMetadata: Record<string, unknown>;
     try {
         packageMetadata = JSON.parse(fileResult.content);
     } catch {
-        return {
-            ok: false,
-            error: i18n.getPackageNameError.replace("{error}", i18n.metadataFileInvalidJson),
-        };
+        message(i18n.getPackageNameError.replace("{error}", i18n.metadataFileInvalidJson));
+        return null;
     }
     console.log("Package metadata:", packageMetadata);
 
     const packageName = (packageMetadata.name ?? packageMetadata.packageName) as string | undefined;
 
     if (!packageName) {
-        return { ok: false, error: i18n.packageNameNotFoundInMetadata };
+        message(i18n.packageNameNotFoundInMetadata);
+        return null;
     }
 
     console.log(`Package name extracted from metadata: ${packageName}`);
 
     if (typeof packageName !== "string" || packageName.trim() === "") {
-        return { ok: false, error: i18n.invalidPackageName.replace("{name}", String(packageName)) };
+        message(i18n.invalidPackageName.replace("{name}", String(packageName)));
+        return null;
     }
 
-    return { ok: true, name: packageName.trim() };
+    return packageName.trim();
 }
 
 /**
@@ -157,7 +149,7 @@ export async function setPackageEnabled(
     packageType: string,
     packageName: string,
     enabled: boolean
-): Promise<string | undefined> {
+): Promise<void> {
     switch (packageType) {
         case "plugin": {
             const action = enabled ? "enable" : "disable";
@@ -169,17 +161,18 @@ export async function setPackageEnabled(
             });
             if (response.code === 0) {
                 console.log(`Plugin ${packageName} ${action}d successfully`);
-                return undefined;
+                return;
             }
             console.error(`Failed to ${action} plugin: ${response.msg}`);
             const tpl = enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed;
-            return tpl.replace("{error}", String(response.msg ?? ""));
+            message(tpl.replace("{error}", String(response.msg ?? "")));
         }
         case "theme": {
             const response = await fetchSyncPost("/api/ui/reloadTheme", {});
             if (response.code !== 0) {
                 console.error(`reloadTheme before setTheme failed: ${response.msg}`);
-                return i18n.themeReloadFailed;
+                message(i18n.themeReloadFailed);
+                return;
             }
             if (enabled) {
                 const modes = await getSetThemeModes(packageName);
@@ -192,53 +185,57 @@ export async function setPackageEnabled(
                 });
                 if (response.code === 0) {
                     console.log(`Theme ${packageName} applied successfully`);
-                    return undefined;
+                    return;
                 }
                 console.error(`Failed to apply theme: ${response.msg}`);
-                return i18n.enablePackageFailed.replace("{error}", String(response.msg ?? ""));
-            } else {
-                // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题（在调用 reloadTheme 之前获取当前的主题和外观模式，就知道了）
-                console.log(`Theme ${packageName} installed (not switching)`);
-                return undefined;
+                message(i18n.enablePackageFailed.replace("{error}", String(response.msg ?? "")));
+                return;
             }
+            // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题（在调用 reloadTheme 之前获取当前的主题和外观模式，就知道了）
+            console.log(`Theme ${packageName} installed (not switching)`);
         }
         case "icon": {
             const response = await fetchSyncPost("/api/ui/reloadIcon", {});
             if (response.code !== 0) {
                 console.error(`reloadIcon before setAppearance failed: ${response.msg}`);
-                return i18n.iconReloadFailed;
+                message(i18n.iconReloadFailed);
+                return;
             }
             if (enabled) {
                 // TODO 这个接口在 v3.6.2 才支持，要修改 plugin.json 的 minAppVersion 为 3.6.2
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {
                     console.log(`Icon ${packageName} applied successfully`);
-                    return undefined;
+                    return;
                 }
                 console.error(`Failed to apply icon: ${response.msg}`);
-                return i18n.enablePackageFailed.replace("{error}", String(response.msg ?? ""));
-            } else {
-                // TODO 如果当前正在使用该图标，需要将图标切换回默认图标（在调用 reloadIcon 之前获取当前的图标，就知道了）
-                console.log(`Icon ${packageName} installed (not switching)`);
-                return undefined;
+                message(i18n.enablePackageFailed.replace("{error}", String(response.msg ?? "")));
+                return;
             }
+            // TODO 如果当前正在使用该图标，需要将图标切换回默认图标（在调用 reloadIcon 之前获取当前的图标，就知道了）
+            console.log(`Icon ${packageName} installed (not switching)`);
+            return;
         }
         default: {
             console.log(`${packageType} ${packageName} installed`);
-            return undefined;
         }
     }
 }
 
-export type KernelInstallResult =
-    | { ok: true; packageType: string; packageName: string; info?: string }
-    | { ok: false; error: string };
-
-export async function installPackage(
-    data: Uint8Array,
-    fileName: string,
+/** 与 downloadPackage 成功结果同构；写入临时文件成功后会把 blob 置为 null，便于尽早释放 ZIP 内存 */
+export async function installPackage(pack: {
+    blob: Blob | null;
+    fileName: string;
+    packageName: string;
+}): Promise<{
+    packageType: string;
     packageName: string
-): Promise<KernelInstallResult> {
+} | null> {
+    const { blob, fileName, packageName } = pack;
+    if (!blob) {
+        message(i18n.packageInstallFailed);
+        return null;
+    }
     let tempPath = "";
     let extractPath = "";
 
@@ -251,61 +248,60 @@ export async function installPackage(
         }
     };
 
-    const fail = async (error: string): Promise<KernelInstallResult> => {
+    const bail = async (): Promise<null> => {
         await runCleanup();
-        return { ok: false, error };
+        return null;
     };
 
-    const succeed = async (packageType: string, pkgName: string, info?: string): Promise<KernelInstallResult> => {
+    const succeed = async (packageType: string, pkgName: string) => {
         await runCleanup();
-        return { ok: true, packageType, packageName: pkgName, info };
+        return { packageType, packageName: pkgName };
     };
 
     console.log(`Starting package installation: ${fileName}, name: ${packageName}`);
 
-    const tempFileName = `temp_${Date.now()}_${fileName}`;
+    const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const tempFileName = `temp_${tempId}_${fileName}`;
     tempPath = `temp/export/${tempFileName}`;
     console.log(`Creating temporary file: ${tempPath}`);
 
-    const writeResult = await writeTempFile(data, tempPath);
-    if (writeResult.ok === false) {
-        return fail(writeResult.error);
+    if (!(await writeTempFile(blob, tempPath))) {
+        return bail();
     }
+    // 内核已落盘，去掉渲染进程侧对整包 ZIP 的引用（含调用方 downloadResult.blob）
+    pack.blob = null;
     console.log(`Temporary file written successfully: ${tempPath}`);
 
-    extractPath = `temp/export/extract_${Date.now()}/${packageName}`;
+    extractPath = `temp/export/extract_${tempId}/${packageName}`;
     console.log(`Extracting to final directory: ${extractPath}`);
-    const unzipResult = await unzipFile(tempPath, extractPath);
-    if (unzipResult.ok === false) {
-        return fail(unzipResult.error);
+    if (!(await unzipFile(tempPath, extractPath))) {
+        return bail();
     }
     console.log(`Extraction completed: ${extractPath}`);
 
-    const typeResult = await getPackageType(extractPath);
-    if (typeResult.ok === false) {
-        return fail(typeResult.error);
+    const packageType = await getPackageType(extractPath);
+    if (!packageType) {
+        return bail();
     }
-    const packageType = typeResult.packageType;
     console.log(`Package type detected: ${packageType}`);
 
     const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
     console.log("Extracted directory contents:", extractDirData);
 
-    const metadataResult = await getPackageName(extractPath, packageType);
-    if (metadataResult.ok === false) {
-        return fail(metadataResult.error);
+    const metadataPackageName = await getPackageName(extractPath, packageType);
+    if (!metadataPackageName) {
+        return bail();
     }
-    const metadataPackageName = metadataResult.name;
     console.log(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
 
     if (metadataPackageName !== packageName) {
         const errorMsg = `Package name mismatch: metadata ${metadataPackageName}, repo ${packageName}`;
         console.error(errorMsg);
-        return fail(
-            i18n.packageNameMismatch
-                .replace("{metadataName}", metadataPackageName)
-                .replace("{repoName}", packageName),
+        message(i18n.packageNameMismatch
+            .replace("{metadataName}", metadataPackageName)
+            .replace("{repoName}", packageName),
         );
+        return bail();
     }
 
     console.log("Package name verification passed");
@@ -314,14 +310,12 @@ export async function installPackage(
     console.log(`Final package name: ${packageName}`);
     console.log(`Target installation path: ${installPath}`);
 
-    let info: string | undefined;
     if (await pathExists(installPath)) {
         console.log(`Target directory already exists: ${installPath}`);
-        info = i18n.targetDirExists.replace("{path}", installPath);
+        message(i18n.targetDirExists.replace("{path}", installPath), true);
 
-        const clearResult = await clearDirectory(installPath);
-        if (clearResult.ok === false) {
-            return fail(clearResult.error);
+        if (!(await clearDirectory(installPath))) {
+            return bail();
         }
         console.log(`Cleared old package files: ${installPath}`);
     } else {
@@ -329,9 +323,8 @@ export async function installPackage(
     }
 
     console.log(`Starting to copy files from ${extractPath} to ${installPath}`);
-    const copyResult = await copyToInstallPath(extractPath, installPath);
-    if (copyResult.ok === false) {
-        return fail(copyResult.error);
+    if (!(await copyToInstallPath(extractPath, installPath))) {
+        return bail();
     }
     console.log(`File copy completed: ${installPath}`);
 
@@ -339,5 +332,5 @@ export async function installPackage(
     console.log("Post-installation directory contents:", installDirData);
 
     console.log(`Package installed successfully: ${packageName}`);
-    return succeed(packageType, packageName, info);
+    return succeed(packageType, packageName);
 }

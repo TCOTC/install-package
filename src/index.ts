@@ -139,7 +139,7 @@ export default class InstallPackage extends Plugin {
 
         const parsed = await repoUrlController.ownerRepoForUrl(url);
         if (!parsed) {
-            message(i18n.invalidUrl, true);
+            message(i18n.invalidUrl);
             return;
         }
         const { owner, repo } = parsed;
@@ -155,7 +155,7 @@ export default class InstallPackage extends Plugin {
             console.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
             const releaseInfo = await getReleaseInfo(owner, repo, version);
             if (!releaseInfo) {
-                message(i18n.releaseInfoError.replace("{version}", version || "latest"), true);
+                message(i18n.releaseInfoError.replace("{version}", version || "latest"));
                 return;
             }
             // Release 信息
@@ -165,18 +165,19 @@ export default class InstallPackage extends Plugin {
                 .replace("{tagName}", releaseInfo.tag_name)
                 .replace("{publishedAt}", (
                     releaseInfo.published_at ? i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
-                ))
+                )),
+                true
             );
 
             // 查找包文件
             const packageZip = findPackageZip(releaseInfo.assets);
             if (!packageZip) {
-                message(i18n.packageZipNotFound, true);
+                message(i18n.packageZipNotFound);
                 return;
             }
 
             // TODO 重构到这里
-            message(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)));
+            message(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)), true);
             const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name);
             if (!downloadResult) {
                 return;
@@ -188,7 +189,7 @@ export default class InstallPackage extends Plugin {
                 downloadResult.packageName
             );
             if (installResult.ok === false) {
-                message(installResult.error ?? i18n.packageInstallFailed, true);
+                message(installResult.error ?? i18n.packageInstallFailed);
                 return;
             }
 
@@ -201,10 +202,10 @@ export default class InstallPackage extends Plugin {
                 );
             }
             if (installResult.info) {
-                message(installResult.info, false);
+                message(installResult.info, true);
             }
             if (enableWarning) {
-                message(enableWarning, true);
+                message(enableWarning);
             }
 
             let autoEnabledText = "";
@@ -218,14 +219,15 @@ export default class InstallPackage extends Plugin {
             message(i18n.packageInstalledSuccess
                 .replace("{packageType}", installResult.packageType)
                 .replace("{packageName}", installResult.packageName)
-                .replace("{autoEnabled}", autoEnabledText)
+                .replace("{autoEnabled}", autoEnabledText),
+                true
             );
 
             dialog.destroy();
             return;
         } catch (error) {
             console.error("InstallPackage error:", error);
-            message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)), true);
+            message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)));
         } finally {
             this.installInFlight.delete(repoLockKey);
         }
@@ -239,13 +241,13 @@ export default class InstallPackage extends Plugin {
             console.log(`Opening directory: ${relPath}`);
 
             if (!electron) {
-                message(i18n.openDirectoryFailed + i18n.openDirectoryNoElectron, true);
+                message(i18n.openDirectoryFailed + i18n.openDirectoryNoElectron);
                 return;
             }
 
             const workspaceDir = (window.siyuan.config.system.workspaceDir ?? "").trim();
             if (!workspaceDir) {
-                message(i18n.openDirectoryFailed + i18n.openDirectoryNoWorkspace, true);
+                message(i18n.openDirectoryFailed + i18n.openDirectoryNoWorkspace);
                 return;
             }
 
@@ -266,7 +268,7 @@ export default class InstallPackage extends Plugin {
             }
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
-            message(i18n.openDirectoryFailed + detail, true);
+            message(i18n.openDirectoryFailed + detail);
         }
     }
 }

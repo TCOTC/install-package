@@ -1,5 +1,6 @@
-import { Constants, Dialog, Plugin, showMessage } from "siyuan";
+import { Constants, Dialog, Plugin } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
+import { message, setMessagePrefix } from "./modules/message";
 import { findPackageZip, getReleaseInfo } from "./modules/github";
 import { RepoParser } from "./modules/repoParser";
 import { downloadPackage } from "./modules/download";
@@ -177,8 +178,7 @@ export default class InstallPackage extends Plugin {
             // TODO 重构到这里
             message(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)));
             const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name);
-            if (downloadResult.success === false) {
-                message(downloadResult.error ?? i18n.downloadFailed.replace("{error}", "未知错误"), true);
+            if (!downloadResult) {
                 return;
             }
 
@@ -285,16 +285,3 @@ function formatFileSize(bytes: number): string {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
-
-let messagePrefix = "";
-
-function setMessagePrefix(name: string): void {
-    messagePrefix = name.trim();
-}
-
-function message(text: string, isError?: boolean): void {
-    const type = isError ? "error" : "info";
-    const label = messagePrefix ? messagePrefix + ": " + text : text;
-    showMessage(label, isError ? 10000 : 3000, type);
-}
-

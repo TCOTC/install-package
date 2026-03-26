@@ -57,36 +57,36 @@ export default class InstallPackage extends Plugin {
             title: i18n.title,
             width: isMobile() ? "92vw" : "520px",
             content: 
-`<div class="b3-dialog__content">
-    ${i18n.urlLabel}
-    <div class="fn__hr"></div>
-    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${i18n.urlPlaceholder}" spellcheck="false">
-    <div data-type="repo-preview" class="b3-label__text">${i18n.repoPreviewTip}</div>
-    <div class="fn__hr"></div>
-    ${i18n.versionLabel}
-    <div class="fn__hr"></div>
-    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
-    <div class="fn__hr"></div>
-    ${i18n.enableLabel}
-    <div class="fn__hr"></div>
-    <select data-type="enable" class="b3-select fn__block">
-        <option value="enable">${i18n.enableOptionEnable}</option>
-        <option value="disable">${i18n.enableOptionDisable}</option>
-    </select>
-    ${
-        // 只在 Electron 环境下显示打开目录按钮
-        !electron ? "" : `
-        <div class="fn__hr"></div>
-        <div class="fn__flex" style="gap: 8px;">
-            <button data-type="open-plugins" class="b3-button b3-button--outline">${i18n.openPluginsDir}</button>
-            <button data-type="open-petal" class="b3-button b3-button--outline">${i18n.openPetalDir}</button>
-        </div>`
-    }
-</div>
-<div class="b3-dialog__action">
-    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
-    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-</div>`,
+                `<div class="b3-dialog__content">
+                    ${i18n.urlLabel}
+                    <div class="fn__hr"></div>
+                    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${i18n.urlPlaceholder}" spellcheck="false">
+                    <div data-type="repo-preview" class="b3-label__text">${i18n.repoPreviewTip}</div>
+                    <div class="fn__hr"></div>
+                    ${i18n.versionLabel}
+                    <div class="fn__hr"></div>
+                    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
+                    <div class="fn__hr"></div>
+                    ${i18n.enableLabel}
+                    <div class="fn__hr"></div>
+                    <select data-type="enable" class="b3-select fn__block">
+                        <option value="enable">${i18n.enableOptionEnable}</option>
+                        <option value="disable">${i18n.enableOptionDisable}</option>
+                    </select>
+                    ${
+                        // 只在 Electron 环境下显示打开目录按钮
+                        !electron ? "" : `
+                        <div class="fn__hr"></div>
+                        <div class="fn__flex" style="gap: 8px;">
+                            <button data-type="open-plugins" class="b3-button b3-button--outline">${i18n.openPluginsDir}</button>
+                            <button data-type="open-petal" class="b3-button b3-button--outline">${i18n.openPetalDir}</button>
+                        </div>`
+                    }
+                </div>
+                <div class="b3-dialog__action">
+                    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
+                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
+                </div>`,
         });
         // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
         const urlInput = dialog.element.querySelector("input[data-type='url']") as HTMLInputElement;
@@ -177,6 +177,15 @@ export default class InstallPackage extends Plugin {
             }
 
             // TODO 重构到这里
+            const LARGE_PACKAGE_THRESHOLD_BYTES = 20 * 1024 * 1024;
+            if (packageZip.size > LARGE_PACKAGE_THRESHOLD_BYTES) {
+                // 超过此大小的 package.zip 下载前需用户手动确认（20 MB）
+                const proceed = await this.confirmDownload(packageZip.name, packageZip.size, LARGE_PACKAGE_THRESHOLD_BYTES);
+                if (!proceed) {
+                    return;
+                }
+            }
+
             message(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)), true);
             const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name);
             if (!downloadResult) {
@@ -220,6 +229,46 @@ export default class InstallPackage extends Plugin {
             this.installInFlight.delete(repoLockKey);
         }
     };
+
+    /**
+     * 大型包下载前弹出确认框
+     * 
+     * @param fileName - 文件名
+     * @param sizeBytes - 文件大小
+     * @param thresholdBytes - 阈值大小
+     * @returns 是否确认下载
+     */
+    private confirmDownload(fileName: string, sizeBytes: number, thresholdBytes: number): Promise<boolean> {
+        return new Promise((resolve) => {
+            const finish = (ok: boolean) => {
+                confirmDialog.destroy();
+                resolve(ok);
+            };
+            const confirmDialog = new Dialog({
+                title: i18n.largePackageConfirmTitle,
+                width: isMobile() ? "92vw" : "480px",
+                content:
+                    `<div class="b3-dialog__content">
+                        <div data-type="msg" class="b3-label__text">
+                        ${i18n.largePackageConfirmContent
+                            .replace("{fileName}", fileName)
+                            .replace("{fileSize}", formatFileSize(sizeBytes))
+                            .replace("{thresholdBytes}", formatFileSize(thresholdBytes))
+                        }
+                        </div>
+                    </div>
+                    <div class="b3-dialog__action">
+                        <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
+                        <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
+                    </div>`,
+                destroyCallback: () => {
+                    finish(false);
+                },
+            });
+            confirmDialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => finish(false));
+            confirmDialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => finish(true));
+        });
+    }
 
     /**
      * 打开目录（仅在 Electron 环境下调用）

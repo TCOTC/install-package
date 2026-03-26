@@ -20,6 +20,8 @@
   "foundRelease": "Found Release: {tagName}{publishedAt}",
   "publishedOn": " (published on {date})",
   "packageZipNotFound": "package.zip file not found",
+  "largePackageConfirmTitle": "Confirm download",
+  "largePackageConfirmContent": "File {fileName} is about {fileSize} (over {largePackageThresholdBytes}). Continue to download and install?",
   "downloading": "Downloading {fileName} ({fileSize})",
   "downloadSuccess": "Package downloaded and installed successfully!{autoEnabled}",
   "autoEnabled": " Auto-enabled.",

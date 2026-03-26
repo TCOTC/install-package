@@ -67,19 +67,6 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
     }
 }
 
-/** ZIP 本地文件头签名：PK\x03\x04 */
-const ZIP_LOCAL_FILE_HEADER = [0x50, 0x4b, 0x03, 0x04] as const;
-
-function isZipSig(data: Uint8Array): boolean {
-    return (
-        data.length >= 4 &&
-        data[0] === ZIP_LOCAL_FILE_HEADER[0] &&
-        data[1] === ZIP_LOCAL_FILE_HEADER[1] &&
-        data[2] === ZIP_LOCAL_FILE_HEADER[2] &&
-        data[3] === ZIP_LOCAL_FILE_HEADER[3]
-    );
-}
-
 /**
  * 流式读满 4 字节校验 ZIP 本地文件头后再读完，避免整包读入后再发现非 ZIP；非 ZIP 时尽早 cancel。
  * 校验通过后以 chunk 拼成 Blob，避免再分配整块 Uint8Array 拷贝。
@@ -124,8 +111,13 @@ async function readZipBody(response: Response): Promise<Blob | null> {
             }
         }
 
-        // 非 ZIP 本地文件头（PK\x03\x04）则取消流，避免继续拉取整包无效数据
-        if (!isZipSig(prefix)) {
+        // 非 ZIP 本地文件头（PK\x03\x04，即 0x50 0x4b 0x03 0x04）则取消流，避免继续拉取整包无效数据
+        if (
+            prefix[0] !== 0x50 ||
+            prefix[1] !== 0x4b ||
+            prefix[2] !== 0x03 ||
+            prefix[3] !== 0x04
+        ) {
             await reader.cancel();
             console.error("ZIP file header validation failed");
             return null;

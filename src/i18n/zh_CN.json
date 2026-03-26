@@ -20,6 +20,8 @@
   "foundRelease": "找到 Release：{tagName}{publishedAt}",
   "publishedOn": "（发布于 {date}）",
   "packageZipNotFound": "未找到 package.zip 文件",
+  "largePackageConfirmTitle": "确认下载",
+  "largePackageConfirmContent": "文件 {fileName} 约 {fileSize}，超过 {thresholdBytes}，是否继续下载并安装？",
   "downloading": "正在下载 {fileName} ({fileSize})",
   "downloadSuccess": "集市包下载并安装成功！{autoEnabled}",
   "autoEnabled": "已自动启用。",

@@ -6,10 +6,16 @@ export class RepoParser {
     private lastParsed: { input: string; owner: string; repo: string } | null = null;
     private pendingRefresh: Promise<void> = Promise.resolve();
 
+    /**
+     * @param onRepoResolved - 解析出仓库时传入仓库名 `repo`；输入为空或解析失败时传入 `null`（用于恢复默认标题等）
+     * @param onInstallReady - 仅当解析得到有效 owner/repo 时为 true；输入为空、解析中、失败时为 false
+     */
     constructor(
         private readonly urlInput: HTMLInputElement,
         private readonly versionInput: HTMLInputElement,
         private readonly repoPreviewEl: HTMLDivElement,
+        private readonly onRepoResolved?: (repoLabel: string | null) => void,
+        private readonly onInstallReady?: (ready: boolean) => void,
     ) {}
 
     readonly blur = (): void => {
@@ -26,11 +32,14 @@ export class RepoParser {
         if (!input) {
             this.repoPreviewEl.textContent = i18n.repoPreviewTip;
             this.repoPreviewEl.style.color = "";
+            this.onRepoResolved?.(null);
+            this.onInstallReady?.(false);
             this.pendingRefresh = Promise.resolve();
             return this.pendingRefresh;
         }
         this.repoPreviewEl.textContent = i18n.repoPreviewParsing;
         this.repoPreviewEl.style.color = "";
+        this.onInstallReady?.(false);
         const parsePreviewPromise = parseOwnerRepo(input, signal, this.blur).then((parsed) => {
             if (signal.aborted || !this.repoPreviewEl.isConnected) {
                 return;
@@ -42,12 +51,23 @@ export class RepoParser {
                     `<b><a href="https://github.com/${parsed.owner}" target="_blank">${parsed.owner}</a></b> / <b><a href="https://github.com/${parsed.owner}/${parsed.repo}" target="_blank">${parsed.repo}</a></b>`
                 );
                 this.repoPreviewEl.style.color = "";
+                this.onRepoResolved?.(parsed.repo);
+                this.onInstallReady?.(true);
             } else {
                 this.repoPreviewEl.textContent = i18n.repoPreviewInvalid;
                 this.repoPreviewEl.style.color = "var(--b3-theme-error)";
+                this.onRepoResolved?.(null);
+                this.onInstallReady?.(false);
             }
         });
-        this.pendingRefresh = parsePreviewPromise.then(() => {});
+        this.pendingRefresh = parsePreviewPromise
+            .catch(() => {
+                if (!this.repoPreviewEl.isConnected) {
+                    return;
+                }
+                this.onInstallReady?.(false);
+            })
+            .then(() => {});
         return this.pendingRefresh;
     }
 

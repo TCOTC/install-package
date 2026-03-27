@@ -1,4 +1,5 @@
-import { Constants, Dialog, Plugin } from "siyuan";
+import "./index.scss";
+import { Constants, Custom, Dialog, Plugin, openTab } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
 import { message, setMessagePrefix } from "./modules/message";
 import { findPackageZip, getReleaseInfo, setOpenPluginSettingHandler } from "./modules/github";
@@ -6,6 +7,12 @@ import { createSetting, loadSetting } from "./modules/setting";
 import { RepoParser } from "./modules/repoParser";
 import { downloadPackage } from "./modules/download";
 import { installPackage, setPackageEnabled } from "./modules/install";
+import {
+    initInstallPanel,
+    INSTALL_PACKAGE_ICON_ID,
+    INSTALL_PACKAGE_ICON_SYMBOL,
+    INSTALL_TAB_TYPE,
+} from "./modules/tab";
 
 declare global {
     interface Window {
@@ -38,12 +45,23 @@ export default class InstallPackage extends Plugin {
             return;
         }
 
+        this.addIcons(INSTALL_PACKAGE_ICON_SYMBOL);
+
+        const plugin = this;
+        this.addTab({
+            type: INSTALL_TAB_TYPE,
+            init(this: Custom) {
+                initInstallPanel(this, {
+                    installPackage: (...args) => plugin.installPackage(...args),
+                    openDirectory: (relPath) => void plugin.openDirectory(relPath),
+                    openDevTools: () => plugin.openDevTools(),
+                    openPluginSettings: () => plugin.openSetting(),
+                });
+            },
+        });
+
         this.addTopBar({
-            // 图标来源 https://www.svgrepo.com/svg/355075/install
-            icon:
-                `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
-                </svg>`,
+            icon: INSTALL_PACKAGE_ICON_ID,
             title: i18n.title,
             position: "right",
             callback: this.topBarHandler,
@@ -56,10 +74,10 @@ export default class InstallPackage extends Plugin {
         loadSetting(this);
     }
 
-    // 等有了 Token 以外的持久化数据之后再实现这个
-    // onDataChanged() {
-    //     loadSetting(this);
-    // }
+    onDataChanged() {
+        // 避免数据同步时重启插件导致自定义页签内容样式抖动
+        loadSetting(this);
+    }
 
     onunload() {
         // console.log("InstallPackage unloaded");
@@ -73,85 +91,25 @@ export default class InstallPackage extends Plugin {
     }
 
     private topBarHandler = () => {
-        // 打开开发者工具
-        electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "openDevTools");
-
-        const dialog = new Dialog({
-            title: i18n.title,
-            width: isMobile() ? "92vw" : "520px",
-            content: 
-                `<div class="b3-dialog__content">
-                    ${i18n.urlLabel}
-                    <div class="fn__hr"></div>
-                    <div class="fn__flex" style="gap: 8px; align-items: center;">
-                        <input data-type="url" class="b3-text-field b3-form__icona-input" value="" placeholder="https://github.com/user/repo" spellcheck="false">
-                        <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
-                    </div>
-                    <div data-type="repo-preview" class="b3-label__text">${i18n.repoPreviewTip}</div>
-                    <div class="fn__hr"></div>
-                    ${i18n.versionLabel}
-                    <div class="fn__hr"></div>
-                    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
-                    <div class="fn__hr"></div>
-                    ${i18n.enableLabel}
-                    <div class="fn__hr"></div>
-                    <select data-type="enable" class="b3-select fn__block">
-                        <option value="enable">${i18n.enableOptionEnable}</option>
-                        <option value="disable">${i18n.enableOptionDisable}</option>
-                    </select>
-                    ${
-                        // 只在 Electron 环境下显示打开目录按钮
-                        !electron ? "" : `
-                        <div class="fn__hr"></div>
-                        <div class="fn__flex" style="gap: 8px;">
-                            <button data-type="open-plugins" class="b3-button b3-button--outline">${i18n.openPluginsDir}</button>
-                            <button data-type="open-petal" class="b3-button b3-button--outline">${i18n.openPetalDir}</button>
-                        </div>`
-                    }
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-        });
-        // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
-        const urlInput = dialog.element.querySelector("input[data-type='url']") as HTMLInputElement;
-        const repoPreviewEl = dialog.element.querySelector("div[data-type='repo-preview']") as HTMLDivElement;
-        const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
-        const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
-
-        const repoUrlController = new RepoParser(urlInput, versionInput, repoPreviewEl);
-        urlInput.addEventListener("input", () => repoUrlController.refresh());
-        dialog.element.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
-            void repoUrlController.refresh();
-        });
-
-        const getEnableValue = () => enableSelect.value === "enable";
-
-        dialog.bindInput(urlInput, () => {
-            this.installPackage(dialog, urlInput, versionInput, getEnableValue(), repoUrlController);
-        });
-        dialog.bindInput(versionInput, () => {
-            this.installPackage(dialog, urlInput, versionInput, getEnableValue(), repoUrlController);
-        });
-        urlInput.select();
-
-        dialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
-            dialog.destroy();
-        });
-        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            this.installPackage(dialog, urlInput, versionInput, getEnableValue(), repoUrlController);
-        });
-        dialog.element.querySelector("button[data-type='open-plugins']")?.addEventListener("click", () => {
-            this.openDirectory("data/plugins");
-        });
-        dialog.element.querySelector("button[data-type='open-petal']")?.addEventListener("click", () => {
-            this.openDirectory("data/storage/petal");
+        openTab({
+            app: this.app,
+            custom: {
+                id: this.name + INSTALL_TAB_TYPE,
+                icon: INSTALL_PACKAGE_ICON_ID,
+                title: i18n.title,
+                data: {},
+            },
         });
     };
 
+    /**
+     * 打开开发者工具（仅在 Electron 环境下调用）
+     */
+    private openDevTools(): void {
+        electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "openDevTools");
+    }
+
     private installPackage = async (
-        dialog: Dialog,
         urlInput: HTMLInputElement,
         versionInput: HTMLInputElement,
         enable: boolean,
@@ -243,7 +201,6 @@ export default class InstallPackage extends Plugin {
                 true
             );
 
-            dialog.destroy();
             return;
         } catch (error) {
             console.error("InstallPackage error:", error);

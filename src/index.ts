@@ -1,7 +1,7 @@
 import { Constants, Dialog, Plugin } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
 import { message, setMessagePrefix } from "./modules/message";
-import { findPackageZip, getReleaseInfo, setGitHubRateLimitSettingHandler } from "./modules/github";
+import { findPackageZip, getReleaseInfo, setOpenPluginSettingHandler } from "./modules/github";
 import { createSetting, loadSetting } from "./modules/setting";
 import { RepoParser } from "./modules/repoParser";
 import { downloadPackage } from "./modules/download";
@@ -29,15 +29,21 @@ export default class InstallPackage extends Plugin {
     onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
-        setGitHubRateLimitSettingHandler(() => this.openSetting());
+        setOpenPluginSettingHandler(() => this.openSetting());
 
-        this.setting = createSetting(this);
+        try {
+            this.setting = createSetting(this);
+        } catch (error) {
+            console.error("Failed to create setting:", error);
+            return;
+        }
 
         this.addTopBar({
             // 图标来源 https://www.svgrepo.com/svg/355075/install
-            icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
-</svg>`,
+            icon:
+                `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
+                </svg>`,
             title: i18n.title,
             position: "right",
             callback: this.topBarHandler,
@@ -49,6 +55,11 @@ export default class InstallPackage extends Plugin {
     onLayoutReady() {
         loadSetting(this);
     }
+
+    // 等有了 Token 以外的持久化数据之后再实现这个
+    // onDataChanged() {
+    //     loadSetting(this);
+    // }
 
     onunload() {
         // console.log("InstallPackage unloaded");
@@ -72,7 +83,10 @@ export default class InstallPackage extends Plugin {
                 `<div class="b3-dialog__content">
                     ${i18n.urlLabel}
                     <div class="fn__hr"></div>
-                    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="${i18n.urlPlaceholder}" spellcheck="false">
+                    <div class="fn__flex" style="gap: 8px; align-items: center;">
+                        <input data-type="url" class="b3-text-field b3-form__icona-input" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+                        <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
+                    </div>
                     <div data-type="repo-preview" class="b3-label__text">${i18n.repoPreviewTip}</div>
                     <div class="fn__hr"></div>
                     ${i18n.versionLabel}
@@ -106,16 +120,19 @@ export default class InstallPackage extends Plugin {
         const versionInput = dialog.element.querySelector("input[data-type='version']") as HTMLInputElement;
         const enableSelect = dialog.element.querySelector("select[data-type='enable']") as HTMLSelectElement;
 
-        const repoUrlController = new RepoParser(urlInput, repoPreviewEl);
+        const repoUrlController = new RepoParser(urlInput, versionInput, repoPreviewEl);
         urlInput.addEventListener("input", () => repoUrlController.refresh());
-        
+        dialog.element.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
+            void repoUrlController.refresh();
+        });
+
         const getEnableValue = () => enableSelect.value === "enable";
-        
+
         dialog.bindInput(urlInput, () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
+            this.installPackage(dialog, urlInput, versionInput, getEnableValue(), repoUrlController);
         });
         dialog.bindInput(versionInput, () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
+            this.installPackage(dialog, urlInput, versionInput, getEnableValue(), repoUrlController);
         });
         urlInput.select();
 
@@ -123,7 +140,7 @@ export default class InstallPackage extends Plugin {
             dialog.destroy();
         });
         dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            this.installPackage(dialog, urlInput.value, versionInput.value, getEnableValue(), repoUrlController);
+            this.installPackage(dialog, urlInput, versionInput, getEnableValue(), repoUrlController);
         });
         dialog.element.querySelector("button[data-type='open-plugins']")?.addEventListener("click", () => {
             this.openDirectory("data/plugins");
@@ -135,13 +152,13 @@ export default class InstallPackage extends Plugin {
 
     private installPackage = async (
         dialog: Dialog,
-        url: string,
-        version: string,
+        urlInput: HTMLInputElement,
+        versionInput: HTMLInputElement,
         enable: boolean,
         repoUrlController: RepoParser
     ) => {
-        url = url.trim();
-        version = version.trim();
+        const url = urlInput.value.trim();
+        const version = versionInput.value.trim();
 
         const parsed = await repoUrlController.ownerRepoForUrl(url);
         if (!parsed) {

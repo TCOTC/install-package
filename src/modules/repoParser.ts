@@ -8,8 +8,14 @@ export class RepoParser {
 
     constructor(
         private readonly urlInput: HTMLInputElement,
-        private readonly repoPreviewEl: HTMLDivElement
+        private readonly versionInput: HTMLInputElement,
+        private readonly repoPreviewEl: HTMLDivElement,
     ) {}
+
+    readonly blur = (): void => {
+        this.urlInput.blur();
+        this.versionInput.blur();
+    };
 
     refresh(): Promise<void> {
         this.lastParsed = null;
@@ -25,7 +31,7 @@ export class RepoParser {
         }
         this.repoPreviewEl.textContent = i18n.repoPreviewParsing;
         this.repoPreviewEl.style.color = "";
-        const parsePreviewPromise = parseOwnerRepo(input, signal).then((parsed) => {
+        const parsePreviewPromise = parseOwnerRepo(input, signal, this.blur).then((parsed) => {
             if (signal.aborted || !this.repoPreviewEl.isConnected) {
                 return;
             }
@@ -56,11 +62,7 @@ export class RepoParser {
             if (this.lastParsed?.input === url) {
                 return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
             }
-            await this.refresh();
-            if (this.lastParsed?.input === url) {
-                return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
-            }
         }
-        return parseOwnerRepo(url);
+        return parseOwnerRepo(url, undefined, this.blur);
     }
 }

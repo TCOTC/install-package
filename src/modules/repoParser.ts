@@ -14,6 +14,7 @@ export class RepoParser {
         private readonly urlInput: HTMLInputElement,
         private readonly versionInput: HTMLInputElement,
         private readonly repoPreviewEl: HTMLDivElement,
+        private readonly log: (...args: unknown[]) => void,
         private readonly onRepoResolved?: (repoLabel: string | null) => void,
         private readonly onInstallReady?: (ready: boolean) => void,
     ) {}
@@ -40,7 +41,7 @@ export class RepoParser {
         this.repoPreviewEl.textContent = i18n.repoPreviewParsing;
         this.repoPreviewEl.style.color = "";
         this.onInstallReady?.(false);
-        const parsePreviewPromise = parseOwnerRepo(input, signal, this.blur).then((parsed) => {
+        const parsePreviewPromise = parseOwnerRepo(input, this.log, signal, this.blur).then((parsed) => {
             if (signal.aborted || !this.repoPreviewEl.isConnected) {
                 return;
             }
@@ -83,6 +84,6 @@ export class RepoParser {
                 return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
             }
         }
-        return parseOwnerRepo(url, undefined, this.blur);
+        return parseOwnerRepo(url, this.log, undefined, this.blur);
     }
 }

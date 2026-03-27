@@ -122,8 +122,8 @@ export async function pathExists(path: string): Promise<boolean> {
     return response.code === 0 && Array.isArray(response.data);
 }
 
-export async function writeTempFile(fileBlob: Blob, path: string): Promise<boolean> {
-    console.log(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
+export async function writeTempFile(fileBlob: Blob, path: string, log: (...args: unknown[]) => void): Promise<boolean> {
+    log(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
 
     const result = await putFile({
         path,
@@ -131,86 +131,86 @@ export async function writeTempFile(fileBlob: Blob, path: string): Promise<boole
         file: fileBlob,
     });
 
-    console.log(`Write temporary file response: code=${result.code}`);
+    log(`Write temporary file response: code=${result.code}`);
 
     if (result.code !== 0) {
-        console.error(`Failed to write temporary file: ${result.msg}`);
+        log(`Failed to write temporary file: ${result.msg}`);
         message(`Failed to write temporary file: ${result.msg}`);
         return false;
     }
 
-    console.log(`Temporary file written successfully: ${path}`);
+    log(`Temporary file written successfully: ${path}`);
     return true;
 }
 
-export async function unzipFile(zipPath: string, extractPath: string): Promise<boolean> {
-    console.log(`Unzipping file: ${zipPath} -> ${extractPath}`);
+export async function unzipFile(zipPath: string, extractPath: string, log: (...args: unknown[]) => void): Promise<boolean> {
+    log(`Unzipping file: ${zipPath} -> ${extractPath}`);
 
     const response = await fetchSyncPost("/api/archive/unzip", {
         zipPath: zipPath,
         path: extractPath,
     });
 
-    console.log(`Unzip file response: code=${response.code}`);
+    log(`Unzip file response: code=${response.code}`);
 
     if (response.code !== 0) {
-        console.error(`Failed to unzip file: ${response.msg}`);
+        log(`Failed to unzip file: ${response.msg}`);
         message(`Failed to unzip file: ${response.msg}`);
         return false;
     }
 
-    console.log(`File unzipped successfully: ${zipPath} -> ${extractPath}`);
+    log(`File unzipped successfully: ${zipPath} -> ${extractPath}`);
     return true;
 }
 
-export async function removeFileOrDirectory(path: string): Promise<boolean> {
+export async function removeFileOrDirectory(path: string, log: (...args: unknown[]) => void): Promise<boolean> {
     const response = await fetchSyncPost("/api/file/removeFile", { path });
 
     if (response.code !== 0) {
-        console.warn(`Delete failed: ${path} - ${response.msg}`);
+        log(`Delete failed: ${path} - ${response.msg}`);
         message(`Delete failed: ${response.msg}`);
         return false;
     }
 
-    console.log(`Delete successful: ${path}`);
+    log(`Delete successful: ${path}`);
     return true;
 }
 
-export async function removeFiles(paths: string[]): Promise<void> {
+export async function removeFiles(paths: string[], log: (...args: unknown[]) => void): Promise<void> {
     const effectivePaths = paths.filter(path => typeof path === "string" && path.trim().length > 0);
     for (const path of effectivePaths) {
         const response = await fetchSyncPost("/api/file/removeFile", { path });
         if (response.code !== 0) {
-            console.warn(`Failed to clean up temporary file: ${path}`);
+            log(`Failed to clean up temporary file: ${path}`);
         }
     }
 }
 
 /** 删除目录（包括非空目录） */
-export async function clearDirectory(dirPath: string): Promise<boolean> {
-    console.log(`Starting to delete directory: ${dirPath}`);
+export async function clearDirectory(dirPath: string, log: (...args: unknown[]) => void): Promise<boolean> {
+    log(`Starting to delete directory: ${dirPath}`);
 
     if (!(await pathExists(dirPath))) {
-        console.log(`Directory does not exist: ${dirPath}, no need to delete`);
+        log(`Directory does not exist: ${dirPath}, no need to delete`);
         return true;
     }
 
-    console.log(`Deleting directory: ${dirPath}`);
-    const rm = await removeFileOrDirectory(dirPath);
+    log(`Deleting directory: ${dirPath}`);
+    const rm = await removeFileOrDirectory(dirPath, log);
     if (!rm) {
-        console.error(`Failed to delete directory: ${dirPath}`);
+        log(`Failed to delete directory: ${dirPath}`);
         return false;
     }
 
-    console.log(`Directory deleted successfully: ${dirPath}`);
+    log(`Directory deleted successfully: ${dirPath}`);
     return true;
 }
 
 /**
  * 复制到安装路径（整个目录复制，globalCopyFiles 会保留源目录名）
  */
-export async function copyToInstallPath(sourcePath: string, targetPath: string): Promise<boolean> {
-    console.log(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
+export async function copyToInstallPath(sourcePath: string, targetPath: string, log: (...args: unknown[]) => void): Promise<boolean> {
+    log(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
 
     const workspaceDir = window.siyuan.config.system.workspaceDir || "";
     const absoluteSourcePath = workspaceDir ? `${workspaceDir}/${sourcePath}` : sourcePath;
@@ -221,32 +221,32 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
 
     const sourceDirName = sourcePath.split("/").pop() || sourcePath;
 
-    console.log(`Workspace directory: ${workspaceDir}`);
-    console.log(`Absolute source path: ${absoluteSourcePath}`);
-    console.log(`Source directory name: ${sourceDirName}`);
-    console.log(`Target parent directory: ${destDir}`);
-    console.log(`Target directory name: ${targetDirName}`);
+    log(`Workspace directory: ${workspaceDir}`);
+    log(`Absolute source path: ${absoluteSourcePath}`);
+    log(`Source directory name: ${sourceDirName}`);
+    log(`Target parent directory: ${destDir}`);
+    log(`Target directory name: ${targetDirName}`);
 
     const response = await fetchSyncPost("/api/file/globalCopyFiles", {
         srcs: [absoluteSourcePath],
         destDir: destDir,
     });
 
-    console.log(`Copy directory response: code=${response.code}`, response);
+    log(`Copy directory response: code=${response.code}`, response);
 
     if (response.code !== 0) {
         message(`Failed to copy directory: ${response.msg}`);
         return false;
     }
 
-    console.log(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
+    log(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
 
     if (sourceDirName !== targetDirName) {
-        console.warn("Warning: Source and target directory names do not match!");
-        console.warn("This should not happen. The directory may have been copied with the wrong name.");
+        log("Warning: Source and target directory names do not match!");
+        log("This should not happen. The directory may have been copied with the wrong name.");
     }
 
-    console.log(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
+    log(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
     return true;
 }
 
@@ -254,12 +254,12 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
 //  * 重命名目录
 //  */
 // export async function renameDirectory(oldPath: string, newPath: string): Promise<void> {
-//     console.log(`Renaming directory: ${oldPath} -> ${newPath}`);
+//     logInfo(`Renaming directory: ${oldPath} -> ${newPath}`);
 //
 //     if (await pathExists(newPath)) {
-//         console.log(`Target path already exists: ${newPath}, deleting it first`);
+//         logInfo(`Target path already exists: ${newPath}, deleting it first`);
 //         await clearDirectory(newPath);
-//         console.log(`Cleared target path: ${newPath}`);
+//         logInfo(`Cleared target path: ${newPath}`);
 //     }
 //
 //     const responseData = await fetchSyncPost("/api/file/renameFile", {
@@ -267,11 +267,11 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string):
 //         newPath: newPath,
 //     });
 //
-//     console.log(`Rename response: code=${responseData.code}`, responseData);
+//     logInfo(`Rename response: code=${responseData.code}`, responseData);
 //
 //     if (responseData.code !== 0) {
 //         throw new Error(`Failed to rename directory: ${responseData.msg}`);
 //     }
 //
-//     console.log(`Directory renamed successfully: ${oldPath} -> ${newPath}`);
+//     logInfo(`Directory renamed successfully: ${oldPath} -> ${newPath}`);
 // }

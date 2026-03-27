@@ -1,22 +1,20 @@
-// 安装面板：主栏 + 侧栏 flex-wrap，由页签内容区宽度自然换行，不依赖视口 @media
+// 使用容器查询而不是视口媒体查询，确保页签宽度改变时能正确自适应
 .install-package {
-    &__panel {
+    &__layout {
         align-content: stretch;
         align-items: stretch;
         background-color: var(--b3-theme-background);
         box-sizing: border-box;
         container-type: inline-size;
-        column-gap: 28px;
         display: flex;
         flex-wrap: wrap;
+        gap: 20px 28px;
         height: 100%;
         min-height: 0;
         padding: 24px 28px 20px;
-        row-gap: 20px;
     }
 
-    // 左侧主栏：与侧栏同一 flex 行时占满剩余宽度；空间不足时整块换行
-    &__main {
+    &__content {
         display: flex;
         flex: 1 1 320px;
         flex-direction: column;
@@ -25,102 +23,29 @@
         min-width: min(100%, 280px);
     }
 
-    &__url-label {
-        min-width: 0;
-    }
-
-    &__url-row {
-        align-items: stretch;
+    &__section {
         display: flex;
-        gap: 12px;
-        min-width: 0;
-    }
-
-    &__left-mid {
-        min-width: 0;
-    }
-
-    &__left-bottom {
-        display: flex;
-        flex: 1 1 auto;
         flex-direction: column;
         gap: 12px;
         min-height: 0;
         min-width: 0;
     }
 
-    // 右侧栏：与主栏并排时限制最大宽度；换行后仍受 max-width 约束（不强行拉满视口）
-    &__right-col {
-        align-self: stretch;
-        border-left: 1px solid var(--b3-border-color);
-        box-sizing: border-box;
-        display: flex;
-        flex: 1 1 240px;
-        flex-direction: column;
-        max-width: min(100%, 300px);
-        min-height: 0;
-        min-width: min(100%, 220px);
-        padding-left: 24px;
+    &__section--compact {
+        // 信息区只占可用高度的一部分，避免把日志区挤到不可读
+        flex: 0 1 auto;
+        max-height: 50%;
+        min-height: 96px;
+        overflow: hidden;
     }
 
-    // 与左侧「标签 + 与输入行之间的 gap」总高度近似对齐，使安装按钮与 URL 输入行大致同高
-    &__right-top-spacer {
-        flex-shrink: 0;
-        min-height: calc(12px * 1.45 + 20px);
-    }
-
-    &__install {
-        align-self: stretch;
-        flex-shrink: 0;
-        margin-bottom: 14px;
-        width: 100%;
-    }
-
-    &__right-lower {
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
+    &__section--grow {
+        // 日志区优先伸展，保证长日志有足够滚动空间
+        flex: 1 1 0;
         min-height: 0;
     }
 
-    &__enable-row {
-        align-items: center;
-        display: flex;
-        flex-shrink: 0;
-        gap: 14px;
-        justify-content: space-between;
-    }
-
-    &__enable-label {
-        color: var(--b3-theme-on-surface);
-        flex: 1;
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 1.45;
-        min-width: 0;
-        user-select: text;
-    }
-
-    &__right-fill {
-        flex: 1 1 auto;
-        min-height: 12px;
-    }
-
-    &__shortcuts {
-        display: flex;
-        flex-direction: column;
-        flex-shrink: 0;
-        gap: 10px;
-        margin-top: auto;
-    }
-
-    &__field {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    &__label {
+    &__section-title {
         color: var(--b3-theme-on-surface-light);
         font-size: 12px;
         font-weight: 500;
@@ -129,28 +54,73 @@
         user-select: text;
     }
 
-    &__input-url {
-        flex: 1;
+    &__row {
+        align-items: stretch;
+        display: flex;
+        gap: 12px;
         min-width: 0;
     }
 
-    &__package-info-card {
+    &__input {
+        min-width: 0;
+    }
+
+    &__input--url {
+        flex: 1;
+    }
+
+    &__details {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 0;
+        min-width: 0;
+    }
+
+    &__card {
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
         box-sizing: border-box;
         display: flex;
-        flex: 1;
         flex-direction: column;
         gap: 12px;
-        min-height: 120px;
-        overflow: auto;
+        min-height: 0;
+        min-width: 0;
         padding: 14px 16px;
     }
 
-    &__package-info-placeholder {
+    &__card--info {
+        flex: 0 1 auto;
+        min-height: 96px;
+        max-height: 100%;
+        overflow: auto;
+    }
+
+    &__card--process {
+        color: var(--b3-theme-on-surface);
+        flex: 1 1 0;
+        font-family: var(--b3-font-family-code);
+        font-size: 12px;
+        gap: 8px;
+        line-height: 1.55;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        user-select: text;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    &__package-info-placeholder,
+    &__process-placeholder {
         color: var(--b3-theme-on-surface-light);
         font-size: 12px;
         line-height: 1.55;
+        margin: 0;
+    }
+
+    &__process-line {
         margin: 0;
     }
 
@@ -163,14 +133,79 @@
         padding-top: 12px;
     }
 
-    &__enable-row .b3-switch {
+    &__sidebar {
+        align-self: stretch;
+        border-left: 1px solid var(--b3-border-color);
+        box-sizing: border-box;
+        display: flex;
+        flex: 1 1 240px;
+        flex-direction: column;
+        max-width: min(100%, 300px);
+        min-height: 0;
+        min-width: min(100%, 220px);
+        padding-left: 24px;
+    }
+
+    // 预留顶部空白，让侧栏主按钮与左侧 URL 行在视觉上横向对齐
+    &__sidebar-spacer {
+        flex-shrink: 0;
+        min-height: calc(12px * 1.45 + 12px);
+    }
+
+    &__install {
+        align-self: stretch;
+        flex-shrink: 0;
+        margin-bottom: 14px;
+        width: 100%;
+    }
+
+    &__sidebar-content {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    &__switch-row {
+        align-items: center;
+        display: flex;
+        flex-shrink: 0;
+        gap: 14px;
+        justify-content: space-between;
+    }
+
+    &__switch-label {
+        color: var(--b3-theme-on-surface);
+        flex: 1;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.45;
+        min-width: 0;
+        user-select: text;
+    }
+
+    &__sidebar-fill {
+        flex: 1 1 auto;
+        min-height: 12px;
+    }
+
+    &__actions {
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        gap: 10px;
+        margin-top: auto;
+    }
+
+    &__switch-row .b3-switch {
         flex-shrink: 0;
     }
 }
 
 @container (max-width: 760px) {
     .install-package {
-        &__right-col {
+        &__sidebar {
+            // 换行后改为顶部边框，避免继续保留左边框
             border-left: none;
             border-top: 1px solid var(--b3-border-color);
             max-width: none;
@@ -179,7 +214,7 @@
             width: 100%;
         }
 
-        &__right-top-spacer {
+        &__sidebar-spacer {
             display: none;
         }
     }

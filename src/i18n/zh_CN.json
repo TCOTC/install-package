@@ -17,6 +17,8 @@
   "enableOptionDisable": "禁用集市包（插件、主题、图标）",
   "packageInfoTitle": "集市包信息",
   "packageInfoPlaceholder": "解析后的集市包详情（名称、类型、版本等）将显示在此处，当前尚未接入。",
+  "installProcessTitle": "日志",
+  "installProcessPlaceholder": "点击“安装集市包”后，这里会显示日志。",
   "invalidUrl": "请输入有效的 GitHub 仓库 URL 或 user/repo 格式，例如：https://github.com/siyuan-note/bazaar/pull/xxxx 或 https://github.com/user/repo 或 user/repo",
   "repoInfoError": "无法获取仓库信息，请检查仓库是否存在",
   "releaseInfoError": "无法获取 {version} 版本的 Release 信息",

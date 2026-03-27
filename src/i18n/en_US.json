@@ -17,6 +17,8 @@
   "enableOptionDisable": "Disable package (plugin, theme, icon)",
   "packageInfoTitle": "Package information",
   "packageInfoPlaceholder": "Parsed package details (name, type, version, etc.) will appear here. Not wired up yet.",
+  "installProcessTitle": "Logs",
+  "installProcessPlaceholder": "Logs will appear here after clicking \"Install package\".",
   "invalidUrl": "Please enter a valid GitHub repository URL or user/repo format, e.g.: https://github.com/siyuan-note/bazaar/pull/xxxx or https://github.com/user/repo or user/repo",
   "repoInfoError": "Unable to get repository information, please check if the repository exists",
   "releaseInfoError": "Unable to get Release information for version {version}",

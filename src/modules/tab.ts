@@ -62,7 +62,8 @@ export interface InstallTabPanelCallbacks {
         urlInput: HTMLInputElement,
         versionInput: HTMLInputElement,
         enable: boolean,
-        repoUrlController: RepoParser
+        repoUrlController: RepoParser,
+        log: (...args: unknown[]) => void
     ) => void | Promise<void>;
     openDirectory: (relPath: string) => void;
     openDevTools: () => void;
@@ -76,37 +77,49 @@ export function initInstallPanel(custom: Custom, callbacks: InstallTabPanelCallb
     const root = custom.element as HTMLElement;
     // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
     root.innerHTML = `
-    <div class="install-package__panel">
-        <div class="install-package__main">
-            <div class="install-package__url-label install-package__label">${i18n.urlLabel}</div>
-            <div class="install-package__url-row">
-                <input data-type="url" class="b3-text-field install-package__input-url" value="" placeholder="https://github.com/user/repo" spellcheck="false">
-                <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
-            </div>
-            <div class="install-package__left-mid">
-                <section class="install-package__field">
-                    <div class="install-package__label">${i18n.versionLabel}</div>
-                    <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
+    <div class="install-package__layout">
+        <main class="install-package__content">
+            <section class="install-package__section">
+                <div class="install-package__section-title">${i18n.urlLabel}</div>
+                <div class="install-package__row">
+                    <input data-type="url" class="b3-text-field install-package__input install-package__input--url" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+                    <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
+                </div>
+            </section>
+
+            <section class="install-package__section">
+                <div class="install-package__section-title">${i18n.versionLabel}</div>
+                <input data-type="version" class="b3-text-field fn__block install-package__input" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
+            </section>
+
+            <div class="install-package__details">
+                <section class="install-package__section install-package__section--compact">
+                    <div class="install-package__section-title">${i18n.packageInfoTitle}</div>
+                    <div class="install-package__card install-package__card--info">
+                        <p class="install-package__package-info-placeholder">${i18n.packageInfoPlaceholder}</p>
+                        <div data-type="repo-preview" class="install-package__preview b3-label__text">${i18n.repoPreviewTip}</div>
+                    </div>
+                </section>
+
+                <section data-type="install-process-section" class="install-package__section install-package__section--grow">
+                    <div class="install-package__section-title">${i18n.installProcessTitle}</div>
+                    <div data-type="install-process-log" class="install-package__card install-package__card--process">
+                        <p class="install-package__process-placeholder">${i18n.installProcessPlaceholder}</p>
+                    </div>
                 </section>
             </div>
-            <div class="install-package__left-bottom">
-                <div class="install-package__label">${i18n.packageInfoTitle}</div>
-                <div class="install-package__package-info-card">
-                    <p class="install-package__package-info-placeholder">${i18n.packageInfoPlaceholder}</p>
-                    <div data-type="repo-preview" class="install-package__preview b3-label__text">${i18n.repoPreviewTip}</div>
-                </div>
-            </div>
-        </div>
-        <aside class="install-package__right-col">
-            <div class="install-package__right-top-spacer" aria-hidden="true"></div>
+        </main>
+
+        <aside class="install-package__sidebar">
+            <div class="install-package__sidebar-spacer" aria-hidden="true"></div>
             <button data-type="install" type="button" class="b3-button install-package__install" disabled>${i18n.installPackageButton}</button>
-            <div class="install-package__right-lower">
-                <div class="install-package__enable-row">
-                    <span class="install-package__enable-label">${i18n.enableAfterInstall}</span>
+            <div class="install-package__sidebar-content">
+                <div class="install-package__switch-row">
+                    <span class="install-package__switch-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enable" type="checkbox" class="b3-switch fn__flex-center">
                 </div>
-                <div class="install-package__right-fill" aria-hidden="true"></div>
-                <div class="install-package__shortcuts">
+                <div class="install-package__sidebar-fill" aria-hidden="true"></div>
+                <div class="install-package__actions install-package__shortcuts">
                     <button data-type="shortcut-action" data-action="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
                     <button data-type="open-directory" data-path="data/plugins" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/plugins">${i18n.openPluginsDir}</button>
                     <button data-type="open-directory" data-path="data/storage/petal" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/storage/petal">${i18n.openPetalDir}</button>
@@ -125,6 +138,36 @@ export function initInstallPanel(custom: Custom, callbacks: InstallTabPanelCallb
     const versionInput = root.querySelector("input[data-type='version']") as HTMLInputElement;
     const enableCheckbox = root.querySelector("input[data-type='enable']") as HTMLInputElement;
     const installButton = root.querySelector("button[data-type='install']") as HTMLButtonElement;
+    const installProcessLog = root.querySelector("div[data-type='install-process-log']") as HTMLDivElement;
+
+    const installProcessReporter = {
+        append(text: string) {
+            const item = document.createElement("p");
+            item.className = "install-package__process-line";
+            item.textContent = text;
+            installProcessLog.append(item);
+            installProcessLog.scrollTop = installProcessLog.scrollHeight;
+        },
+        clear() {
+            installProcessLog.innerHTML = "";
+        },
+    };
+    const log = (...args: unknown[]) => {
+        const text = args.map((arg) => {
+            if (typeof arg === "string") {
+                return arg;
+            }
+            if (arg instanceof Error) {
+                return arg.stack || arg.message;
+            }
+            try {
+                return JSON.stringify(arg);
+            } catch {
+                return String(arg);
+            }
+        }).join(" ");
+        installProcessReporter.append(text);
+    };
 
     const panelData = normalizeInstallTabPanelData(custom);
     urlInput.value = panelData.url;
@@ -152,6 +195,7 @@ export function initInstallPanel(custom: Custom, callbacks: InstallTabPanelCallb
         urlInput,
         versionInput,
         repoPreviewEl,
+        log,
         (repoLabel) => {
             custom.tab.updateTitle(repoLabel ?? i18n.title);
         },
@@ -180,7 +224,7 @@ export function initInstallPanel(custom: Custom, callbacks: InstallTabPanelCallb
         if (installButton.disabled) {
             return;
         }
-        callbacks.installPackage(urlInput, versionInput, getEnableValue(), repoUrlController);
+        callbacks.installPackage(urlInput, versionInput, getEnableValue(), repoUrlController, log);
     };
 
     // 回车安装

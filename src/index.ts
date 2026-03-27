@@ -113,34 +113,38 @@ export default class InstallPackage extends Plugin {
         urlInput: HTMLInputElement,
         versionInput: HTMLInputElement,
         enable: boolean,
-        repoUrlController: RepoParser
+        repoUrlController: RepoParser,
+        log: (...args: unknown[]) => void
     ) => {
         const url = urlInput.value.trim();
         const version = versionInput.value.trim();
-
-        const parsed = await repoUrlController.ownerRepoForUrl(url);
-        if (!parsed) {
-            message(i18n.invalidUrl);
-            return;
-        }
-        const { owner, repo } = parsed;
-
-        const repoLockKey = `${owner}/${repo}`.toLowerCase();
-        if (this.installInFlight.has(repoLockKey)) {
-            console.warn(repoLockKey + " is already in download queue");
-            return;
-        }
-        this.installInFlight.add(repoLockKey);
+        let repoLockKey = "";
 
         try {
-            console.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
-            const releaseInfo = await getReleaseInfo(owner, repo, version);
+            const parsed = await repoUrlController.ownerRepoForUrl(url);
+            if (!parsed) {
+                message(i18n.invalidUrl);
+                log(i18n.invalidUrl);
+                return;
+            }
+            const { owner, repo } = parsed;
+
+            repoLockKey = `${owner}/${repo}`.toLowerCase();
+            if (this.installInFlight.has(repoLockKey)) {
+                log(`${repoLockKey} is already in download queue`);
+                return;
+            }
+            this.installInFlight.add(repoLockKey);
+
+            log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
+            const releaseInfo = await getReleaseInfo(owner, repo, version, log);
             if (!releaseInfo) {
                 message(i18n.releaseInfoError.replace("{version}", version || "latest"));
+                log(i18n.releaseInfoError.replace("{version}", version || "latest"));
                 return;
             }
             // Release 信息
-            console.log("Release description:", releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : ""));
+            log("Release description: " + (releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : "")));
 
             message(i18n.foundRelease
                 .replace("{tagName}", releaseInfo.tag_name)
@@ -154,6 +158,7 @@ export default class InstallPackage extends Plugin {
             const packageZip = findPackageZip(releaseInfo.assets);
             if (!packageZip) {
                 message(i18n.packageZipNotFound);
+                log(i18n.packageZipNotFound);
                 return;
             }
 
@@ -163,18 +168,22 @@ export default class InstallPackage extends Plugin {
                 // 超过此大小的 package.zip 下载前需用户手动确认（20 MB）
                 const proceed = await this.confirmDownload(packageZip.name, packageZip.size, LARGE_PACKAGE_THRESHOLD_BYTES);
                 if (!proceed) {
+                    log("User canceled download");
                     return;
                 }
             }
 
             message(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)), true);
-            const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name);
+            log(i18n.downloading.replace("{fileName}", packageZip.name).replace("{fileSize}", formatFileSize(packageZip.size)));
+            const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name, log);
             if (!downloadResult) {
+                log(i18n.downloadFailed.replace("{error}", "download package failed"));
                 return;
             }
 
-            const installResult = await installPackage(downloadResult);
+            const installResult = await installPackage(downloadResult, log);
             if (!installResult) {
+                log(i18n.packageInstallFailed);
                 return;
             }
 
@@ -182,7 +191,8 @@ export default class InstallPackage extends Plugin {
                 await setPackageEnabled(
                     installResult.packageType,
                     installResult.packageName,
-                    enable
+                    enable,
+                    log
                 );
             }
 
@@ -190,7 +200,7 @@ export default class InstallPackage extends Plugin {
             if (["plugin", "theme", "icon"].includes(installResult.packageType)) {
                 // 挂件和模板没有「启用」的概念
                 autoEnabledText = enable ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
-                console.log(i18n.downloadSuccess
+                log(i18n.downloadSuccess
                     .replace("{autoEnabled}", enable ? i18n.autoEnabled : i18n.enableManually
                 ));
             }
@@ -200,13 +210,19 @@ export default class InstallPackage extends Plugin {
                 .replace("{autoEnabled}", autoEnabledText),
                 true
             );
+            log(i18n.packageInstalledSuccess
+                .replace("{packageType}", installResult.packageType)
+                .replace("{packageName}", installResult.packageName)
+                .replace("{autoEnabled}", autoEnabledText));
 
             return;
         } catch (error) {
-            console.error("InstallPackage error:", error);
+            log("InstallPackage error:", error);
             message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)));
         } finally {
-            this.installInFlight.delete(repoLockKey);
+            if (repoLockKey) {
+                this.installInFlight.delete(repoLockKey);
+            }
         }
     };
 
@@ -257,8 +273,6 @@ export default class InstallPackage extends Plugin {
      */
     private async openDirectory(relPath: string): Promise<void> {
         try {
-            console.log(`Opening directory: ${relPath}`);
-
             if (!electron) {
                 message(i18n.openDirectoryFailed + i18n.openDirectoryNoElectron);
                 return;

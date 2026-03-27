@@ -2,7 +2,7 @@ import { i18n } from "./i18n";
 import { extractPackageNameFromUrl } from "./github";
 import { message } from "./message";
 
-export async function downloadPackage(downloadUrl: string, fileName: string): Promise<{
+export async function downloadPackage(downloadUrl: string, fileName: string, log: (...args: unknown[]) => void): Promise<{
     blob: Blob;
     fileName: string;
     packageName: string;
@@ -15,7 +15,7 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
         let response: Response;
         try {
             // 下载远程文件
-            console.log("Downloading file from GitHub:", downloadUrl);
+            log("Downloading file from GitHub:", downloadUrl);
             response = await fetch(downloadUrl, {
                 signal: controller.signal,
             });
@@ -41,13 +41,13 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
         }
 
         // 读取并校验 ZIP 文件
-        const blob = await readZipBody(response);
+        const blob = await readZipBody(response, log);
         if (!blob) {
             message(i18n.fileValidationFailed);
             return null;
         }
 
-        console.log("File validation passed");
+        log("File validation passed");
 
         // 从 URL 解析包名（与 install 阶段解压目录名、元数据校验一致）
         const packageName = extractPackageNameFromUrl(downloadUrl);
@@ -55,12 +55,12 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
             message(i18n.packageNameFromUrlFailed);
             return null;
         }
-        console.log(`Package name extracted from URL: ${packageName}`);
+        log(`Package name extracted from URL: ${packageName}`);
 
         return { blob, fileName, packageName };
     } catch (error) {
         // 兜底：未预期的异常
-        console.error("Failed to download package:", error);
+        log("Failed to download package:", error);
         const msg = error instanceof Error ? error.message : String(error);
         message(i18n.downloadFailed.replace("{error}", msg));
         return null;
@@ -71,12 +71,12 @@ export async function downloadPackage(downloadUrl: string, fileName: string): Pr
  * 流式读满 4 字节校验 ZIP 本地文件头后再读完，避免整包读入后再发现非 ZIP；非 ZIP 时尽早 cancel。
  * 校验通过后以 chunk 拼成 Blob，避免再分配整块 Uint8Array 拷贝。
  */
-async function readZipBody(response: Response): Promise<Blob | null> {
+async function readZipBody(response: Response, log: (...args: unknown[]) => void): Promise<Blob | null> {
     try {
         // 正常 GET 成功时 body 为 ReadableStream；为 null 时无法按块读取
         const stream = response.body;
         if (!stream) {
-            console.error("Response body stream is unavailable");
+            log("Response body stream is unavailable");
             return null;
         }
 
@@ -100,11 +100,11 @@ async function readZipBody(response: Response): Promise<Blob | null> {
             }
             if (done) {
                 if (prefixFilled === 0) {
-                    console.error("File size is 0");
+                    log("File size is 0");
                     return null;
                 }
                 if (prefixFilled < 4) {
-                    console.error("ZIP file header validation failed");
+                    log("ZIP file header validation failed");
                     return null;
                 }
                 break;
@@ -119,7 +119,7 @@ async function readZipBody(response: Response): Promise<Blob | null> {
             prefix[3] !== 0x04
         ) {
             await reader.cancel();
-            console.error("ZIP file header validation failed");
+            log("ZIP file header validation failed");
             return null;
         }
 
@@ -137,7 +137,7 @@ async function readZipBody(response: Response): Promise<Blob | null> {
         // TS 5.7+ 中 Uint8Array 默认带 ArrayBufferLike，与 BlobPart 的 ArrayBuffer 狭义定义不兼容，运行时与流式 chunk 一致
         return new Blob([prefix, ...restChunks] as BlobPart[]);
     } catch (error) {
-        console.error("File validation failed:", error);
+        log("File validation failed:", error);
         return null;
     }
 }

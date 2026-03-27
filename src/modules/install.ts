@@ -62,11 +62,11 @@ export async function getPackageType(packagePath: string): Promise<string | null
     return foundTypes[0];
 }
 
-export async function getPackageName(extractPath: string, packageType: string): Promise<string | null> {
-    console.log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
+export async function getPackageName(extractPath: string, packageType: string, log: (...args: unknown[]) => void): Promise<string | null> {
+    log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
     const metadataPath = `${extractPath}/${packageType}.json`;
-    console.log(`Reading package metadata file: ${metadataPath}`);
+    log(`Reading package metadata file: ${metadataPath}`);
     const fileResult = await getFile(metadataPath);
     if (fileResult.ok === false) {
         message(i18n.getPackageNameError.replace("{error}", fileResult.msg || `code ${fileResult.code}`,));
@@ -79,7 +79,7 @@ export async function getPackageName(extractPath: string, packageType: string): 
         message(i18n.getPackageNameError.replace("{error}", i18n.metadataFileInvalidJson));
         return null;
     }
-    console.log("Package metadata:", packageMetadata);
+    log("Package metadata:", packageMetadata);
 
     const packageName = (packageMetadata.name ?? packageMetadata.packageName) as string | undefined;
 
@@ -88,7 +88,7 @@ export async function getPackageName(extractPath: string, packageType: string): 
         return null;
     }
 
-    console.log(`Package name extracted from metadata: ${packageName}`);
+    log(`Package name extracted from metadata: ${packageName}`);
 
     if (typeof packageName !== "string" || packageName.trim() === "") {
         message(i18n.invalidPackageName.replace("{name}", String(packageName)));
@@ -148,56 +148,57 @@ function getSwitchAppearanceMode(modes: number[]): string {
 export async function setPackageEnabled(
     packageType: string,
     packageName: string,
-    enabled: boolean
+    enabled: boolean,
+    log: (...args: unknown[]) => void
 ): Promise<void> {
     switch (packageType) {
         case "plugin": {
             const action = enabled ? "enable" : "disable";
-            console.log(`Attempting to ${action} plugin: ${packageName}`);
+            log(`Attempting to ${action} plugin: ${packageName}`);
             const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
                 packageName: packageName,
                 enabled: enabled,
                 frontend: getFrontend(),
             });
             if (response.code === 0) {
-                console.log(`Plugin ${packageName} ${action}d successfully`);
+                log(`Plugin ${packageName} ${action}d successfully`);
                 return;
             }
-            console.error(`Failed to ${action} plugin: ${response.msg}`);
+            log(`Failed to ${action} plugin: ${response.msg}`);
             const tpl = enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed;
             message(tpl.replace("{error}", String(response.msg ?? "")));
         }
         case "theme": {
             const response = await fetchSyncPost("/api/ui/reloadTheme", {});
             if (response.code !== 0) {
-                console.error(`reloadTheme before setTheme failed: ${response.msg}`);
+                log(`reloadTheme before setTheme failed: ${response.msg}`);
                 message(i18n.themeReloadFailed);
                 return;
             }
             if (enabled) {
                 const modes = await getSetThemeModes(packageName);
                 const appearanceMode = getSwitchAppearanceMode(modes);
-                console.log(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
+                log(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
                 const response = await fetchSyncPost("/api/setting/setTheme", {
                     theme: packageName,
                     modes,
                     appearanceMode, // 值为空字符串时不影响内核处理
                 });
                 if (response.code === 0) {
-                    console.log(`Theme ${packageName} applied successfully`);
+                    log(`Theme ${packageName} applied successfully`);
                     return;
                 }
-                console.error(`Failed to apply theme: ${response.msg}`);
+                log(`Failed to apply theme: ${response.msg}`);
                 message(i18n.enablePackageFailed.replace("{error}", String(response.msg ?? "")));
                 return;
             }
             // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题（在调用 reloadTheme 之前获取当前的主题和外观模式，就知道了）
-            console.log(`Theme ${packageName} installed (not switching)`);
+            log(`Theme ${packageName} installed (not switching)`);
         }
         case "icon": {
             const response = await fetchSyncPost("/api/ui/reloadIcon", {});
             if (response.code !== 0) {
-                console.error(`reloadIcon before setAppearance failed: ${response.msg}`);
+                log(`reloadIcon before setAppearance failed: ${response.msg}`);
                 message(i18n.iconReloadFailed);
                 return;
             }
@@ -205,19 +206,19 @@ export async function setPackageEnabled(
                 // TODO 这个接口在 v3.6.2 才支持，要修改 plugin.json 的 minAppVersion 为 3.6.2
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {
-                    console.log(`Icon ${packageName} applied successfully`);
+                    log(`Icon ${packageName} applied successfully`);
                     return;
                 }
-                console.error(`Failed to apply icon: ${response.msg}`);
+                log(`Failed to apply icon: ${response.msg}`);
                 message(i18n.enablePackageFailed.replace("{error}", String(response.msg ?? "")));
                 return;
             }
             // TODO 如果当前正在使用该图标，需要将图标切换回默认图标（在调用 reloadIcon 之前获取当前的图标，就知道了）
-            console.log(`Icon ${packageName} installed (not switching)`);
+            log(`Icon ${packageName} installed (not switching)`);
             return;
         }
         default: {
-            console.log(`${packageType} ${packageName} installed`);
+            log(`${packageType} ${packageName} installed`);
         }
     }
 }
@@ -227,7 +228,7 @@ export async function installPackage(pack: {
     blob: Blob | null;
     fileName: string;
     packageName: string;
-}): Promise<{
+}, log: (...args: unknown[]) => void): Promise<{
     packageType: string;
     packageName: string
 } | null> {
@@ -243,8 +244,8 @@ export async function installPackage(pack: {
         const extractBaseDir = extractPath ? extractPath.substring(0, extractPath.lastIndexOf("/")) : "";
         const pathsToClean = [tempPath, extractBaseDir].filter(Boolean);
         if (pathsToClean.length > 0) {
-            console.log(`Cleaning up temporary files: ${pathsToClean.join(", ")}`);
-            await removeFiles(pathsToClean);
+            log(`Cleaning up temporary files: ${pathsToClean.join(", ")}`);
+            await removeFiles(pathsToClean, log);
         }
     };
 
@@ -258,45 +259,45 @@ export async function installPackage(pack: {
         return { packageType, packageName: pkgName };
     };
 
-    console.log(`Starting package installation: ${fileName}, name: ${packageName}`);
+    log(`Starting package installation: ${fileName}, name: ${packageName}`);
 
     const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const tempFileName = `temp_${tempId}_${fileName}`;
     tempPath = `temp/export/${tempFileName}`;
-    console.log(`Creating temporary file: ${tempPath}`);
+    log(`Creating temporary file: ${tempPath}`);
 
-    if (!(await writeTempFile(blob, tempPath))) {
+    if (!(await writeTempFile(blob, tempPath, log))) {
         return bail();
     }
     // 内核已落盘，去掉渲染进程侧对整包 ZIP 的引用（含调用方 downloadResult.blob）
     pack.blob = null;
-    console.log(`Temporary file written successfully: ${tempPath}`);
+    log(`Temporary file written successfully: ${tempPath}`);
 
     extractPath = `temp/export/extract_${tempId}/${packageName}`;
-    console.log(`Extracting to final directory: ${extractPath}`);
-    if (!(await unzipFile(tempPath, extractPath))) {
+    log(`Extracting to final directory: ${extractPath}`);
+    if (!(await unzipFile(tempPath, extractPath, log))) {
         return bail();
     }
-    console.log(`Extraction completed: ${extractPath}`);
+    log(`Extraction completed: ${extractPath}`);
 
     const packageType = await getPackageType(extractPath);
     if (!packageType) {
         return bail();
     }
-    console.log(`Package type detected: ${packageType}`);
+    log(`Package type detected: ${packageType}`);
 
     const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
-    console.log("Extracted directory contents:", extractDirData);
+    log("Extracted directory contents:", extractDirData);
 
-    const metadataPackageName = await getPackageName(extractPath, packageType);
+    const metadataPackageName = await getPackageName(extractPath, packageType, log);
     if (!metadataPackageName) {
         return bail();
     }
-    console.log(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
+    log(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
 
     if (metadataPackageName !== packageName) {
         const errorMsg = `Package name mismatch: metadata ${metadataPackageName}, repo ${packageName}`;
-        console.error(errorMsg);
+        log(errorMsg);
         message(i18n.packageNameMismatch
             .replace("{metadataName}", metadataPackageName)
             .replace("{repoName}", packageName),
@@ -304,33 +305,33 @@ export async function installPackage(pack: {
         return bail();
     }
 
-    console.log("Package name verification passed");
+    log("Package name verification passed");
 
     const installPath = `${getInstallPath(packageType)}/${packageName}`;
-    console.log(`Final package name: ${packageName}`);
-    console.log(`Target installation path: ${installPath}`);
+    log(`Final package name: ${packageName}`);
+    log(`Target installation path: ${installPath}`);
 
     if (await pathExists(installPath)) {
-        console.log(`Target directory already exists: ${installPath}`);
+        log(`Target directory already exists: ${installPath}`);
         message(i18n.targetDirExists.replace("{path}", installPath), true);
 
-        if (!(await clearDirectory(installPath))) {
+        if (!(await clearDirectory(installPath, log))) {
             return bail();
         }
-        console.log(`Cleared old package files: ${installPath}`);
+        log(`Cleared old package files: ${installPath}`);
     } else {
-        console.log(`Target directory does not exist: ${installPath}`);
+        log(`Target directory does not exist: ${installPath}`);
     }
 
-    console.log(`Starting to copy files from ${extractPath} to ${installPath}`);
-    if (!(await copyToInstallPath(extractPath, installPath))) {
+    log(`Starting to copy files from ${extractPath} to ${installPath}`);
+    if (!(await copyToInstallPath(extractPath, installPath, log))) {
         return bail();
     }
-    console.log(`File copy completed: ${installPath}`);
+    log(`File copy completed: ${installPath}`);
 
     const installDirData = await fetchSyncPost("/api/file/readDir", { path: installPath });
-    console.log("Post-installation directory contents:", installDirData);
+    log("Post-installation directory contents:", installDirData);
 
-    console.log(`Package installed successfully: ${packageName}`);
+    log(`Package installed successfully: ${packageName}`);
     return succeed(packageType, packageName);
 }

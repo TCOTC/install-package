@@ -147,6 +147,7 @@ export type GitHubIssue = operations["issues/get"]["responses"][200]["content"][
 
 async function fetchGitHubJson<T>(
     url: string,
+    log: (...args: unknown[]) => void,
     errorLabel: string,
     signal?: AbortSignal,
     onBeforeAuthDialog?: BeforeAuthDialogHandler
@@ -169,7 +170,7 @@ async function fetchGitHubJson<T>(
         return (await response.json()) as T;
     } catch (error) {
         if (!(error instanceof Error && error.name === "AbortError")) {
-            console.error(errorLabel, error);
+            log(errorLabel, error);
             message(errorLabel + (error instanceof Error ? error.message : String(error)));
         }
         return null;
@@ -179,28 +180,30 @@ async function fetchGitHubJson<T>(
 export async function getRepositoryInfo(
     owner: string,
     repo: string,
+    log: (...args: unknown[]) => void,
     signal?: AbortSignal,
     onBeforeAuthDialog?: BeforeAuthDialogHandler
 ): Promise<GitHubRepository | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}`;
-    return fetchGitHubJson<GitHubRepository>(url, i18n.githubGetRepositoryInfoFailed, signal, onBeforeAuthDialog);
+    return fetchGitHubJson<GitHubRepository>(url, log, i18n.githubGetRepositoryInfoFailed, signal, onBeforeAuthDialog);
 }
 
-export async function getReleaseInfo(owner: string, repo: string, version: string): Promise<GitHubRelease | null> {
+export async function getReleaseInfo(owner: string, repo: string, version: string, log: (...args: unknown[]) => void): Promise<GitHubRelease | null> {
     const url = version
         ? `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(version)}`
         : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
-    return fetchGitHubJson<GitHubRelease>(url, i18n.githubGetReleaseInfoFailed);
+    return fetchGitHubJson<GitHubRelease>(url, log, i18n.githubGetReleaseInfoFailed);
 }
 
 async function getGitHubIssueTitle(
     owner: string,
     repo: string,
     issueNumber: number,
+    log: (...args: unknown[]) => void,
     signal?: AbortSignal
 ): Promise<string | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
-    const data = await fetchGitHubJson<GitHubIssue>(url, i18n.githubGetIssueFailed, signal);
+    const data = await fetchGitHubJson<GitHubIssue>(url, log, i18n.githubGetIssueFailed, signal);
     return data?.title ?? null;
 }
 
@@ -211,6 +214,7 @@ async function getGitHubIssueTitle(
  */
 export async function parseOwnerRepo(
     input: string,
+    log: (...args: unknown[]) => void,
     signal?: AbortSignal,
     onBeforeAuthDialog?: BeforeAuthDialogHandler
 ): Promise<{ owner: string; repo: string } | null> {
@@ -226,33 +230,33 @@ export async function parseOwnerRepo(
             // 从集市 PR 的标题中提取 owner/repo
             const issueNumberMatch = (githubUrlMatch[3] ?? "").match(/^\/(?:pull|issues)\/(\d+)/i);
             if (!issueNumberMatch) {
-                console.error("Issue/PR URL has no issue/pull number:", input);
+                log("Issue/PR URL has no issue/pull number:", input);
                 return null;
             }
             const issueNumber = parseInt(issueNumberMatch[1], 10);
             if (!Number.isFinite(issueNumber)) {
-                console.error("Issue/PR number is not a number:", issueNumber);
+                log("Issue/PR number is not a number:", issueNumber);
                 return null;
             }
-            const issueTitle = await getGitHubIssueTitle(owner, repo, issueNumber, signal);
+            const issueTitle = await getGitHubIssueTitle(owner, repo, issueNumber, log, signal);
             if (!issueTitle) {
-                console.error("Issue/PR title not found:", issueTitle);
+                log("Issue/PR title not found:", issueTitle);
                 return null;
             }
             const titleMatch = issueTitle.match(/([^/\s]+)\/([^/\s]+)/); // bazaar PR 标题：匹配首个 `owner/repo` 片段
             if (!titleMatch) {
-                console.error("Issue/PR title has no owner/repo segment:", issueTitle);
+                log("Issue/PR title has no owner/repo segment:", issueTitle);
                 return null;
             }
             owner = titleMatch[1];
             repo = titleMatch[2];
-            console.log(`extract from bazaar issue/PR title: ${owner}/${repo}`);
+            log(`extract from bazaar issue/PR title: ${owner}/${repo}`);
         } else {
             // 从集市包仓库的 URL 中提取 owner/repo
             if (repo.length >= 4 && repo.slice(-4).toLowerCase() === ".git") {
                 repo = repo.slice(0, -4);
             }
-            console.log(`extract from GitHub URL: ${owner}/${repo}`);
+            log(`extract from GitHub URL: ${owner}/${repo}`);
         }
     } else {
         // 从短格式中提取 owner/repo
@@ -262,18 +266,18 @@ export async function parseOwnerRepo(
         }
         owner = shortFormatMatch[1];
         repo = shortFormatMatch[2];
-        console.log(`extract from short format: ${owner}/${repo}`);
+        log(`extract from short format: ${owner}/${repo}`);
     }
 
-    const repoInfo = await getRepositoryInfo(owner, repo, signal, onBeforeAuthDialog);
+    const repoInfo = await getRepositoryInfo(owner, repo, log, signal, onBeforeAuthDialog);
     if (!repoInfo) {
         return null;
     }
     // 输出仓库摘要
-    console.log("Repository:", repoInfo.full_name);
-    console.log("Description:", repoInfo.description || "");
-    console.log("Stars:", repoInfo.stargazers_count);
-    console.log("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
+    log("Repository:", repoInfo.full_name);
+    log("Description:", repoInfo.description || "");
+    log("Stars:", repoInfo.stargazers_count);
+    log("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
     return { owner, repo };
 }
 

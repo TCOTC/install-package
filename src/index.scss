@@ -1,32 +1,4 @@
-// 窄屏（单列）下重复的若干声明，供 @container 与 @media 共用
-@mixin ip-narrow-root {
-    display: flex;
-    flex: 0 0 auto;
-    flex-direction: column;
-    flex-shrink: 0;
-    min-height: auto;
-    row-gap: 20px;
-}
-
-@mixin ip-narrow-sections-fill {
-    flex: 0 0 auto;
-    min-height: auto;
-    overflow: visible;
-}
-
-@mixin ip-narrow-card-info {
-    flex: 0 1 auto;
-    min-height: 112px;
-    overflow: auto;
-}
-
-@mixin ip-narrow-card-process {
-    flex: 0 0 auto;
-    min-height: 112px;
-    overflow-y: visible;
-}
-
-// 自定义页签根：列 flex 子项占满高度，子节点用 min-height: 0 把可滚动高度传下去
+// 插件自定义页签挂载根节点；列 flex 子项占满高度，子节点用 min-height: 0 把可滚动高度传下去
 .install-package-panel {
     align-self: stretch;
     background-color: var(--b3-theme-background);
@@ -41,7 +13,7 @@
     width: 100%;
 }
 
-// 根布局：宽屏为 Grid 两行（header 全宽 + 主列 / 侧栏 1fr）；窄屏见下方容器查询
+// 面板主体根容器；宽屏为 Grid 两行（header 全宽 + 主列 / 侧栏 1fr）；窄屏见下方容器查询
 .install-package {
     box-sizing: border-box;
     column-gap: 28px;
@@ -50,14 +22,13 @@
     grid-template-rows: auto 1fr;
     min-width: 0;
     // 双列时占满页签高度，grid 第二行 1fr 才有确定剩余空间；flex-shrink: 0 避免内容高于视口时被压成可视高
-    flex: 1 1 auto;
-    flex-shrink: 0;
+    flex: 1 0 auto;
     min-height: 0;
     padding: 24px 28px 20px;
     row-gap: 20px;
     width: 100%;
 
-    // 纵向堆叠 + 横向 min-width: 0，区块 / 卡片 / 详情共用
+    // 纵向 flex 布局工具类（区块、卡片、侧栏 body 等复用）
     &__vflow {
         display: flex;
         flex-direction: column;
@@ -65,44 +36,42 @@
         min-width: 0;
     }
 
+    // 纵向间距紧凑的 vflow（安装日志卡片内）
     &__vflow--dense {
         gap: 8px;
     }
 
-    // 双列（页签宽 > 860px）：header 内 URL / 版本横排伸缩，右侧「重新验证」与侧栏同宽视觉对齐
+    // 顶栏（仓库 URL、版本号、重新验证）；双列（页签宽 > 860px）时横排，右侧与侧栏同宽视觉对齐
     &__header {
         display: flex;
-        flex-direction: row;
-        flex-wrap: nowrap;
         gap: 20px;
         grid-column: 1 / -1;
         grid-row: 1;
 
-        > .install-package__section:not(.install-package__section--header-cta) {
+        // header 内 URL / 版本输入列
+        .install-package__section--header-field {
             flex: 1 1 0;
             max-width: 100%;
             min-width: 0;
         }
 
-        > .install-package__section--header-cta {
-            align-items: stretch;
+        // header 内「重新验证」按钮列
+        .install-package__section--header-cta {
             box-sizing: border-box;
             flex: 0 0 auto;
-            max-width: 100%;
             // 与侧栏列 max 300px 及 padding-left 24px 一致，使按钮宽度与「安装集市包」相同
             padding-left: 24px;
             width: min(300px, 100%);
         }
     }
 
-    // 与侧栏「安装集市包」同宽（width: 100% 相对各自父级）
+    // 主操作按钮宽度（侧栏「安装集市包」与 header 内按钮；width: 100% 相对各自父级）
     &__cta {
-        align-self: stretch;
         flex-shrink: 0;
         width: 100%;
     }
 
-    // 主列：原 __details 与两节 section 合并，纵向 gap 与 __vflow 一致（12px）
+    // 主内容列（包信息 + 安装过程两节 section）
     &__main {
         display: flex;
         flex: 1 1 auto;
@@ -114,46 +83,44 @@
         min-width: 0;
     }
 
-    // 各区块标题（12px 浅色）
+    // 各区块小标题（URL、版本、包信息、安装过程等）
     &__label {
         color: var(--b3-theme-on-surface-light);
-        flex-shrink: 0;
-        font-size: 12px;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        line-height: 1.45;
         user-select: text;
-    }
-
-    // 占位标题行：与 __label 同高，使右侧主按钮与左侧输入框垂直对齐
-    &__label--placeholder {
-        color: transparent;
         flex-shrink: 0;
         font-size: 12px;
         font-weight: 500;
         letter-spacing: 0.02em;
         line-height: 1.45;
-        pointer-events: none;
-        user-select: none;
+
+        // 占位标题行，与小标题同高，使右侧主按钮与左侧输入框垂直对齐
+        &--placeholder {
+            color: transparent;
+            user-select: none;
+            pointer-events: none;
+        }
     }
 
+    // 仓库 URL / 版本号文本输入框
     &__input {
         min-width: 0;
     }
 
-    // 与 install-package__vflow 组合使用，此处只写伸缩与裁剪
+    // 主列「包信息」区块（与纵向 vflow 组合；此处写伸缩与裁剪）
     &__section--compact {
         flex: 1 1 0;
         min-height: 168px;
         overflow: hidden;
     }
 
+    // 主列「安装过程」区块
     &__section--grow {
         flex: 2 1 0;
         min-height: 168px;
         overflow: hidden;
     }
 
+    // 带边框的内层卡片容器
     &__card {
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
@@ -161,12 +128,14 @@
         padding: 14px 16px;
     }
 
+    // 包信息展示卡片（占位说明 + 仓库预览）
     &__card--info {
         flex: 1 1 auto;
         min-height: 112px;
         overflow: auto;
     }
 
+    // 安装日志输出卡片（等宽字体、可滚动）
     &__card--process {
         color: var(--b3-theme-on-surface);
         flex: 1 1 auto;
@@ -181,6 +150,7 @@
         word-break: break-word;
     }
 
+    // 说明性弱文案（占位提示等）
     &__text-muted {
         color: var(--b3-theme-on-surface-light);
         font-size: 12px;
@@ -188,10 +158,12 @@
         margin: 0;
     }
 
+    // 安装日志中动态插入的每一行（供选区复制等逻辑使用）
     &__process-line {
         margin: 0;
     }
 
+    // 仓库解析后的预览说明区域
     &__preview {
         border-top: 1px solid var(--b3-border-color);
         color: var(--b3-theme-on-surface);
@@ -201,6 +173,7 @@
         padding-top: 12px;
     }
 
+    // 右侧侧栏（安装按钮、安装后启用、底部快捷入口）
     &__sidebar {
         border-left: 1px solid var(--b3-border-color);
         box-sizing: border-box;
@@ -212,17 +185,19 @@
         min-width: 0;
         padding-left: 24px;
 
-        // 与 install-package__vflow 组合：纵向 gap 由 vflow 提供，此处只负责占满剩余高度
-        .install-package__sidebar-body {
+        // 侧栏中部主体（工具行 + 弹性占位 + 操作按钮组）；与纵向 vflow 组合，纵向 gap 由 vflow 提供
+        &-body {
             flex: 1 1 auto;
             min-height: 0;
         }
 
+        // 「安装集市包」主按钮
         .install-package__install {
             flex-shrink: 0;
             margin-bottom: 14px;
         }
 
+        // 「安装后启用」一行（文案 + 开关）
         .install-package__toolbar-row {
             align-items: center;
             display: flex;
@@ -230,11 +205,13 @@
             gap: 14px;
             justify-content: space-between;
 
+            // 思源主题开关组件（安装后启用）
             .b3-switch {
                 flex-shrink: 0;
             }
         }
 
+        // 工具行左侧说明文案
         .install-package__toolbar-label {
             color: var(--b3-theme-on-surface);
             flex: 1;
@@ -245,11 +222,13 @@
             user-select: text;
         }
 
-        .install-package__sidebar-grow {
+        // 侧栏内纵向弹性占位，将底部操作组顶到最下方
+        &-grow {
             flex: 1 1 auto;
             min-height: 12px;
         }
 
+        // 侧栏底部快捷操作按钮竖排容器
         .install-package__actions {
             display: flex;
             flex-direction: column;
@@ -260,34 +239,40 @@
     }
 }
 
-// 窄宽度（≤860px）：单列堆叠；header 两区块竖排（与横排同一阈值）；关闭分区 flex 与日志区内滚动
-@container (max-width: 860px) {
+// 单列窄布局（容器查询与视口兜底共用）
+@mixin ip-narrow-install-package {
+    // 窄屏下改为一列纵向 flex
     .install-package {
-        @include ip-narrow-root;
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        min-height: auto;
 
+        // 窄屏顶栏竖排
         &__header {
             flex-direction: column;
-            flex-wrap: nowrap;
             grid-column: auto;
             grid-row: auto;
 
-            > .install-package__section {
+            // 窄屏下顶栏各列全宽
+            .install-package__section--header-field,
+            .install-package__section--header-cta {
                 flex: 0 0 auto;
-                max-width: 100%;
                 width: 100%;
             }
 
-            > .install-package__section--header-cta {
+            // 窄屏去掉左内边距；隐藏占位标题避免多余空白
+            .install-package__section--header-cta {
                 padding-left: 0;
-                width: 100%;
 
-                // 单列无需占位标题行，避免与上方输入框之间多出一段空白
+                // 单列无需占位标题行
                 .install-package__label--placeholder {
                     display: none;
                 }
             }
         }
 
+        // 窄屏主列全宽、取消 grid 占位
         &__main {
             flex: 0 0 auto;
             grid-column: auto;
@@ -296,20 +281,27 @@
             width: 100%;
         }
 
-        // 单列勿保留 min-height: 168px：compact 区块会被垫高，信息卡片与「安装过程」标题之间多出空白；双列时由 flex: 1 把空间吃进卡片内则无此问题
+        // 窄屏勿保留 min-height: 168px（compact 会被垫高，信息卡片与「安装过程」标题间多出空白；双列时由 flex: 1 把空间吃进卡片内则无此问题）
         &__section--compact,
         &__section--grow {
-            @include ip-narrow-sections-fill;
+            flex: 0 0 auto;
+            min-height: auto;
+            overflow: visible;
         }
 
+        // 窄屏包信息卡片伸缩策略
         &__card--info {
-            @include ip-narrow-card-info;
+            flex: 0 1 auto;
         }
 
+        // 窄屏安装日志区高度与滚动策略
         &__card--process {
-            @include ip-narrow-card-process;
+            flex: 0 0 auto;
+            min-height: 112px;
+            overflow-y: visible;
         }
 
+        // 窄屏侧栏改为下方横条分区
         &__sidebar {
             border-left: none;
             border-top: 1px solid var(--b3-border-color);
@@ -322,62 +314,12 @@
     }
 }
 
-// 无容器查询时按视口兜底，阈值与 max-width: 860px 一致
+// 窄宽度（≤860px）：单列堆叠；header 两区块竖排（与横排同一阈值）；关闭分区 flex 与日志区内滚动
+@container (max-width: 860px) {
+    @include ip-narrow-install-package;
+}
+
+// 无容器查询时按视口兜底，阈值与容器查询一致
 @media (max-width: 860px) {
-    .install-package-panel .install-package {
-        @include ip-narrow-root;
-
-        .install-package__header {
-            flex-direction: column;
-            flex-wrap: nowrap;
-            grid-column: auto;
-            grid-row: auto;
-
-            > .install-package__section {
-                flex: 0 0 auto;
-                max-width: 100%;
-                width: 100%;
-            }
-
-            > .install-package__section--header-cta {
-                padding-left: 0;
-                width: 100%;
-
-                .install-package__label--placeholder {
-                    display: none;
-                }
-            }
-        }
-
-        .install-package__main {
-            flex: 0 0 auto;
-            grid-column: auto;
-            grid-row: auto;
-            min-height: auto;
-            width: 100%;
-        }
-
-        .install-package__section--compact,
-        .install-package__section--grow {
-            @include ip-narrow-sections-fill;
-        }
-
-        .install-package__card--info {
-            @include ip-narrow-card-info;
-        }
-
-        .install-package__card--process {
-            @include ip-narrow-card-process;
-        }
-
-        .install-package__sidebar {
-            border-left: none;
-            border-top: 1px solid var(--b3-border-color);
-            grid-column: auto;
-            grid-row: auto;
-            padding-left: 0;
-            padding-top: 16px;
-            width: 100%;
-        }
-    }
+    @include ip-narrow-install-package;
 }

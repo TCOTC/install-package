@@ -12,11 +12,11 @@ function renderInstallPanel(root: HTMLElement): void {
     root.innerHTML = `
     <div class="install-package">
         <header class="install-package__header">
-            <section class="install-package__section install-package__vflow">
+            <section class="install-package__section install-package__section--header-field install-package__vflow">
                 <div class="install-package__label">${i18n.urlLabel}</div>
                 <input data-type="url" class="b3-text-field fn__block install-package__input" value="" placeholder="https://github.com/user/repo" spellcheck="false">
             </section>
-            <section class="install-package__section install-package__vflow">
+            <section class="install-package__section install-package__section--header-field install-package__vflow">
                 <div class="install-package__label">${i18n.versionLabel}</div>
                 <input data-type="version" class="b3-text-field fn__block install-package__input" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
             </section>

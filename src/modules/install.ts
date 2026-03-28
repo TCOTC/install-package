@@ -11,6 +11,7 @@ import {
     unzipFile,
     writeTempFile,
 } from "./kernelClient";
+import type { Logger } from "./tab";
 
 export function getInstallPath(packageType: string): string {
     switch (packageType) {
@@ -62,7 +63,7 @@ export async function getPackageType(packagePath: string): Promise<string | null
     return foundTypes[0];
 }
 
-export async function getPackageName(extractPath: string, packageType: string, log: (...args: unknown[]) => void): Promise<string | null> {
+export async function getPackageName(extractPath: string, packageType: string, log: Logger): Promise<string | null> {
     log(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
     const metadataPath = `${extractPath}/${packageType}.json`;
@@ -149,7 +150,7 @@ export async function setPackageEnabled(
     packageType: string,
     packageName: string,
     enabled: boolean,
-    log: (...args: unknown[]) => void
+    log: Logger
 ): Promise<void> {
     switch (packageType) {
         case "plugin": {
@@ -228,7 +229,7 @@ export async function installPackage(pack: {
     blob: Blob | null;
     fileName: string;
     packageName: string;
-}, log: (...args: unknown[]) => void): Promise<{
+}, log: Logger): Promise<{
     packageType: string;
     packageName: string
 } | null> {
@@ -300,7 +301,7 @@ export async function installPackage(pack: {
         log(errorMsg);
         message(i18n.packageNameMismatch
             .replace("{metadataName}", metadataPackageName)
-            .replace("{repoName}", packageName),
+            .replace("{repoName}", packageName)
         );
         return bail();
     }

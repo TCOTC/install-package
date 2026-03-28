@@ -1,52 +1,123 @@
-// 使用容器查询而不是视口媒体查询，确保页签宽度改变时能正确自适应
+// 窄屏（单列）下重复的若干声明，供 @container 与 @media 共用
+@mixin ip-narrow-root {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    flex-shrink: 0;
+    min-height: auto;
+    row-gap: 20px;
+}
+
+@mixin ip-narrow-sections-fill {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+}
+
+@mixin ip-narrow-card-info {
+    flex: 0 1 auto;
+    min-height: 112px;
+    overflow: auto;
+}
+
+@mixin ip-narrow-card-process {
+    flex: 0 0 auto;
+    min-height: 112px;
+    overflow-y: visible;
+}
+
+// 自定义页签根：列 flex 子项占满高度，子节点用 min-height: 0 把可滚动高度传下去
+.install-package-panel {
+    align-self: stretch;
+    background-color: var(--b3-theme-background);
+    box-sizing: border-box;
+    container-type: inline-size;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    max-width: 100%;
+    min-height: 0;
+    min-width: 300px;
+    width: 100%;
+}
+
+// 根布局：宽屏为 Grid 两行（header 全宽 + 主列 / 侧栏 1fr）；窄屏见下方容器查询
 .install-package {
-    &__layout {
-        align-content: stretch;
-        align-items: stretch;
-        background-color: var(--b3-theme-background);
-        box-sizing: border-box;
-        container-type: inline-size;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px 28px;
-        height: 100%;
-        min-height: 0;
-        padding: 24px 28px 20px;
-    }
+    box-sizing: border-box;
+    column-gap: 28px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, min(300px, 100%));
+    grid-template-rows: auto 1fr;
+    min-width: 0;
+    // 双列时占满页签高度，grid 第二行 1fr 才有确定剩余空间；flex-shrink: 0 避免内容高于视口时被压成可视高
+    flex: 1 1 auto;
+    flex-shrink: 0;
+    min-height: 0;
+    padding: 24px 28px 20px;
+    row-gap: 20px;
+    width: 100%;
 
-    &__content {
-        display: flex;
-        flex: 1 1 320px;
-        flex-direction: column;
-        gap: 20px;
-        min-height: 0;
-        min-width: min(100%, 280px);
-    }
-
-    &__section {
+    // 纵向堆叠 + 横向 min-width: 0，区块 / 卡片 / 详情共用
+    &__vflow {
         display: flex;
         flex-direction: column;
         gap: 12px;
+        min-width: 0;
+    }
+
+    &__vflow--dense {
+        gap: 8px;
+    }
+
+    // 双列（页签宽 > 860px）：header 内 URL / 版本横排伸缩，右侧「重新验证」与侧栏同宽视觉对齐
+    &__header {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 20px;
+        grid-column: 1 / -1;
+        grid-row: 1;
+
+        > .install-package__section:not(.install-package__section--header-cta) {
+            flex: 1 1 0;
+            max-width: 100%;
+            min-width: 0;
+        }
+
+        > .install-package__section--header-cta {
+            align-items: stretch;
+            box-sizing: border-box;
+            flex: 0 0 auto;
+            max-width: 100%;
+            // 与侧栏列 max 300px 及 padding-left 24px 一致，使按钮宽度与「安装集市包」相同
+            padding-left: 24px;
+            width: min(300px, 100%);
+        }
+    }
+
+    // 与侧栏「安装集市包」同宽（width: 100% 相对各自父级）
+    &__cta {
+        align-self: stretch;
+        flex-shrink: 0;
+        width: 100%;
+    }
+
+    // 主列：原 __details 与两节 section 合并，纵向 gap 与 __vflow 一致（12px）
+    &__main {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 12px;
+        grid-column: 1;
+        grid-row: 2;
         min-height: 0;
         min-width: 0;
     }
 
-    &__section--compact {
-        // 信息区只占可用高度的一部分，避免把日志区挤到不可读
-        flex: 0 1 auto;
-        max-height: 50%;
-        min-height: 96px;
-        overflow: hidden;
-    }
-
-    &__section--grow {
-        // 日志区优先伸展，保证长日志有足够滚动空间
-        flex: 1 1 0;
-        min-height: 0;
-    }
-
-    &__section-title {
+    // 各区块标题（12px 浅色）
+    &__label {
         color: var(--b3-theme-on-surface-light);
+        flex-shrink: 0;
         font-size: 12px;
         font-weight: 500;
         letter-spacing: 0.02em;
@@ -54,55 +125,53 @@
         user-select: text;
     }
 
-    &__row {
-        align-items: stretch;
-        display: flex;
-        gap: 12px;
-        min-width: 0;
+    // 占位标题行：与 __label 同高，使右侧主按钮与左侧输入框垂直对齐
+    &__label--placeholder {
+        color: transparent;
+        flex-shrink: 0;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        line-height: 1.45;
+        pointer-events: none;
+        user-select: none;
     }
 
     &__input {
         min-width: 0;
     }
 
-    &__input--url {
-        flex: 1;
+    // 与 install-package__vflow 组合使用，此处只写伸缩与裁剪
+    &__section--compact {
+        flex: 1 1 0;
+        min-height: 168px;
+        overflow: hidden;
     }
 
-    &__details {
-        display: flex;
-        flex: 1 1 0;
-        flex-direction: column;
-        gap: 12px;
-        min-height: 0;
-        min-width: 0;
+    &__section--grow {
+        flex: 2 1 0;
+        min-height: 168px;
+        overflow: hidden;
     }
 
     &__card {
         border: 1px solid var(--b3-border-color);
         border-radius: 8px;
         box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        min-height: 0;
-        min-width: 0;
         padding: 14px 16px;
     }
 
     &__card--info {
-        flex: 0 1 auto;
-        min-height: 96px;
-        max-height: 100%;
+        flex: 1 1 auto;
+        min-height: 112px;
         overflow: auto;
     }
 
     &__card--process {
         color: var(--b3-theme-on-surface);
-        flex: 1 1 0;
+        flex: 1 1 auto;
         font-family: var(--b3-font-family-code);
         font-size: 12px;
-        gap: 8px;
         line-height: 1.55;
         min-height: 0;
         overflow-x: hidden;
@@ -112,8 +181,7 @@
         word-break: break-word;
     }
 
-    &__package-info-placeholder,
-    &__process-placeholder {
+    &__text-muted {
         color: var(--b3-theme-on-surface-light);
         font-size: 12px;
         line-height: 1.55;
@@ -134,88 +202,182 @@
     }
 
     &__sidebar {
-        align-self: stretch;
         border-left: 1px solid var(--b3-border-color);
         box-sizing: border-box;
         display: flex;
-        flex: 1 1 240px;
         flex-direction: column;
-        max-width: min(100%, 300px);
+        grid-column: 2;
+        grid-row: 2;
         min-height: 0;
-        min-width: min(100%, 220px);
-        padding-left: 24px;
-    }
-
-    // 预留顶部空白，让侧栏主按钮与左侧 URL 行在视觉上横向对齐
-    &__sidebar-spacer {
-        flex-shrink: 0;
-        min-height: calc(12px * 1.45 + 12px);
-    }
-
-    &__install {
-        align-self: stretch;
-        flex-shrink: 0;
-        margin-bottom: 14px;
-        width: 100%;
-    }
-
-    &__sidebar-content {
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
-        min-height: 0;
-    }
-
-    &__switch-row {
-        align-items: center;
-        display: flex;
-        flex-shrink: 0;
-        gap: 14px;
-        justify-content: space-between;
-    }
-
-    &__switch-label {
-        color: var(--b3-theme-on-surface);
-        flex: 1;
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 1.45;
         min-width: 0;
-        user-select: text;
-    }
+        padding-left: 24px;
 
-    &__sidebar-fill {
-        flex: 1 1 auto;
-        min-height: 12px;
-    }
+        // 与 install-package__vflow 组合：纵向 gap 由 vflow 提供，此处只负责占满剩余高度
+        .install-package__sidebar-body {
+            flex: 1 1 auto;
+            min-height: 0;
+        }
 
-    &__actions {
-        display: flex;
-        flex-direction: column;
-        flex-shrink: 0;
-        gap: 10px;
-        margin-top: auto;
-    }
+        .install-package__install {
+            flex-shrink: 0;
+            margin-bottom: 14px;
+        }
 
-    &__switch-row .b3-switch {
-        flex-shrink: 0;
+        .install-package__toolbar-row {
+            align-items: center;
+            display: flex;
+            flex-shrink: 0;
+            gap: 14px;
+            justify-content: space-between;
+
+            .b3-switch {
+                flex-shrink: 0;
+            }
+        }
+
+        .install-package__toolbar-label {
+            color: var(--b3-theme-on-surface);
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.45;
+            min-width: 0;
+            user-select: text;
+        }
+
+        .install-package__sidebar-grow {
+            flex: 1 1 auto;
+            min-height: 12px;
+        }
+
+        .install-package__actions {
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            gap: 10px;
+            margin-top: auto;
+        }
     }
 }
 
-@container (max-width: 760px) {
+// 窄宽度（≤860px）：单列堆叠；header 两区块竖排（与横排同一阈值）；关闭分区 flex 与日志区内滚动
+@container (max-width: 860px) {
     .install-package {
+        @include ip-narrow-root;
+
+        &__header {
+            flex-direction: column;
+            flex-wrap: nowrap;
+            grid-column: auto;
+            grid-row: auto;
+
+            > .install-package__section {
+                flex: 0 0 auto;
+                max-width: 100%;
+                width: 100%;
+            }
+
+            > .install-package__section--header-cta {
+                padding-left: 0;
+                width: 100%;
+
+                // 单列无需占位标题行，避免与上方输入框之间多出一段空白
+                .install-package__label--placeholder {
+                    display: none;
+                }
+            }
+        }
+
+        &__main {
+            flex: 0 0 auto;
+            grid-column: auto;
+            grid-row: auto;
+            min-height: auto;
+            width: 100%;
+        }
+
+        // 单列勿保留 min-height: 168px：compact 区块会被垫高，信息卡片与「安装过程」标题之间多出空白；双列时由 flex: 1 把空间吃进卡片内则无此问题
+        &__section--compact,
+        &__section--grow {
+            @include ip-narrow-sections-fill;
+        }
+
+        &__card--info {
+            @include ip-narrow-card-info;
+        }
+
+        &__card--process {
+            @include ip-narrow-card-process;
+        }
+
         &__sidebar {
-            // 换行后改为顶部边框，避免继续保留左边框
             border-left: none;
             border-top: 1px solid var(--b3-border-color);
-            max-width: none;
+            grid-column: auto;
+            grid-row: auto;
             padding-left: 0;
             padding-top: 16px;
             width: 100%;
         }
+    }
+}
 
-        &__sidebar-spacer {
-            display: none;
+// 无容器查询时按视口兜底，阈值与 max-width: 860px 一致
+@media (max-width: 860px) {
+    .install-package-panel .install-package {
+        @include ip-narrow-root;
+
+        .install-package__header {
+            flex-direction: column;
+            flex-wrap: nowrap;
+            grid-column: auto;
+            grid-row: auto;
+
+            > .install-package__section {
+                flex: 0 0 auto;
+                max-width: 100%;
+                width: 100%;
+            }
+
+            > .install-package__section--header-cta {
+                padding-left: 0;
+                width: 100%;
+
+                .install-package__label--placeholder {
+                    display: none;
+                }
+            }
+        }
+
+        .install-package__main {
+            flex: 0 0 auto;
+            grid-column: auto;
+            grid-row: auto;
+            min-height: auto;
+            width: 100%;
+        }
+
+        .install-package__section--compact,
+        .install-package__section--grow {
+            @include ip-narrow-sections-fill;
+        }
+
+        .install-package__card--info {
+            @include ip-narrow-card-info;
+        }
+
+        .install-package__card--process {
+            @include ip-narrow-card-process;
+        }
+
+        .install-package__sidebar {
+            border-left: none;
+            border-top: 1px solid var(--b3-border-color);
+            grid-column: auto;
+            grid-row: auto;
+            padding-left: 0;
+            padding-top: 16px;
+            width: 100%;
         }
     }
 }

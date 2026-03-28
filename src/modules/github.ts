@@ -5,23 +5,14 @@
  */
 
 import type { operations } from "@octokit/openapi-types";
-import { Dialog } from "siyuan";
 import { i18n } from "./i18n";
-import { message } from "./message";
 import { getGitHubToken } from "./setting";
+import { message } from "./message";
+import { showGitHubAuthNotice } from "./githubNotice";
+import type { Logger } from "./tab";
 
 export type GitHubApiErrorInfo = { status: number; apiMessage?: string };
 type GitHubRateLimitResponse = operations["rate-limit/get"]["responses"][200]["content"]["application/json"];
-type BeforeAuthDialogHandler = () => void;
-
-let openPluginSetting: (() => void) | null = null;
-
-export function setOpenPluginSettingHandler(handler: () => void): void {
-    openPluginSetting = handler;
-}
-
-/** GitHub 相关通知对话框单例 */
-let sharedGitHubNoticeDialog: Dialog | null = null;
 
 async function fetchGitHubRateLimit(signal?: AbortSignal): Promise<{
     limit: number;
@@ -45,76 +36,6 @@ async function fetchGitHubRateLimit(signal?: AbortSignal): Promise<{
         };
     } catch {
         return null;
-    }
-}
-
-function checkGitHubAuth(status: number, onBeforeAuthDialog?: BeforeAuthDialogHandler): void {
-    if (status !== 401 && status !== 403) {
-        return;
-    }
-
-    // Token 无效或过期
-    if (status === 401) {
-        if (sharedGitHubNoticeDialog) {
-            return;
-        }
-        onBeforeAuthDialog?.();
-        const dialog = new Dialog({
-            title: i18n.githubTokenExpiredTitle,
-            width: "480px",
-            content:
-                `<div class="b3-dialog__content">
-                    <div class="b3-label__text">${i18n.githubTokenExpiredContent}</div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-            destroyCallback: () => {
-                sharedGitHubNoticeDialog = null;
-            },
-        });
-        sharedGitHubNoticeDialog = dialog;
-        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            dialog.destroy();
-            openPluginSetting?.();
-        });
-        return;
-    }
-
-    // 接口限流
-    if (status === 403) {
-        // 已配置 Token 时，不再提示去填写 Token
-        if (getGitHubToken()) {
-            return;
-        }
-        if (sharedGitHubNoticeDialog) {
-            return;
-        }
-        onBeforeAuthDialog?.();
-        const dialog = new Dialog({
-            title: i18n.githubRateLimitDialogTitle,
-            width: "520px",
-            content:
-                `<div class="b3-dialog__content">
-                    <div class="b3-label__text">${i18n.githubRateLimitDialogContent}</div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-            destroyCallback: () => {
-                sharedGitHubNoticeDialog = null;
-            },
-        });
-        sharedGitHubNoticeDialog = dialog;
-        dialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
-            dialog.destroy();
-        });
-        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            dialog.destroy();
-            openPluginSetting?.();
-        });
-        return;
     }
 }
 
@@ -147,10 +68,9 @@ export type GitHubIssue = operations["issues/get"]["responses"][200]["content"][
 
 async function fetchGitHubJson<T>(
     url: string,
-    log: (...args: unknown[]) => void,
+    log: Logger,
     errorLabel: string,
-    signal?: AbortSignal,
-    onBeforeAuthDialog?: BeforeAuthDialogHandler
+    signal?: AbortSignal
 ): Promise<T | null> {
     try {
         const response = await fetch(url, gitHubRequestInit(signal));
@@ -164,7 +84,7 @@ async function fetchGitHubJson<T>(
                     error = "GitHub rate limit unavailable";
                 }
             }
-            void checkGitHubAuth(response.status, onBeforeAuthDialog);
+            showGitHubAuthNotice(response.status);
             throw new Error(`HTTP ${response.status}: ${error ?? response.statusText}`);
         }
         return (await response.json()) as T;
@@ -180,15 +100,14 @@ async function fetchGitHubJson<T>(
 export async function getRepositoryInfo(
     owner: string,
     repo: string,
-    log: (...args: unknown[]) => void,
-    signal?: AbortSignal,
-    onBeforeAuthDialog?: BeforeAuthDialogHandler
+    log: Logger,
+    signal?: AbortSignal
 ): Promise<GitHubRepository | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}`;
-    return fetchGitHubJson<GitHubRepository>(url, log, i18n.githubGetRepositoryInfoFailed, signal, onBeforeAuthDialog);
+    return fetchGitHubJson<GitHubRepository>(url, log, i18n.githubGetRepositoryInfoFailed, signal);
 }
 
-export async function getReleaseInfo(owner: string, repo: string, version: string, log: (...args: unknown[]) => void): Promise<GitHubRelease | null> {
+export async function getReleaseInfo(owner: string, repo: string, version: string, log: Logger): Promise<GitHubRelease | null> {
     const url = version
         ? `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(version)}`
         : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
@@ -199,7 +118,7 @@ async function getGitHubIssueTitle(
     owner: string,
     repo: string,
     issueNumber: number,
-    log: (...args: unknown[]) => void,
+    log: Logger,
     signal?: AbortSignal
 ): Promise<string | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
@@ -214,9 +133,8 @@ async function getGitHubIssueTitle(
  */
 export async function parseOwnerRepo(
     input: string,
-    log: (...args: unknown[]) => void,
-    signal?: AbortSignal,
-    onBeforeAuthDialog?: BeforeAuthDialogHandler
+    log: Logger,
+    signal?: AbortSignal
 ): Promise<{ owner: string; repo: string } | null> {
     input = input.trim();
 
@@ -269,7 +187,7 @@ export async function parseOwnerRepo(
         log(`extract from short format: ${owner}/${repo}`);
     }
 
-    const repoInfo = await getRepositoryInfo(owner, repo, log, signal, onBeforeAuthDialog);
+    const repoInfo = await getRepositoryInfo(owner, repo, log, signal);
     if (!repoInfo) {
         return null;
     }

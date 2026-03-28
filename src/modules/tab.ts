@@ -1,37 +1,278 @@
-import { Custom, saveLayout } from "siyuan";
+import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "./i18n";
 import { RepoParser } from "./repoParser";
+import type { InstallRequest } from "./installRunner";
+import { message } from "./message";
+import { electron, openDirectory, openDevTools } from "./desktop";
 
-declare global {
-    interface Window {
-        require?(moduleName: "electron"): typeof import("electron");
-        require?(moduleName: string): any;
-    }
+export type Logger = (...args: unknown[]) => void;
+
+function renderInstallPanel(root: HTMLElement): void {
+    root.classList.add("install-package-panel");
+    root.innerHTML = `
+    <div class="install-package">
+        <header class="install-package__header">
+            <section class="install-package__section install-package__vflow">
+                <div class="install-package__label">${i18n.urlLabel}</div>
+                <input data-type="url" class="b3-text-field fn__block install-package__input" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+            </section>
+            <section class="install-package__section install-package__vflow">
+                <div class="install-package__label">${i18n.versionLabel}</div>
+                <input data-type="version" class="b3-text-field fn__block install-package__input" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
+            </section>
+            <section class="install-package__section install-package__vflow install-package__section--header-cta" aria-label="${i18n.repoRefreshButton}">
+                <div class="install-package__label install-package__label--placeholder" aria-hidden="true">&nbsp;</div>
+                <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline install-package__cta">${i18n.repoRefreshButton}</button>
+            </section>
+        </header>
+
+        <main class="install-package__main">
+            <section class="install-package__section install-package__vflow install-package__section--compact">
+                <div class="install-package__label">${i18n.packageInfoTitle}</div>
+                <div class="install-package__card install-package__vflow install-package__card--info">
+                    <p class="install-package__text-muted">${i18n.packageInfoPlaceholder}</p>
+                    <div data-type="repo-preview" class="install-package__preview b3-label__text">${i18n.repoPreviewTip}</div>
+                </div>
+            </section>
+
+            <section data-type="install-process-section" class="install-package__section install-package__vflow install-package__section--grow">
+                <div class="install-package__label">${i18n.installProcessTitle}</div>
+                <div data-type="install-log" class="install-package__card install-package__vflow install-package__vflow--dense install-package__card--process">
+                    <p class="install-package__text-muted">${i18n.installProcessPlaceholder}</p>
+                </div>
+            </section>
+        </main>
+
+        <aside class="install-package__sidebar">
+            <button data-type="install" type="button" class="b3-button install-package__install install-package__cta" disabled>${i18n.installPackageButton}</button>
+            <div class="install-package__sidebar-body install-package__vflow">
+                <div class="install-package__toolbar-row">
+                    <span class="install-package__toolbar-label">${i18n.enableAfterInstall}</span>
+                    <input data-type="enable" type="checkbox" class="b3-switch fn__flex-center">
+                </div>
+                <div class="install-package__sidebar-grow" aria-hidden="true"></div>
+                <div class="install-package__actions">
+                    <button data-type="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
+                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/plugins">${i18n.openPluginsDir}</button>
+                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/storage/petal">${i18n.openPetalDir}</button>
+                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/themes">${i18n.openThemesDir}</button>
+                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/icons">${i18n.openIconsDir}</button>
+                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/widgets">${i18n.openWidgetsDir}</button>
+                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/templates">${i18n.openTemplatesDir}</button>
+                    <button data-type="open-settings" type="button" class="b3-button b3-button--outline">${i18n.openPluginSettings}</button>
+                </div>
+            </div>
+        </aside>
+    </div>`;
 }
-
-const electron: typeof import("electron") | undefined = (() => {
-    try {
-        return typeof window !== "undefined" ? window.require?.("electron") : undefined;
-    } catch {
-        return undefined;
-    }
-})();
-
-/** 与 addTab 的 type 一致，openTab 的 custom.id 为 plugin.name + INSTALL_TAB_TYPE */
-export const INSTALL_TAB_TYPE = "install_panel";
-
-/** 顶栏与 openTab 自定义页签共用的图标 id。通过 addIcons 注册 symbol，图标原始来源：https://www.svgrepo.com/svg/355075/install */
-export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";
-
-export const INSTALL_PACKAGE_ICON_SYMBOL = `<symbol id="${INSTALL_PACKAGE_ICON_ID}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path fill="none" stroke="currentColor" stroke-width="2" d="M19,13.5 L19,17.5 L12,22 L5,17.5 L5,13.5 M12,22 L12,13.5 M18.5,8.5 L12,4.5 L15.5,2 L22,6 L18.5,8.5 L18.5,8.5 L18.5,8.5 Z M5.5,8.5 L12,4.5 L8.5,2 L2,6 L5.5,8.5 L5.5,8.5 L5.5,8.5 Z M18.5,9 L12,13 L15.5,15.5 L22,11.5 L18.5,9 L18.5,9 L18.5,9 Z M5.5,9 L12,13 L8.5,15.5 L2,11.5 L5.5,9 L5.5,9 Z"/>
-</symbol>`;
 
 /** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
 export interface InstallTabPanelData {
     url: string;
     version: string;
     enable: "enable" | "disable";
+}
+
+interface InstallPanelElements {
+    urlInput: HTMLInputElement;
+    repoPreviewEl: HTMLDivElement;
+    versionInput: HTMLInputElement;
+    enableCheckbox: HTMLInputElement;
+    installButton: HTMLButtonElement;
+    installLog: HTMLDivElement;
+}
+
+export interface InstallPanelCallbacks {
+    runInstall: (request: InstallRequest, log: Logger) => void | Promise<void>;
+    openPluginSettings: () => void;
+}
+
+export class InstallPanelController {
+    private readonly root: HTMLElement;
+    private readonly elements: InstallPanelElements;
+    private readonly panelData: InstallTabPanelData;
+    private readonly log: (...args: unknown[]) => void;
+    private readonly clearInstallLog: () => void;
+    private readonly repoUrlController: RepoParser;
+    private readonly custom: Custom;
+    private readonly callbacks: InstallPanelCallbacks;
+    private persistTimer: number | undefined;
+    private repoParseReady = false;
+
+    constructor(custom: Custom, callbacks: InstallPanelCallbacks) {
+        this.custom = custom;
+        this.callbacks = callbacks;
+        this.root = custom.element as HTMLElement;
+        // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
+        renderInstallPanel(this.root);
+        this.elements = {
+            urlInput: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
+            repoPreviewEl: this.root.querySelector("div[data-type='repo-preview']") as HTMLDivElement,
+            versionInput: this.root.querySelector("input[data-type='version']") as HTMLInputElement,
+            enableCheckbox: this.root.querySelector("input[data-type='enable']") as HTMLInputElement,
+            installButton: this.root.querySelector("button[data-type='install']") as HTMLButtonElement,
+            installLog: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
+        };
+        const logger = createInstallLogger(this.elements.installLog);
+        this.log = logger.log;
+        this.clearInstallLog = logger.clear;
+        this.panelData = normalizeInstallTabPanelData(this.custom);
+        this.repoUrlController = new RepoParser(
+            this.elements.urlInput,
+            this.elements.versionInput,
+            this.elements.repoPreviewEl,
+            this.log,
+            (repoLabel) => {
+                this.custom.tab.updateTitle(repoLabel ?? i18n.title);
+            },
+            (ready) => {
+                this.repoParseReady = ready;
+                this.elements.installButton.disabled = !ready;
+                if (ready) {
+                    this.persistPanelData();
+                }
+            }
+        );
+    }
+
+    public init(): void {
+        this.elements.urlInput.value = this.panelData.url;
+        this.elements.versionInput.value = this.panelData.version;
+        this.elements.enableCheckbox.checked = this.panelData.enable === "enable";
+
+        // 立即刷新一次，用于界面重载之后初始化页签
+        void this.repoUrlController.refresh();
+        this.elements.urlInput.addEventListener("input", () => {
+            void this.repoUrlController.refresh();
+        });
+        this.elements.versionInput.addEventListener("input", this.persistPanelData);
+        this.elements.enableCheckbox.addEventListener("change", this.persistPanelData);
+        this.root.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
+            void this.repoUrlController.refresh();
+        });
+
+        // 回车安装
+        this.elements.urlInput.addEventListener("keydown", (event) => {
+            if (event.isComposing) {
+                return;
+            }
+            if (
+                !event.shiftKey &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                event.key === "Enter" &&
+                !event.repeat
+            ) {
+                void this.runInstall();
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+        if (!this.elements.urlInput.value.trim()) {
+            this.elements.urlInput.select();
+        }
+
+        this.elements.installButton.addEventListener("click", () => void this.runInstall());
+
+        this.elements.installLog.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            // 在弹出菜单瞬间确定待复制内容；点击菜单项时选区常被清空，故在此刻用 cloneContents 解析选区
+            const copyPayload = installLogCopyPayloadAtOpen(this.elements.installLog);
+            const menu = new Menu("install-package-install-log");
+            menu.addItem({
+                icon: "iconCopy",
+                label: i18n.copyInstallLog,
+                click: () => {
+                    void this.copyInstallLogPlainText(copyPayload);
+                },
+            });
+            menu.addItem({
+                icon: "iconTrashcan",
+                label: i18n.clearInstallLog,
+                click: () => {
+                    this.clearInstallLog();
+                },
+            });
+            menu.open({
+                x: event.clientX,
+                y: event.clientY,
+                isLeft: false,
+            });
+        });
+
+        this.root.querySelector(".install-package__actions")?.addEventListener("click", async (event: Event): Promise<void> => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+            const button = target.closest("button[data-type]") as HTMLButtonElement | null;
+            switch (button?.dataset.type) {
+                case "open-devtools":
+                    openDevTools();
+                    break;
+                case "open-directory":
+                    await openDirectory(button.title);
+                    break;
+                case "open-settings":
+                    this.callbacks.openPluginSettings();
+                    break;
+                default:
+                    break;
+            }
+        });
+    }
+
+    private readonly persistPanelData = (): void => {
+        if (!this.repoParseReady) {
+            return;
+        }
+        this.panelData.url = this.elements.urlInput.value;
+        this.panelData.version = this.elements.versionInput.value;
+        this.panelData.enable = this.elements.enableCheckbox.checked ? "enable" : "disable";
+
+        window.clearTimeout(this.persistTimer);
+        this.persistTimer = window.setTimeout(() => {
+            this.persistTimer = undefined;
+            saveLayout(() => {});
+        }, 400);
+    };
+
+    /** 复制日志纯文本；`payload` 为右键菜单打开时已算好的内容（避免点击菜单时选区丢失） */
+    private async copyInstallLogPlainText(payload?: string): Promise<void> {
+        const text = payload ?? joinAllProcessLineTexts(this.elements.installLog);
+        if (!text.trim()) {
+            message(i18n.copyInstallLogEmpty);
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            message(i18n.copyInstallLogFailed);
+        }
+    }
+
+    private async runInstall(): Promise<void> {
+        if (!this.repoParseReady) {
+            return;
+        }
+        const url = this.elements.urlInput.value.trim();
+        const version = this.elements.versionInput.value.trim();
+        const enable = this.elements.enableCheckbox.checked;
+        const parsed = await this.repoUrlController.ownerRepoForUrl(url);
+        if (!parsed) {
+            message(i18n.invalidUrl);
+            this.log(i18n.invalidUrl);
+            return;
+        }
+        this.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
+        await this.callbacks.runInstall({
+            version,
+            enable,
+            owner: parsed.owner,
+            repo: parsed.repo,
+        }, this.log);
+    }
 }
 
 /** 标准化自定义页签数据，确保数据格式正确 */
@@ -57,102 +298,78 @@ export function normalizeInstallTabPanelData(custom: Custom): InstallTabPanelDat
     return panelData;
 }
 
-export interface InstallTabPanelCallbacks {
-    installPackage: (
-        urlInput: HTMLInputElement,
-        versionInput: HTMLInputElement,
-        enable: boolean,
-        repoUrlController: RepoParser,
-        log: (...args: unknown[]) => void
-    ) => void | Promise<void>;
-    openDirectory: (relPath: string) => void;
-    openDevTools: () => void;
-    openPluginSettings: () => void;
+const INSTALL_LOG_PROCESS_LINE_CLASS = "install-package__process-line";
+
+/**
+ * 从选区 cloneContents 中只取 `.install-package__process-line` 内文本及行内部分选区对应的文本节点；
+ * 每个完整日志行块后加单个换行；忽略占位等其它 `<p>`。
+ * 跳过仅含空白字符的文本节点（多为标签外换行、缩进），并对结果首尾 trim。
+ */
+function plainTextFromRangeCloneContents(range: Range): string {
+    const frag = range.cloneContents();
+    const parts: string[] = [];
+    const walk = (node: Node): void => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const t = node.textContent ?? "";
+            if (t.trim().length === 0) {
+                return;
+            }
+            parts.push(t.replace(/\r\n/g, "\n"));
+            return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            return;
+        }
+        const el = node as Element;
+        if (el.classList.contains(INSTALL_LOG_PROCESS_LINE_CLASS)) {
+            parts.push((el.textContent ?? "").replace(/\r\n/g, "\n"));
+            parts.push("\n");
+            return;
+        }
+        if (el.tagName === "P") {
+            return;
+        }
+        el.childNodes.forEach(walk);
+    };
+    frag.childNodes.forEach(walk);
+    let result = parts.join("");
+    if (result.endsWith("\n")) {
+        result = result.slice(0, -1);
+    }
+    return result.trim();
+}
+
+function joinAllProcessLineTexts(logEl: HTMLDivElement): string {
+    return Array.from(logEl.querySelectorAll("." + INSTALL_LOG_PROCESS_LINE_CLASS))
+        .map((el) => el.textContent ?? "")
+        .join("\n")
+        .trim();
 }
 
 /**
- * 自定义页签内容：安装表单与操作（在 addTab 的 init 中调用）
+ * 右键打开菜单时：日志内有非折叠选区则只解析选区（不回落为全部行）；否则复制全部日志行。
+ * 选区仅覆盖占位说明等非日志行时解析结果为空，复制将提示无可复制。
  */
-export function initInstallPanel(custom: Custom, callbacks: InstallTabPanelCallbacks): void {
-    const root = custom.element as HTMLElement;
-    // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
-    root.innerHTML = `
-    <div class="install-package__layout">
-        <main class="install-package__content">
-            <section class="install-package__section">
-                <div class="install-package__section-title">${i18n.urlLabel}</div>
-                <div class="install-package__row">
-                    <input data-type="url" class="b3-text-field install-package__input install-package__input--url" value="" placeholder="https://github.com/user/repo" spellcheck="false">
-                    <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
-                </div>
-            </section>
+function installLogCopyPayloadAtOpen(logEl: HTMLDivElement): string {
+    const sel = document.getSelection();
+    if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (logEl.contains(range.startContainer) && logEl.contains(range.endContainer)) {
+            return plainTextFromRangeCloneContents(range);
+        }
+    }
+    return joinAllProcessLineTexts(logEl);
+}
 
-            <section class="install-package__section">
-                <div class="install-package__section-title">${i18n.versionLabel}</div>
-                <input data-type="version" class="b3-text-field fn__block install-package__input" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
-            </section>
-
-            <div class="install-package__details">
-                <section class="install-package__section install-package__section--compact">
-                    <div class="install-package__section-title">${i18n.packageInfoTitle}</div>
-                    <div class="install-package__card install-package__card--info">
-                        <p class="install-package__package-info-placeholder">${i18n.packageInfoPlaceholder}</p>
-                        <div data-type="repo-preview" class="install-package__preview b3-label__text">${i18n.repoPreviewTip}</div>
-                    </div>
-                </section>
-
-                <section data-type="install-process-section" class="install-package__section install-package__section--grow">
-                    <div class="install-package__section-title">${i18n.installProcessTitle}</div>
-                    <div data-type="install-process-log" class="install-package__card install-package__card--process">
-                        <p class="install-package__process-placeholder">${i18n.installProcessPlaceholder}</p>
-                    </div>
-                </section>
-            </div>
-        </main>
-
-        <aside class="install-package__sidebar">
-            <div class="install-package__sidebar-spacer" aria-hidden="true"></div>
-            <button data-type="install" type="button" class="b3-button install-package__install" disabled>${i18n.installPackageButton}</button>
-            <div class="install-package__sidebar-content">
-                <div class="install-package__switch-row">
-                    <span class="install-package__switch-label">${i18n.enableAfterInstall}</span>
-                    <input data-type="enable" type="checkbox" class="b3-switch fn__flex-center">
-                </div>
-                <div class="install-package__sidebar-fill" aria-hidden="true"></div>
-                <div class="install-package__actions install-package__shortcuts">
-                    <button data-type="shortcut-action" data-action="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
-                    <button data-type="open-directory" data-path="data/plugins" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/plugins">${i18n.openPluginsDir}</button>
-                    <button data-type="open-directory" data-path="data/storage/petal" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/storage/petal">${i18n.openPetalDir}</button>
-                    <button data-type="open-directory" data-path="conf/appearance/themes" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/themes">${i18n.openThemesDir}</button>
-                    <button data-type="open-directory" data-path="conf/appearance/icons" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/icons">${i18n.openIconsDir}</button>
-                    <button data-type="open-directory" data-path="data/widgets" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/widgets">${i18n.openWidgetsDir}</button>
-                    <button data-type="open-directory" data-path="data/templates" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/templates">${i18n.openTemplatesDir}</button>
-                    <button data-type="shortcut-action" data-action="open-plugin-settings" type="button" class="b3-button b3-button--outline">${i18n.openPluginSettings}</button>
-                </div>
-            </div>
-        </aside>
-    </div>`;
-
-    const urlInput = root.querySelector("input[data-type='url']") as HTMLInputElement;
-    const repoPreviewEl = root.querySelector("div[data-type='repo-preview']") as HTMLDivElement;
-    const versionInput = root.querySelector("input[data-type='version']") as HTMLInputElement;
-    const enableCheckbox = root.querySelector("input[data-type='enable']") as HTMLInputElement;
-    const installButton = root.querySelector("button[data-type='install']") as HTMLButtonElement;
-    const installProcessLog = root.querySelector("div[data-type='install-process-log']") as HTMLDivElement;
-
-    const installProcessReporter = {
-        append(text: string) {
-            const item = document.createElement("p");
-            item.className = "install-package__process-line";
-            item.textContent = text;
-            installProcessLog.append(item);
-            installProcessLog.scrollTop = installProcessLog.scrollHeight;
-        },
-        clear() {
-            installProcessLog.innerHTML = "";
-        },
+function createInstallLogger(installProcessLog: HTMLDivElement): { log: Logger; clear: () => void } {
+    const clear = (): void => {
+        installProcessLog.replaceChildren();
+        const placeholder = document.createElement("p");
+        placeholder.className = "install-package__text-muted";
+        placeholder.textContent = i18n.installProcessPlaceholder;
+        installProcessLog.append(placeholder);
     };
-    const log = (...args: unknown[]) => {
+    const log: Logger = (...args: unknown[]) => {
         const text = args.map((arg) => {
             if (typeof arg === "string") {
                 return arg;
@@ -166,109 +383,11 @@ export function initInstallPanel(custom: Custom, callbacks: InstallTabPanelCallb
                 return String(arg);
             }
         }).join(" ");
-        installProcessReporter.append(text);
+        const item = document.createElement("p");
+        item.className = INSTALL_LOG_PROCESS_LINE_CLASS;
+        item.textContent = text;
+        installProcessLog.append(item);
+        installProcessLog.scrollTop = installProcessLog.scrollHeight;
     };
-
-    const panelData = normalizeInstallTabPanelData(custom);
-    urlInput.value = panelData.url;
-    versionInput.value = panelData.version;
-    enableCheckbox.checked = panelData.enable === "enable";
-
-    let persistTimer: number | undefined;
-    let repoParseReady = false;
-    const persistPanelData = () => {
-        if (!repoParseReady) {
-            return;
-        }
-        panelData.url = urlInput.value;
-        panelData.version = versionInput.value;
-        panelData.enable = enableCheckbox.checked ? "enable" : "disable";
-
-        window.clearTimeout(persistTimer);
-        persistTimer = window.setTimeout(() => {
-            persistTimer = undefined;
-            saveLayout(() => {});
-        }, 400);
-    };
-
-    const repoUrlController = new RepoParser(
-        urlInput,
-        versionInput,
-        repoPreviewEl,
-        log,
-        (repoLabel) => {
-            custom.tab.updateTitle(repoLabel ?? i18n.title);
-        },
-        (ready) => {
-            repoParseReady = ready;
-            installButton.disabled = !ready;
-            if (ready) {
-                persistPanelData();
-            }
-        },
-    );
-    // 立即刷新一次，用于界面重载之后初始化页签
-    void repoUrlController.refresh();
-    urlInput.addEventListener("input", () => {
-        repoUrlController.refresh();
-    });
-    versionInput.addEventListener("input", persistPanelData);
-    enableCheckbox.addEventListener("change", persistPanelData);
-    root.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
-        repoUrlController.refresh();
-    });
-
-    const getEnableValue = () => enableCheckbox.checked;
-
-    const runInstall = () => {
-        if (installButton.disabled) {
-            return;
-        }
-        callbacks.installPackage(urlInput, versionInput, getEnableValue(), repoUrlController, log);
-    };
-
-    // 回车安装
-    urlInput.addEventListener("keydown", (event) => {
-        if (event.isComposing) {
-            return;
-        }
-        if (
-            !event.shiftKey &&
-            !event.metaKey &&
-            !event.ctrlKey &&
-            event.key === "Enter" &&
-            !event.repeat
-        ) {
-            runInstall();
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    });
-    if (!urlInput.value.trim()) {
-        urlInput.select();
-    }
-
-    installButton.addEventListener("click", runInstall);
-    root.querySelector(".install-package__shortcuts")?.addEventListener("click", (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
-            return;
-        }
-        const actionButton = target.closest("button[data-type='shortcut-action']") as HTMLButtonElement | null;
-        const action = actionButton?.dataset.action;
-        if (action === "open-devtools") {
-            callbacks.openDevTools();
-            return;
-        }
-        if (action === "open-plugin-settings") {
-            callbacks.openPluginSettings();
-            return;
-        }
-        const button = target.closest("button[data-type='open-directory']") as HTMLButtonElement | null;
-        const path = button?.dataset.path;
-        if (path) {
-            callbacks.openDirectory(path);
-        }
-    });
+    return { log, clear };
 }
-

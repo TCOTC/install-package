@@ -41,7 +41,7 @@ export class RepoParser {
         this.repoPreviewEl.textContent = i18n.repoPreviewParsing;
         this.repoPreviewEl.style.color = "";
         this.onInstallReady?.(false);
-        const parsePreviewPromise = parseOwnerRepo(input, this.log, signal, this.blur).then((parsed) => {
+        const parsePreviewPromise = parseOwnerRepo(input, this.log, signal).then((parsed) => {
             if (signal.aborted || !this.repoPreviewEl.isConnected) {
                 return;
             }
@@ -84,6 +84,6 @@ export class RepoParser {
                 return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
             }
         }
-        return parseOwnerRepo(url, this.log, undefined, this.blur);
+        return parseOwnerRepo(url, this.log);
     }
 }

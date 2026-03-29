@@ -1,240 +1,195 @@
-// 插件自定义页签挂载根节点；列 flex 子项占满高度，子节点用 min-height: 0 把可滚动高度传下去
-.install-package-panel {
-    align-self: stretch;
+// 布局间距：大档用于面板内边距、列 / 输入区间距、操作区左缩进；小档用于纵向堆叠 gap、卡片内边距等
+$spacing-s: 12px;
+$spacing-b: 24px;
+// 卡片内 WebKit 纵向滚动条宽度；右侧 padding 为小档间距减去该值，与 scrollbar-gutter: stable 配合使内容区与其它三边对齐
+$scrollbar-width: 10px;
+
+// 插件自定义页签挂载根节点
+.jcip-panel {
     background-color: var(--b3-theme-background);
-    box-sizing: border-box;
     container-type: inline-size;
+    // 让面板主体容器高度填满页签
     display: flex;
-    flex: 1 1 auto;
     flex-direction: column;
-    max-width: 100%;
-    min-height: 0;
-    min-width: 300px;
-    width: 100%;
+
+    // 面板主体容器
+    .jcip {
+        box-sizing: border-box;
+        column-gap: $spacing-b;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, min(300px, 100%));
+        // 双列时占满页签高度，grid 第二行 1fr 才有确定剩余空间；flex-shrink: 0 避免内容高于视口时被压成可视高
+        grid-template-rows: auto 1fr;
+        flex: 1 0 auto;
+        padding: $spacing-b;
+        row-gap: $spacing-s;
+        min-width: 300px;
+    }
 }
 
-// 面板主体根容器；宽屏为 Grid 两行（header 全宽 + 主列 / 侧栏 1fr）；窄屏见下方容器查询
-.install-package {
-    box-sizing: border-box;
-    column-gap: 28px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, min(300px, 100%));
-    grid-template-rows: auto 1fr;
-    min-width: 0;
-    // 双列时占满页签高度，grid 第二行 1fr 才有确定剩余空间；flex-shrink: 0 避免内容高于视口时被压成可视高
-    flex: 1 0 auto;
-    min-height: 0;
-    padding: 24px 28px 20px;
-    row-gap: 20px;
-    width: 100%;
-
-    // 纵向 flex 布局工具类（区块、卡片、侧栏 body 等复用）
+// 工具类
+.jcip {
+    // 纵向 flex 布局
     &__vflow {
         display: flex;
         flex-direction: column;
-        gap: 12px;
-        min-width: 0;
+        gap: $spacing-s;
     }
 
-    // 纵向间距紧凑的 vflow（安装日志卡片内）
-    &__vflow--dense {
-        gap: 8px;
-    }
-
-    // 顶栏（仓库 URL、版本号、重新验证）；双列（页签宽 > 860px）时横排，右侧与侧栏同宽视觉对齐
-    &__header {
-        display: flex;
-        gap: 20px;
-        grid-column: 1 / -1;
-        grid-row: 1;
-
-        // header 内 URL / 版本输入列
-        .install-package__section--header-field {
-            flex: 1 1 0;
-            max-width: 100%;
-            min-width: 0;
-        }
-
-        // header 内「重新验证」按钮列
-        .install-package__section--header-cta {
-            box-sizing: border-box;
-            flex: 0 0 auto;
-            // 与侧栏列 max 300px 及 padding-left 24px 一致，使按钮宽度与「安装集市包」相同
-            padding-left: 24px;
-            width: min(300px, 100%);
-        }
-    }
-
-    // 主操作按钮宽度（侧栏「安装集市包」与 header 内按钮；width: 100% 相对各自父级）
-    &__cta {
-        flex-shrink: 0;
-        width: 100%;
-    }
-
-    // 主内容列（包信息 + 安装过程两节 section）
-    &__main {
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
-        gap: 12px;
-        grid-column: 1;
-        grid-row: 2;
-        min-height: 0;
-        min-width: 0;
-    }
-
-    // 各区块小标题（URL、版本、包信息、安装过程等）
+    // 各区块小标题
     &__label {
-        color: var(--b3-theme-on-surface-light);
         user-select: text;
-        flex-shrink: 0;
         font-size: 12px;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        line-height: 1.45;
+        // 统一行高，避免仅含 &nbsp; 的占位行与中文标签在 line-height: normal 下度量不一致
+        line-height: 1em;
 
-        // 占位标题行，与小标题同高，使右侧主按钮与左侧输入框垂直对齐
+        // 占位行，高度相同但不显示内容
         &--placeholder {
-            color: transparent;
-            user-select: none;
             pointer-events: none;
         }
     }
+}
 
-    // 仓库 URL / 版本号文本输入框
-    &__input {
-        min-width: 0;
+// 输入区块
+.jcip-input {
+    display: flex;
+    gap: $spacing-b;
+    grid-column: 1 / -1;
+
+    // 输入区内 URL / 版本输入列
+    &__field {
+        flex: 1 1 0;
     }
 
-    // 主列「包信息」区块（与纵向 vflow 组合；此处写伸缩与裁剪）
-    &__section--compact {
+    // 输入区内「重新验证」按钮列
+    &__cta {
+        box-sizing: border-box;
+        flex: 0 0 auto;
+        // 与操作区列 max 300px 及 padding-left 大档间距一致，使按钮宽度与「安装集市包」相同
+        padding-left: $spacing-b;
+        width: min(300px, 100%);
+    }
+}
+
+// 展示区块
+.jcip-show {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-s;
+
+    // 信息区块
+    &__info {
         flex: 1 1 0;
-        min-height: 168px;
+        min-height: 170px;
         overflow: hidden;
     }
 
-    // 主列「安装过程」区块
-    &__section--grow {
+    // 日志区块
+    &__log {
         flex: 2 1 0;
-        min-height: 168px;
+        min-height: 170px;
         overflow: hidden;
     }
 
     // 带边框的内层卡片容器
     &__card {
-        border: 1px solid var(--b3-border-color);
-        border-radius: 8px;
-        box-sizing: border-box;
-        padding: 14px 16px;
-    }
-
-    // 包信息展示卡片（占位说明 + 仓库预览）
-    &__card--info {
         flex: 1 1 auto;
-        min-height: 112px;
-        overflow: auto;
-    }
-
-    // 安装日志输出卡片（等宽字体、可滚动）
-    &__card--process {
-        color: var(--b3-theme-on-surface);
-        flex: 1 1 auto;
-        font-family: var(--b3-font-family-code);
-        font-size: 12px;
-        line-height: 1.55;
-        min-height: 0;
         overflow-x: hidden;
-        overflow-y: auto;
-        user-select: text;
-        white-space: pre-wrap;
-        word-break: break-word;
+        border: 1px solid var(--b3-border-color);
+        border-radius: var(--b3-border-radius);
+        box-sizing: border-box;
+        padding: $spacing-s ($spacing-s - $scrollbar-width) $spacing-s $spacing-s;
+        scrollbar-gutter: stable;
+
+        &::-webkit-scrollbar {
+            width: $scrollbar-width;
+        }
+
+        // 日志卡片变体
+        &--log {
+            font-size: 12px;
+            user-select: text;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
     }
 
-    // 说明性弱文案（占位提示等）
-    &__text-muted {
-        color: var(--b3-theme-on-surface-light);
-        font-size: 12px;
-        line-height: 1.55;
-        margin: 0;
+    &__text {
+        // 占位提示行
+        &--placeholder {
+            color: var(--b3-theme-on-surface-light);
+            font-size: 12px;
+            border-bottom: 1px solid var(--b3-border-color);
+            padding-bottom: $spacing-s;
+        }
+
+        // 日志行
+        &--log {
+            font-family: var(--b3-font-family-code);
+        }
+    }
+}
+
+// 安装主按钮 + 「安装后启用」；`--dual` / `--narrow` 由容器查询控制显隐
+.jcip-action__install {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 14px;
+}
+
+.jcip-action__install--narrow {
+    display: none;
+}
+
+// 操作区块（安装、启用选项、快捷入口；与 jcip-input / jcip-show 并列）
+.jcip-action {
+    border-left: 1px solid var(--b3-border-color);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-s;
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+    min-width: 0;
+    padding-left: $spacing-b;
+
+    // 「安装后启用」一行（说明 + 开关）
+    &__enable {
+        align-items: center;
+        display: flex;
+        flex-shrink: 0;
+        gap: 14px;
+        justify-content: space-between;
+
+        .b3-switch {
+            flex-shrink: 0;
+        }
     }
 
-    // 安装日志中动态插入的每一行（供选区复制等逻辑使用）
-    &__process-line {
-        margin: 0;
-    }
-
-    // 仓库解析后的预览说明区域
-    &__preview {
-        border-top: 1px solid var(--b3-border-color);
+    &__enable-label {
         color: var(--b3-theme-on-surface);
-        font-size: 12px;
-        line-height: 1.55;
-        margin: 0;
-        padding-top: 12px;
+        flex: 1;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.45;
+        min-width: 0;
+        user-select: text;
     }
 
-    // 右侧侧栏（安装按钮、安装后启用、底部快捷入口）
-    &__sidebar {
-        border-left: 1px solid var(--b3-border-color);
+    // 快捷工具：占满安装区下方剩余高度，按钮组在列内贴底
+    &__tools {
         box-sizing: border-box;
         display: flex;
+        flex: 1 1 auto;
         flex-direction: column;
-        grid-column: 2;
-        grid-row: 2;
+        gap: 10px;
+        justify-content: flex-end;
         min-height: 0;
-        min-width: 0;
-        padding-left: 24px;
 
-        // 侧栏中部主体（工具行 + 弹性占位 + 操作按钮组）；与纵向 vflow 组合，纵向 gap 由 vflow 提供
-        &-body {
-            flex: 1 1 auto;
-            min-height: 0;
-        }
-
-        // 「安装集市包」主按钮
-        .install-package__install {
+        .b3-button {
             flex-shrink: 0;
-            margin-bottom: 14px;
-        }
-
-        // 「安装后启用」一行（文案 + 开关）
-        .install-package__toolbar-row {
-            align-items: center;
-            display: flex;
-            flex-shrink: 0;
-            gap: 14px;
-            justify-content: space-between;
-
-            // 思源主题开关组件（安装后启用）
-            .b3-switch {
-                flex-shrink: 0;
-            }
-        }
-
-        // 工具行左侧说明文案
-        .install-package__toolbar-label {
-            color: var(--b3-theme-on-surface);
-            flex: 1;
-            font-size: 13px;
-            font-weight: 500;
-            line-height: 1.45;
-            min-width: 0;
-            user-select: text;
-        }
-
-        // 侧栏内纵向弹性占位，将底部操作组顶到最下方
-        &-grow {
-            flex: 1 1 auto;
-            min-height: 12px;
-        }
-
-        // 侧栏底部快捷操作按钮竖排容器
-        .install-package__actions {
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
-            gap: 10px;
-            margin-top: auto;
         }
     }
 }
@@ -242,79 +197,87 @@
 // 单列窄布局（容器查询与视口兜底共用）
 @mixin ip-narrow-install-package {
     // 窄屏下改为一列纵向 flex
-    .install-package {
+    .jcip-panel .jcip {
         display: flex;
-        flex: 0 0 auto;
         flex-direction: column;
-        min-height: auto;
+    }
 
-        // 窄屏顶栏竖排
-        &__header {
-            flex-direction: column;
-            grid-column: auto;
-            grid-row: auto;
+    // 窄屏输入区竖排
+    .jcip-input {
+        flex-direction: column;
+        gap: 16px;
 
-            // 窄屏下顶栏各列全宽
-            .install-package__section--header-field,
-            .install-package__section--header-cta {
-                flex: 0 0 auto;
-                width: 100%;
-            }
-
-            // 窄屏去掉左内边距；隐藏占位标题避免多余空白
-            .install-package__section--header-cta {
-                padding-left: 0;
-
-                // 单列无需占位标题行
-                .install-package__label--placeholder {
-                    display: none;
-                }
-            }
-        }
-
-        // 窄屏主列全宽、取消 grid 占位
-        &__main {
-            flex: 0 0 auto;
-            grid-column: auto;
-            grid-row: auto;
-            min-height: auto;
+        // 窄屏下输入区各列全宽
+        &__field,
+        &__cta {
             width: 100%;
         }
 
-        // 窄屏勿保留 min-height: 168px（compact 会被垫高，信息卡片与「安装过程」标题间多出空白；双列时由 flex: 1 把空间吃进卡片内则无此问题）
-        &__section--compact,
-        &__section--grow {
+        // 窄屏去掉左内边距；单列无需占位标题行
+        &__cta {
+            padding-left: 0;
+        }
+
+        &__cta .jcip__label--placeholder {
+            display: none;
+        }
+
+        // 单列时紧跟「重新验证」下方的安装区与输入列同宽
+        .jcip-action__install--narrow {
+            width: 100%;
+        }
+    }
+
+    // 双列仅右栏安装区，单列仅输入区内安装区
+    .jcip-action__install--dual {
+        display: none;
+    }
+
+    .jcip-action__install--narrow {
+        display: flex;
+    }
+
+    // 窄屏展示列全宽；勿用 flex: 1 1 0 抢高——页签根节点常为内容定高，basis 0 会把 show / info / log 算成 0 高导致整块不显示
+    .jcip-show {
+        flex: 0 0 auto;
+        min-height: auto;
+        width: 100%;
+
+        // 窄屏勿保留 min-height: 170px（info 会被垫高，信息卡片与日志区标题间多出空白）
+        &__info,
+        &__log {
             flex: 0 0 auto;
             min-height: auto;
             overflow: visible;
         }
 
-        // 窄屏包信息卡片伸缩策略
-        &__card--info {
-            flex: 0 1 auto;
-        }
+        // 窄屏卡片限高 + 内部滚动（不依赖父链 flex 定高）
+        &__card {
+            max-height: min(42dvh, 360px);
+            min-height: 0;
+            overflow-y: auto;
 
-        // 窄屏安装日志区高度与滚动策略
-        &__card--process {
-            flex: 0 0 auto;
-            min-height: 112px;
-            overflow-y: visible;
+            // 窄屏安装日志区略高，仍限高可滚
+            &--log {
+                flex: 0 0 auto;
+                max-height: min(50dvh, 480px);
+                min-height: 120px;
+                overflow-y: auto;
+            }
         }
+    }
 
-        // 窄屏侧栏改为下方横条分区
-        &__sidebar {
-            border-left: none;
-            border-top: 1px solid var(--b3-border-color);
-            grid-column: auto;
-            grid-row: auto;
-            padding-left: 0;
-            padding-top: 16px;
-            width: 100%;
-        }
+    // 窄屏操作区改为下方横条分区
+    .jcip-action {
+        border-left: none;
+        border-top: 1px solid var(--b3-border-color);
+        padding-left: 0;
+        padding-top: 16px;
+        width: 100%;
     }
 }
 
-// 窄宽度（≤860px）：单列堆叠；header 两区块竖排（与横排同一阈值）；关闭分区 flex 与日志区内滚动
+// 窄宽度（≤860px）：单列堆叠；输入区两区块竖排（与横排同一阈值）；展示列随内容增高，卡片 max-height + 内部滚动
 @container (max-width: 860px) {
     @include ip-narrow-install-package;
 }

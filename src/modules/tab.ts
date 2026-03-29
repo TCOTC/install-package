@@ -8,61 +8,63 @@ import { electron, openDirectory, openDevTools } from "./desktop";
 export type Logger = (...args: unknown[]) => void;
 
 function renderInstallPanel(root: HTMLElement): void {
-    root.classList.add("install-package-panel");
-    root.innerHTML = `
-    <div class="install-package">
-        <header class="install-package__header">
-            <section class="install-package__section install-package__section--header-field install-package__vflow">
-                <div class="install-package__label">${i18n.urlLabel}</div>
-                <input data-type="url" class="b3-text-field fn__block install-package__input" value="" placeholder="https://github.com/user/repo" spellcheck="false">
-            </section>
-            <section class="install-package__section install-package__section--header-field install-package__vflow">
-                <div class="install-package__label">${i18n.versionLabel}</div>
-                <input data-type="version" class="b3-text-field fn__block install-package__input" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
-            </section>
-            <section class="install-package__section install-package__vflow install-package__section--header-cta" aria-label="${i18n.repoRefreshButton}">
-                <div class="install-package__label install-package__label--placeholder" aria-hidden="true">&nbsp;</div>
-                <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline install-package__cta">${i18n.repoRefreshButton}</button>
-            </section>
-        </header>
-
-        <main class="install-package__main">
-            <section class="install-package__section install-package__vflow install-package__section--compact">
-                <div class="install-package__label">${i18n.packageInfoTitle}</div>
-                <div class="install-package__card install-package__vflow install-package__card--info">
-                    <p class="install-package__text-muted">${i18n.packageInfoPlaceholder}</p>
-                    <div data-type="repo-preview" class="install-package__preview b3-label__text">${i18n.repoPreviewTip}</div>
-                </div>
-            </section>
-
-            <section data-type="install-process-section" class="install-package__section install-package__vflow install-package__section--grow">
-                <div class="install-package__label">${i18n.installProcessTitle}</div>
-                <div data-type="install-log" class="install-package__card install-package__vflow install-package__vflow--dense install-package__card--process">
-                    <p class="install-package__text-muted">${i18n.installProcessPlaceholder}</p>
-                </div>
-            </section>
-        </main>
-
-        <aside class="install-package__sidebar">
-            <button data-type="install" type="button" class="b3-button install-package__install install-package__cta" disabled>${i18n.installPackageButton}</button>
-            <div class="install-package__sidebar-body install-package__vflow">
-                <div class="install-package__toolbar-row">
-                    <span class="install-package__toolbar-label">${i18n.enableAfterInstall}</span>
+    root.classList.add("jcip-panel");
+    const actionInstallCore = `
+                <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
+                <div class="jcip-action__enable">
+                    <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enable" type="checkbox" class="b3-switch fn__flex-center">
-                </div>
-                <div class="install-package__sidebar-grow" aria-hidden="true"></div>
-                <div class="install-package__actions">
-                    <button data-type="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
-                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/plugins">${i18n.openPluginsDir}</button>
-                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/storage/petal">${i18n.openPetalDir}</button>
-                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/themes">${i18n.openThemesDir}</button>
-                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/icons">${i18n.openIconsDir}</button>
-                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/widgets">${i18n.openWidgetsDir}</button>
-                    <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/templates">${i18n.openTemplatesDir}</button>
-                    <button data-type="open-settings" type="button" class="b3-button b3-button--outline">${i18n.openPluginSettings}</button>
-                </div>
+                </div>`;
+    root.innerHTML = `
+    <div class="jcip">
+        <div class="jcip-input">
+            <section class="jcip__vflow jcip-input__field">
+                <div class="jcip__label">${i18n.urlLabel}</div>
+                <input data-type="url" class="b3-text-field fn__block" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+            </section>
+            <section class="jcip__vflow jcip-input__field">
+                <div class="jcip__label">${i18n.versionLabel}</div>
+                <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
+            </section>
+            <section class="jcip__vflow jcip-input__cta">
+                <div class="jcip__label jcip__label--placeholder" aria-hidden="true">&nbsp;</div>
+                <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
+            </section>
+            <div class="jcip-action__install jcip-action__install--narrow">${actionInstallCore}
             </div>
-        </aside>
+        </div>
+
+        <div class="jcip-show">
+            <section class="jcip__vflow jcip-show__info">
+                <div class="jcip__label">${i18n.packageInfoTitle}</div>
+                <div class="jcip__vflow jcip-show__card">
+                    <p class="jcip-show__text--placeholder">${i18n.packageInfoPlaceholder}</p>
+                    <div data-type="repo-preview">${i18n.repoPreviewTip}</div>
+                </div>
+            </section>
+
+            <section class="jcip__vflow jcip-show__log">
+                <div class="jcip__label">${i18n.installProcessTitle}</div>
+                <div class="jcip__vflow jcip-show__card jcip-show__card--log" data-type="install-log">
+                    <p class="jcip-show__text--placeholder">${i18n.installProcessPlaceholder}</p>
+                </div>
+            </section>
+        </div>
+
+        <div class="jcip-action">
+            <div class="jcip-action__install jcip-action__install--dual">${actionInstallCore}
+            </div>
+            <div class="jcip-action__tools">
+                <button data-type="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
+                <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/plugins">${i18n.openPluginsDir}</button>
+                <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/storage/petal">${i18n.openPetalDir}</button>
+                <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/themes">${i18n.openThemesDir}</button>
+                <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/icons">${i18n.openIconsDir}</button>
+                <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/widgets">${i18n.openWidgetsDir}</button>
+                <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/templates">${i18n.openTemplatesDir}</button>
+                <button data-type="open-settings" type="button" class="b3-button b3-button--outline">${i18n.openPluginSettings}</button>
+            </div>
+        </div>
     </div>`;
 }
 
@@ -77,8 +79,8 @@ interface InstallPanelElements {
     urlInput: HTMLInputElement;
     repoPreviewEl: HTMLDivElement;
     versionInput: HTMLInputElement;
-    enableCheckbox: HTMLInputElement;
-    installButton: HTMLButtonElement;
+    enableCheckboxes: NodeListOf<HTMLInputElement>;
+    installButtons: NodeListOf<HTMLButtonElement>;
     installLog: HTMLDivElement;
 }
 
@@ -98,6 +100,8 @@ export class InstallPanelController {
     private readonly callbacks: InstallPanelCallbacks;
     private persistTimer: number | undefined;
     private repoParseReady = false;
+    /** 安装后是否启用集市包（与两份开关 DOM 同步，持久化写入 `panelData.enable`） */
+    private enableAfterInstall: boolean;
 
     constructor(custom: Custom, callbacks: InstallPanelCallbacks) {
         this.custom = custom;
@@ -109,14 +113,15 @@ export class InstallPanelController {
             urlInput: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
             repoPreviewEl: this.root.querySelector("div[data-type='repo-preview']") as HTMLDivElement,
             versionInput: this.root.querySelector("input[data-type='version']") as HTMLInputElement,
-            enableCheckbox: this.root.querySelector("input[data-type='enable']") as HTMLInputElement,
-            installButton: this.root.querySelector("button[data-type='install']") as HTMLButtonElement,
+            enableCheckboxes: this.root.querySelectorAll("input[data-type='enable']") as NodeListOf<HTMLInputElement>,
+            installButtons: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
             installLog: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
         };
         const logger = createInstallLogger(this.elements.installLog);
         this.log = logger.log;
         this.clearInstallLog = logger.clear;
         this.panelData = normalizeInstallTabPanelData(this.custom);
+        this.enableAfterInstall = this.panelData.enable === "enable";
         this.repoUrlController = new RepoParser(
             this.elements.urlInput,
             this.elements.versionInput,
@@ -127,7 +132,9 @@ export class InstallPanelController {
             },
             (ready) => {
                 this.repoParseReady = ready;
-                this.elements.installButton.disabled = !ready;
+                for (const btn of this.elements.installButtons) {
+                    btn.disabled = !ready;
+                }
                 if (ready) {
                     this.persistPanelData();
                 }
@@ -138,7 +145,9 @@ export class InstallPanelController {
     public init(): void {
         this.elements.urlInput.value = this.panelData.url;
         this.elements.versionInput.value = this.panelData.version;
-        this.elements.enableCheckbox.checked = this.panelData.enable === "enable";
+        for (const cb of this.elements.enableCheckboxes) {
+            cb.checked = this.enableAfterInstall;
+        }
 
         // 立即刷新一次，用于界面重载之后初始化页签
         void this.repoUrlController.refresh();
@@ -146,7 +155,15 @@ export class InstallPanelController {
             void this.repoUrlController.refresh();
         });
         this.elements.versionInput.addEventListener("input", this.persistPanelData);
-        this.elements.enableCheckbox.addEventListener("change", this.persistPanelData);
+        for (const cb of this.elements.enableCheckboxes) {
+            cb.addEventListener("change", () => {
+                this.enableAfterInstall = cb.checked;
+                for (const o of this.elements.enableCheckboxes) {
+                    o.checked = this.enableAfterInstall;
+                }
+                this.persistPanelData();
+            });
+        }
         this.root.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
             void this.repoUrlController.refresh();
         });
@@ -172,7 +189,9 @@ export class InstallPanelController {
             this.elements.urlInput.select();
         }
 
-        this.elements.installButton.addEventListener("click", () => void this.runInstall());
+        for (const btn of this.elements.installButtons) {
+            btn.addEventListener("click", () => void this.runInstall());
+        }
 
         this.elements.installLog.addEventListener("contextmenu", (event) => {
             event.preventDefault();
@@ -201,7 +220,7 @@ export class InstallPanelController {
             });
         });
 
-        this.root.querySelector(".install-package__actions")?.addEventListener("click", async (event: Event): Promise<void> => {
+        this.root.querySelector(".jcip-action__tools")?.addEventListener("click", async (event: Event): Promise<void> => {
             const target = event.target;
             if (!(target instanceof Element)) {
                 return;
@@ -229,7 +248,7 @@ export class InstallPanelController {
         }
         this.panelData.url = this.elements.urlInput.value;
         this.panelData.version = this.elements.versionInput.value;
-        this.panelData.enable = this.elements.enableCheckbox.checked ? "enable" : "disable";
+        this.panelData.enable = this.enableAfterInstall ? "enable" : "disable";
 
         window.clearTimeout(this.persistTimer);
         this.persistTimer = window.setTimeout(() => {
@@ -258,7 +277,7 @@ export class InstallPanelController {
         }
         const url = this.elements.urlInput.value.trim();
         const version = this.elements.versionInput.value.trim();
-        const enable = this.elements.enableCheckbox.checked;
+        const enable = this.enableAfterInstall;
         const parsed = await this.repoUrlController.ownerRepoForUrl(url);
         if (!parsed) {
             message(i18n.invalidUrl);
@@ -298,10 +317,10 @@ export function normalizeInstallTabPanelData(custom: Custom): InstallTabPanelDat
     return panelData;
 }
 
-const INSTALL_LOG_PROCESS_LINE_CLASS = "install-package__process-line";
+const INSTALL_LOG_PROCESS_LINE_CLASS = "jcip-show__text--log";
 
 /**
- * 从选区 cloneContents 中只取 `.install-package__process-line` 内文本及行内部分选区对应的文本节点；
+ * 从选区 cloneContents 中只取 `.jcip-show__text--log` 内文本及行内部分选区对应的文本节点；
  * 每个完整日志行块后加单个换行；忽略占位等其它 `<p>`。
  * 跳过仅含空白字符的文本节点（多为标签外换行、缩进），并对结果首尾 trim。
  */
@@ -365,7 +384,7 @@ function createInstallLogger(installProcessLog: HTMLDivElement): { log: Logger; 
     const clear = (): void => {
         installProcessLog.replaceChildren();
         const placeholder = document.createElement("p");
-        placeholder.className = "install-package__text-muted";
+        placeholder.className = "jcip-show__text--placeholder";
         placeholder.textContent = i18n.installProcessPlaceholder;
         installProcessLog.append(placeholder);
     };

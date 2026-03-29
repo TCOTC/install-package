@@ -3,7 +3,7 @@ import { Custom, Plugin, openTab } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
 import { setMessagePrefix } from "./modules/message";
 import { createSetting, loadSetting } from "./modules/setting";
-import { InstallPanelController } from "./modules/tab";
+import { InstallPanelController } from "./modules/panel";
 import { setOpenPluginSettingsHandler } from "./modules/githubNotice";
 
 /** 顶栏与 openTab 自定义页签共用的图标 id */

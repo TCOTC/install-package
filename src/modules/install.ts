@@ -11,7 +11,7 @@ import {
     unzipFile,
     writeTempFile,
 } from "./kernelClient";
-import type { Logger } from "./tab";
+import type { Logger } from "./panel";
 
 export function getInstallPath(packageType: string): string {
     switch (packageType) {

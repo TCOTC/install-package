@@ -9,7 +9,7 @@ import { i18n } from "./i18n";
 import { getGitHubToken } from "./setting";
 import { message } from "./message";
 import { showGitHubAuthNotice } from "./githubNotice";
-import type { Logger } from "./tab";
+import type { Logger } from "./panel";
 
 export type GitHubApiErrorInfo = { status: number; apiMessage?: string };
 type GitHubRateLimitResponse = operations["rate-limit/get"]["responses"][200]["content"]["application/json"];

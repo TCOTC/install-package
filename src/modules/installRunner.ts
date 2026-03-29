@@ -4,7 +4,7 @@ import { downloadPackage } from "./download";
 import { findPackageZip, getReleaseInfo } from "./github";
 import { installPackage, setPackageEnabled } from "./install";
 import { message } from "./message";
-import type { Logger } from "./tab";
+import type { Logger } from "./panel";
 
 export interface InstallRequest {
     version: string;

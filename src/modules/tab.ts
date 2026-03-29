@@ -1,7 +1,7 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "./i18n";
 import { RepoParser } from "./repoParser";
-import type { InstallRequest } from "./installRunner";
+import { runInstall } from "./installRunner";
 import { message } from "./message";
 import { electron, openDirectory, openDevTools } from "./desktop";
 
@@ -85,7 +85,6 @@ interface InstallPanelElements {
 }
 
 export interface InstallPanelCallbacks {
-    runInstall: (request: InstallRequest, log: Logger) => void | Promise<void>;
     openPluginSettings: () => void;
 }
 
@@ -180,7 +179,7 @@ export class InstallPanelController {
                 event.key === "Enter" &&
                 !event.repeat
             ) {
-                void this.runInstall();
+                void this.startInstall();
                 event.preventDefault();
                 event.stopPropagation();
             }
@@ -190,7 +189,7 @@ export class InstallPanelController {
         }
 
         for (const btn of this.elements.installButtons) {
-            btn.addEventListener("click", () => void this.runInstall());
+            btn.addEventListener("click", () => void this.startInstall());
         }
 
         this.elements.installLog.addEventListener("contextmenu", (event) => {
@@ -271,7 +270,7 @@ export class InstallPanelController {
         }
     }
 
-    private async runInstall(): Promise<void> {
+    private async startInstall(): Promise<void> {
         if (!this.repoParseReady) {
             return;
         }
@@ -285,7 +284,7 @@ export class InstallPanelController {
             return;
         }
         this.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
-        await this.callbacks.runInstall({
+        await runInstall({
             version,
             enable,
             owner: parsed.owner,

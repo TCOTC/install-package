@@ -4,9 +4,7 @@ import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
 import { setMessagePrefix } from "./modules/message";
 import { createSetting, loadSetting } from "./modules/setting";
 import { InstallPanelController } from "./modules/tab";
-import { runInstallFromRepo, type InstallRequest } from "./modules/installRunner";
 import { setOpenPluginSettingsHandler } from "./modules/githubNotice";
-import type { Logger } from "./modules/tab";
 
 /** 顶栏与 openTab 自定义页签共用的图标 id */
 export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";
@@ -14,8 +12,6 @@ export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";
 export const INSTALL_TAB_TYPE = "install_panel";
 
 export default class InstallPackage extends Plugin {
-    private readonly installInFlight = new Set<string>();
-
     onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
@@ -27,13 +23,11 @@ export default class InstallPackage extends Plugin {
             </symbol>
         `);
 
-        const runInstall = this.runInstall;
         const openPluginSettings = this.openSetting.bind(this);
         this.addTab({
             type: INSTALL_TAB_TYPE,
             init(this: Custom) {
                 const controller = new InstallPanelController(this, {
-                    runInstall,
                     openPluginSettings,
                 });
                 controller.init();
@@ -84,9 +78,5 @@ export default class InstallPackage extends Plugin {
 
         console.log(this.displayName, "plugin uninstalled");
     }
-
-    private readonly runInstall = async (request: InstallRequest, log: Logger): Promise<void> => {
-        await runInstallFromRepo(request, log, this.installInFlight);
-    };
 
 }

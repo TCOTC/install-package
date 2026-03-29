@@ -13,8 +13,12 @@ export interface InstallRequest {
     repo: string;
 }
 
-export async function runInstallFromRepo(request: InstallRequest, log: Logger, installInFlight: Set<string>): Promise<void> {
+/** 同一仓库并发安装去重（模块级，与插件单实例生命周期一致） */
+const installInFlight = new Set<string>();
+
+export async function runInstall(request: InstallRequest, log: Logger): Promise<void> {
     let repoLockKey = "";
+    let lockAcquired = false;
     try {
         const { owner, repo } = request;
         repoLockKey = `${owner}/${repo}`.toLowerCase();
@@ -23,6 +27,7 @@ export async function runInstallFromRepo(request: InstallRequest, log: Logger, i
             return;
         }
         installInFlight.add(repoLockKey);
+        lockAcquired = true;
 
         const releaseInfo = await getReleaseInfo(owner, repo, request.version, log);
         if (!releaseInfo) {
@@ -94,7 +99,7 @@ export async function runInstallFromRepo(request: InstallRequest, log: Logger, i
         log("InstallPackage error:", error);
         message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)));
     } finally {
-        if (repoLockKey) {
+        if (lockAcquired && repoLockKey) {
             installInFlight.delete(repoLockKey);
         }
     }

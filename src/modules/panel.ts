@@ -13,7 +13,7 @@ function renderInstallPanel(root: HTMLElement): void {
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
                 <div class="jcip-action__enable">
                     <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
-                    <input data-type="enable" type="checkbox" class="b3-switch fn__flex-center">
+                    <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
                 </div>`;
     root.innerHTML = `
     <div class="jcip-panel">
@@ -39,7 +39,7 @@ function renderInstallPanel(root: HTMLElement): void {
                 <div class="jcip__label">${i18n.packageInfoTitle}</div>
                 <div class="jcip__vflow jcip-show__card">
                     <p class="jcip-show__text--placeholder">${i18n.packageInfoPlaceholder}</p>
-                    <div data-type="repo-preview">${i18n.repoPreviewTip}</div>
+                    <div data-type="repo-info">${i18n.repoInfoTip}</div>
                 </div>
             </section>
 
@@ -76,12 +76,12 @@ export interface InstallPanelData {
 }
 
 interface InstallPanelElements {
-    urlInput: HTMLInputElement;
-    repoPreviewEl: HTMLDivElement;
-    versionInput: HTMLInputElement;
-    enableCheckboxes: NodeListOf<HTMLInputElement>;
-    installButtons: NodeListOf<HTMLButtonElement>;
-    installLog: HTMLDivElement;
+    urlEl: HTMLInputElement;
+    versionEl: HTMLInputElement;
+    repoInfoEl: HTMLDivElement;
+    enableAfterInstallSwitchEls: NodeListOf<HTMLInputElement>;
+    installEls: NodeListOf<HTMLButtonElement>;
+    installLogEl: HTMLDivElement;
 }
 
 export class InstallPanelController {
@@ -105,29 +105,29 @@ export class InstallPanelController {
         // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
         renderInstallPanel(this.root);
         this.elements = {
-            urlInput: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
-            repoPreviewEl: this.root.querySelector("div[data-type='repo-preview']") as HTMLDivElement,
-            versionInput: this.root.querySelector("input[data-type='version']") as HTMLInputElement,
-            enableCheckboxes: this.root.querySelectorAll("input[data-type='enable']") as NodeListOf<HTMLInputElement>,
-            installButtons: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
-            installLog: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
+            urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
+            versionEl: this.root.querySelector("input[data-type='version']") as HTMLInputElement,
+            repoInfoEl: this.root.querySelector("div[data-type='repo-info']") as HTMLDivElement,
+            enableAfterInstallSwitchEls: this.root.querySelectorAll("input[data-type='enableAfterInstall']") as NodeListOf<HTMLInputElement>,
+            installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
+            installLogEl: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
         };
-        const logger = createInstallLogger(this.elements.installLog);
+        const logger = createInstallLogger(this.elements.installLogEl);
         this.log = logger.log;
         this.clearInstallLog = logger.clear;
         this.panelData = normalizeInstallTabPanelData(this.custom);
         this.enableAfterInstall = this.panelData.enable === "enable";
         this.repoUrlController = new RepoParser(
-            this.elements.urlInput,
-            this.elements.versionInput,
-            this.elements.repoPreviewEl,
+            this.elements.urlEl,
+            this.elements.versionEl,
+            this.elements.repoInfoEl,
             this.log,
             (repoLabel) => {
                 this.custom.tab.updateTitle(repoLabel ?? i18n.title);
             },
             (ready) => {
                 this.repoParseReady = ready;
-                for (const btn of this.elements.installButtons) {
+                for (const btn of this.elements.installEls) {
                     btn.disabled = !ready;
                 }
                 if (ready) {
@@ -138,22 +138,22 @@ export class InstallPanelController {
     }
 
     public init(): void {
-        this.elements.urlInput.value = this.panelData.url;
-        this.elements.versionInput.value = this.panelData.version;
-        for (const cb of this.elements.enableCheckboxes) {
+        this.elements.urlEl.value = this.panelData.url;
+        this.elements.versionEl.value = this.panelData.version;
+        for (const cb of this.elements.enableAfterInstallSwitchEls) {
             cb.checked = this.enableAfterInstall;
         }
 
         // 立即刷新一次，用于界面重载之后初始化页签
         void this.repoUrlController.refresh();
-        this.elements.urlInput.addEventListener("input", () => {
+        this.elements.urlEl.addEventListener("input", () => {
             void this.repoUrlController.refresh();
         });
-        this.elements.versionInput.addEventListener("input", this.persistPanelData);
-        for (const cb of this.elements.enableCheckboxes) {
+        this.elements.versionEl.addEventListener("input", this.persistPanelData);
+        for (const cb of this.elements.enableAfterInstallSwitchEls) {
             cb.addEventListener("change", () => {
                 this.enableAfterInstall = cb.checked;
-                for (const o of this.elements.enableCheckboxes) {
+                for (const o of this.elements.enableAfterInstallSwitchEls) {
                     o.checked = this.enableAfterInstall;
                 }
                 this.persistPanelData();
@@ -164,7 +164,7 @@ export class InstallPanelController {
         });
 
         // 回车安装
-        this.elements.urlInput.addEventListener("keydown", (event) => {
+        this.elements.urlEl.addEventListener("keydown", (event) => {
             if (event.isComposing) {
                 return;
             }
@@ -180,19 +180,19 @@ export class InstallPanelController {
                 event.stopPropagation();
             }
         });
-        if (!this.elements.urlInput.value.trim()) {
-            this.elements.urlInput.select();
+        if (!this.elements.urlEl.value.trim()) {
+            this.elements.urlEl.select();
         }
 
-        for (const btn of this.elements.installButtons) {
+        for (const btn of this.elements.installEls) {
             btn.addEventListener("click", () => void this.startInstall());
         }
 
-        this.elements.installLog.addEventListener("contextmenu", (event) => {
+        this.elements.installLogEl.addEventListener("contextmenu", (event) => {
             event.preventDefault();
             event.stopPropagation();
             // 在弹出菜单瞬间确定待复制内容；点击菜单项时选区常被清空，故在此刻用 cloneContents 解析选区
-            const copyPayload = installLogCopyPayloadAtOpen(this.elements.installLog);
+            const copyPayload = installLogCopyPayloadAtOpen(this.elements.installLogEl);
             const menu = new Menu("install-package-install-log");
             menu.addItem({
                 icon: "iconCopy",
@@ -241,8 +241,8 @@ export class InstallPanelController {
         if (!this.repoParseReady) {
             return;
         }
-        this.panelData.url = this.elements.urlInput.value;
-        this.panelData.version = this.elements.versionInput.value;
+        this.panelData.url = this.elements.urlEl.value;
+        this.panelData.version = this.elements.versionEl.value;
         this.panelData.enable = this.enableAfterInstall ? "enable" : "disable";
 
         window.clearTimeout(this.persistTimer);
@@ -254,7 +254,7 @@ export class InstallPanelController {
 
     /** 复制日志纯文本；`payload` 为右键菜单打开时已算好的内容（避免点击菜单时选区丢失） */
     private async copyInstallLogPlainText(payload?: string): Promise<void> {
-        const text = payload ?? joinAllProcessLineTexts(this.elements.installLog);
+        const text = payload ?? joinAllProcessLineTexts(this.elements.installLogEl);
         if (!text.trim()) {
             message(i18n.copyInstallLogEmpty);
             return;
@@ -270,8 +270,8 @@ export class InstallPanelController {
         if (!this.repoParseReady) {
             return;
         }
-        const url = this.elements.urlInput.value.trim();
-        const version = this.elements.versionInput.value.trim();
+        const url = this.elements.urlEl.value.trim();
+        const version = this.elements.versionEl.value.trim();
         const enable = this.enableAfterInstall;
         const parsed = await this.repoUrlController.ownerRepoForUrl(url);
         if (!parsed) {

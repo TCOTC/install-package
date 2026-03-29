@@ -2,7 +2,7 @@ import { i18n } from "./i18n";
 import { parseOwnerRepo } from "./github";
 
 export class RepoParser {
-    private previewAbort?: AbortController;
+    private infoAbort?: AbortController;
     private lastParsed: { input: string; owner: string; repo: string } | null = null;
     private pendingRefresh: Promise<void> = Promise.resolve();
 
@@ -13,7 +13,7 @@ export class RepoParser {
     constructor(
         private readonly urlInput: HTMLInputElement,
         private readonly versionInput: HTMLInputElement,
-        private readonly repoPreviewEl: HTMLDivElement,
+        private readonly repoInfoEl: HTMLDivElement,
         private readonly log: (...args: unknown[]) => void,
         private readonly onRepoResolved?: (repoLabel: string | null) => void,
         private readonly onInstallReady?: (ready: boolean) => void,
@@ -26,44 +26,44 @@ export class RepoParser {
 
     refresh(): Promise<void> {
         this.lastParsed = null;
-        this.previewAbort?.abort();
-        this.previewAbort = new AbortController();
-        const { signal } = this.previewAbort;
+        this.infoAbort?.abort();
+        this.infoAbort = new AbortController();
+        const { signal } = this.infoAbort;
         const input = this.urlInput.value.trim();
         if (!input) {
-            this.repoPreviewEl.textContent = i18n.repoPreviewTip;
-            this.repoPreviewEl.style.color = "";
+            this.repoInfoEl.textContent = i18n.repoInfoTip;
+            this.repoInfoEl.style.color = "";
             this.onRepoResolved?.(null);
             this.onInstallReady?.(false);
             this.pendingRefresh = Promise.resolve();
             return this.pendingRefresh;
         }
-        this.repoPreviewEl.textContent = i18n.repoPreviewParsing;
-        this.repoPreviewEl.style.color = "";
+        this.repoInfoEl.textContent = i18n.repoInfoParsing;
+        this.repoInfoEl.style.color = "";
         this.onInstallReady?.(false);
-        const parsePreviewPromise = parseOwnerRepo(input, this.log, signal).then((parsed) => {
-            if (signal.aborted || !this.repoPreviewEl.isConnected) {
+        const parseInfoPromise = parseOwnerRepo(input, this.log, signal).then((parsed) => {
+            if (signal.aborted || !this.repoInfoEl.isConnected) {
                 return;
             }
             if (parsed) {
                 this.lastParsed = { input: input, owner: parsed.owner, repo: parsed.repo };
-                this.repoPreviewEl.innerHTML = i18n.repoPreviewResolved.replace(
+                this.repoInfoEl.innerHTML = i18n.repoInfoResolved.replace(
                     "{ownerRepo}",
                     `<b><a href="https://github.com/${parsed.owner}" target="_blank">${parsed.owner}</a></b> / <b><a href="https://github.com/${parsed.owner}/${parsed.repo}" target="_blank">${parsed.repo}</a></b>`
                 );
-                this.repoPreviewEl.style.color = "";
+                this.repoInfoEl.style.color = "";
                 this.onRepoResolved?.(parsed.repo);
                 this.onInstallReady?.(true);
             } else {
-                this.repoPreviewEl.textContent = i18n.repoPreviewInvalid;
-                this.repoPreviewEl.style.color = "var(--b3-theme-error)";
+                this.repoInfoEl.textContent = i18n.repoInfoInvalid;
+                this.repoInfoEl.style.color = "var(--b3-theme-error)";
                 this.onRepoResolved?.(null);
                 this.onInstallReady?.(false);
             }
         });
-        this.pendingRefresh = parsePreviewPromise
+        this.pendingRefresh = parseInfoPromise
             .catch(() => {
-                if (!this.repoPreviewEl.isConnected) {
+                if (!this.repoInfoEl.isConnected) {
                     return;
                 }
                 this.onInstallReady?.(false);

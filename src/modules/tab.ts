@@ -8,7 +8,7 @@ import { electron, openDirectory, openDevTools } from "./desktop";
 export type Logger = (...args: unknown[]) => void;
 
 function renderInstallPanel(root: HTMLElement): void {
-    root.classList.add("jcip-panel");
+    root.classList.add("jcip-tab");
     const actionInstallCore = `
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
                 <div class="jcip-action__enable">
@@ -16,7 +16,7 @@ function renderInstallPanel(root: HTMLElement): void {
                     <input data-type="enable" type="checkbox" class="b3-switch fn__flex-center">
                 </div>`;
     root.innerHTML = `
-    <div class="jcip">
+    <div class="jcip-panel">
         <div class="jcip-input">
             <section class="jcip__vflow jcip-input__field">
                 <div class="jcip__label">${i18n.urlLabel}</div>
@@ -26,11 +26,11 @@ function renderInstallPanel(root: HTMLElement): void {
                 <div class="jcip__label">${i18n.versionLabel}</div>
                 <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
             </section>
-            <section class="jcip__vflow jcip-input__cta">
+            <section class="jcip__vflow jcip-input__button">
                 <div class="jcip__label jcip__label--placeholder" aria-hidden="true">&nbsp;</div>
                 <button data-type="refresh-repo" type="button" class="b3-button b3-button--outline">${i18n.repoRefreshButton}</button>
             </section>
-            <div class="jcip-action__install jcip-action__install--narrow">${actionInstallCore}
+            <div class="jcip-action__install jcip-action__install--input">${actionInstallCore}
             </div>
         </div>
 
@@ -52,7 +52,7 @@ function renderInstallPanel(root: HTMLElement): void {
         </div>
 
         <div class="jcip-action">
-            <div class="jcip-action__install jcip-action__install--dual">${actionInstallCore}
+            <div class="jcip-action__install jcip-action__install--action">${actionInstallCore}
             </div>
             <div class="jcip-action__tools">
                 <button data-type="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>

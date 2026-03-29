@@ -1,5 +1,6 @@
 import { i18n } from "./i18n";
 import { parseOwnerRepo } from "./github";
+import { Logger } from "./panel";
 
 export class RepoParser {
     private infoAbort?: AbortController;
@@ -14,7 +15,7 @@ export class RepoParser {
         private readonly urlInput: HTMLInputElement,
         private readonly versionInput: HTMLInputElement,
         private readonly repoInfoEl: HTMLDivElement,
-        private readonly log: (...args: unknown[]) => void,
+        private readonly log: Logger,
         private readonly onRepoResolved?: (repoLabel: string | null) => void,
         private readonly onInstallReady?: (ready: boolean) => void,
     ) {}

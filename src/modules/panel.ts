@@ -88,7 +88,7 @@ export class InstallPanelController {
     private readonly root: HTMLElement;
     private readonly elements: InstallPanelElements;
     private readonly panelData: InstallPanelData;
-    private readonly log: (...args: unknown[]) => void;
+    private readonly log: Logger;
     private readonly clearInstallLog: () => void;
     private readonly repoUrlController: RepoParser;
     private readonly custom: Custom;

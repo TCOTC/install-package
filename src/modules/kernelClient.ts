@@ -3,6 +3,7 @@
  */
 
 import { message } from "./message";
+import { Logger } from "./panel";
 
 export interface KernelApiResponse {
     code: number;
@@ -122,7 +123,7 @@ export async function pathExists(path: string): Promise<boolean> {
     return response.code === 0 && Array.isArray(response.data);
 }
 
-export async function writeTempFile(fileBlob: Blob, path: string, log: (...args: unknown[]) => void): Promise<boolean> {
+export async function writeTempFile(fileBlob: Blob, path: string, log: Logger): Promise<boolean> {
     log(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
 
     const result = await putFile({
@@ -143,7 +144,7 @@ export async function writeTempFile(fileBlob: Blob, path: string, log: (...args:
     return true;
 }
 
-export async function unzipFile(zipPath: string, extractPath: string, log: (...args: unknown[]) => void): Promise<boolean> {
+export async function unzipFile(zipPath: string, extractPath: string, log: Logger): Promise<boolean> {
     log(`Unzipping file: ${zipPath} -> ${extractPath}`);
 
     const response = await fetchSyncPost("/api/archive/unzip", {
@@ -163,7 +164,7 @@ export async function unzipFile(zipPath: string, extractPath: string, log: (...a
     return true;
 }
 
-export async function removeFileOrDirectory(path: string, log: (...args: unknown[]) => void): Promise<boolean> {
+export async function removeFileOrDirectory(path: string, log: Logger): Promise<boolean> {
     const response = await fetchSyncPost("/api/file/removeFile", { path });
 
     if (response.code !== 0) {
@@ -176,7 +177,7 @@ export async function removeFileOrDirectory(path: string, log: (...args: unknown
     return true;
 }
 
-export async function removeFiles(paths: string[], log: (...args: unknown[]) => void): Promise<void> {
+export async function removeFiles(paths: string[], log: Logger): Promise<void> {
     const effectivePaths = paths.filter(path => typeof path === "string" && path.trim().length > 0);
     for (const path of effectivePaths) {
         const response = await fetchSyncPost("/api/file/removeFile", { path });
@@ -187,7 +188,7 @@ export async function removeFiles(paths: string[], log: (...args: unknown[]) => 
 }
 
 /** 删除目录（包括非空目录） */
-export async function clearDirectory(dirPath: string, log: (...args: unknown[]) => void): Promise<boolean> {
+export async function clearDirectory(dirPath: string, log: Logger): Promise<boolean> {
     log(`Starting to delete directory: ${dirPath}`);
 
     if (!(await pathExists(dirPath))) {
@@ -209,7 +210,7 @@ export async function clearDirectory(dirPath: string, log: (...args: unknown[]) 
 /**
  * 复制到安装路径（整个目录复制，globalCopyFiles 会保留源目录名）
  */
-export async function copyToInstallPath(sourcePath: string, targetPath: string, log: (...args: unknown[]) => void): Promise<boolean> {
+export async function copyToInstallPath(sourcePath: string, targetPath: string, log: Logger): Promise<boolean> {
     log(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
 
     const workspaceDir = window.siyuan.config.system.workspaceDir || "";

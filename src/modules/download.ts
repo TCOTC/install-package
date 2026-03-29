@@ -1,8 +1,9 @@
 import { i18n } from "./i18n";
 import { extractPackageNameFromUrl } from "./github";
 import { message } from "./message";
+import { Logger } from "./panel";
 
-export async function downloadPackage(downloadUrl: string, fileName: string, log: (...args: unknown[]) => void): Promise<{
+export async function downloadPackage(downloadUrl: string, fileName: string, log: Logger): Promise<{
     blob: Blob;
     fileName: string;
     packageName: string;
@@ -71,7 +72,7 @@ export async function downloadPackage(downloadUrl: string, fileName: string, log
  * 流式读满 4 字节校验 ZIP 本地文件头后再读完，避免整包读入后再发现非 ZIP；非 ZIP 时尽早 cancel。
  * 校验通过后以 chunk 拼成 Blob，避免再分配整块 Uint8Array 拷贝。
  */
-async function readZipBody(response: Response, log: (...args: unknown[]) => void): Promise<Blob | null> {
+async function readZipBody(response: Response, log: Logger): Promise<Blob | null> {
     try {
         // 正常 GET 成功时 body 为 ReadableStream；为 null 时无法按块读取
         const stream = response.body;

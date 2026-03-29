@@ -69,7 +69,7 @@ function renderInstallPanel(root: HTMLElement): void {
 }
 
 /** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
-export interface InstallTabPanelData {
+export interface InstallPanelData {
     url: string;
     version: string;
     enable: "enable" | "disable";
@@ -84,27 +84,23 @@ interface InstallPanelElements {
     installLog: HTMLDivElement;
 }
 
-export interface InstallPanelCallbacks {
-    openPluginSettings: () => void;
-}
-
 export class InstallPanelController {
     private readonly root: HTMLElement;
     private readonly elements: InstallPanelElements;
-    private readonly panelData: InstallTabPanelData;
+    private readonly panelData: InstallPanelData;
     private readonly log: (...args: unknown[]) => void;
     private readonly clearInstallLog: () => void;
     private readonly repoUrlController: RepoParser;
     private readonly custom: Custom;
-    private readonly callbacks: InstallPanelCallbacks;
+    private readonly openPluginSettings: () => void;
     private persistTimer: number | undefined;
     private repoParseReady = false;
     /** 安装后是否启用集市包（与两份开关 DOM 同步，持久化写入 `panelData.enable`） */
     private enableAfterInstall: boolean;
 
-    constructor(custom: Custom, callbacks: InstallPanelCallbacks) {
+    constructor(custom: Custom, openPluginSettings: () => void) {
         this.custom = custom;
-        this.callbacks = callbacks;
+        this.openPluginSettings = openPluginSettings;
         this.root = custom.element as HTMLElement;
         // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
         renderInstallPanel(this.root);
@@ -233,7 +229,7 @@ export class InstallPanelController {
                     await openDirectory(button.title);
                     break;
                 case "open-settings":
-                    this.callbacks.openPluginSettings();
+                    this.openPluginSettings();
                     break;
                 default:
                     break;
@@ -294,16 +290,16 @@ export class InstallPanelController {
 }
 
 /** 标准化自定义页签数据，确保数据格式正确 */
-export function normalizeInstallTabPanelData(custom: Custom): InstallTabPanelData {
+export function normalizeInstallTabPanelData(custom: Custom): InstallPanelData {
     if (!custom.data || typeof custom.data !== "object") {
         custom.data = {
             url: "",
             version: "",
             enable: "enable",
-        } as InstallTabPanelData;
-        return custom.data as InstallTabPanelData;
+        } as InstallPanelData;
+        return custom.data as InstallPanelData;
     }
-    const panelData = custom.data as InstallTabPanelData;
+    const panelData = custom.data as InstallPanelData;
     if (typeof panelData.url !== "string") {
         panelData.url = "";
     }

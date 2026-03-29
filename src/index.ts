@@ -27,9 +27,7 @@ export default class InstallPackage extends Plugin {
         this.addTab({
             type: INSTALL_TAB_TYPE,
             init(this: Custom) {
-                const controller = new InstallPanelController(this, {
-                    openPluginSettings,
-                });
+                const controller = new InstallPanelController(this, openPluginSettings);
                 controller.init();
             },
         });

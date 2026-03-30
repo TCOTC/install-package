@@ -1,90 +1,144 @@
 import { i18n } from "./i18n";
 import { parseOwnerRepo } from "./github";
-import { Logger } from "./panel";
+import { Logger, type InstallPanelData } from "./panel";
+
+type RepoInfoElState =
+    | { kind: "tip" }
+    | { kind: "parsing" }
+    | { kind: "invalid" }
+    | { kind: "resolved"; owner: string; repo: string };
+
+/**
+ * 防抖等待；`signal` abort 时清除定时器并立即结束，供新一轮 `refresh` 顶替时结束 `pendingRefresh`。
+ */
+function waitDebounce(ms: number, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        const onAbort = () => {
+            clearTimeout(id);
+            resolve();
+        };
+        const id = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+        }, ms);
+        signal.addEventListener("abort", onAbort, { once: true });
+    });
+}
 
 export class RepoParser {
     private infoAbort?: AbortController;
-    private lastParsed: { input: string; owner: string; repo: string } | null = null;
+    private lastParsed: { url: string; owner: string; repo: string } | null = null;
     private pendingRefresh: Promise<void> = Promise.resolve();
 
     /**
+     * @param repoInfoEl - 仓库信息展示节点（`data-type="repo-info"`）
      * @param onRepoResolved - 解析出仓库时传入仓库名 `repo`；输入为空或解析失败时传入 `null`（用于恢复默认标题等）
-     * @param onInstallReady - 仅当解析得到有效 owner/repo 时为 true；输入为空、解析中、失败时为 false
+     * @param onInstallReady - 仓库解析完成且可安装时为 `true`，否则为 `false`
      */
     constructor(
-        private readonly urlInput: HTMLInputElement,
-        private readonly versionInput: HTMLInputElement,
-        private readonly repoInfoEl: HTMLDivElement,
+        private readonly data: InstallPanelData,
         private readonly log: Logger,
+        private readonly repoInfoEl: HTMLDivElement,
         private readonly onRepoResolved?: (repoLabel: string | null) => void,
         private readonly onInstallReady?: (ready: boolean) => void,
     ) {}
 
-    readonly blur = (): void => {
-        this.urlInput.blur();
-        this.versionInput.blur();
-    };
-
-    refresh(): Promise<void> {
+    /**
+     * @param debounceMs 大于 0 时先进入「解析中」再延迟请求（用于输入框）；默认 0 为立即请求
+     */
+    refresh(debounceMs = 0): Promise<void> {
         this.lastParsed = null;
         this.infoAbort?.abort();
         this.infoAbort = new AbortController();
         const { signal } = this.infoAbort;
-        const input = this.urlInput.value.trim();
-        if (!input) {
-            this.repoInfoEl.textContent = i18n.repoInfoTip;
-            this.repoInfoEl.style.color = "";
+
+        if (!this.data.url) {
+            this.updateRepoInfoEl({ kind: "tip" });
             this.onRepoResolved?.(null);
             this.onInstallReady?.(false);
             this.pendingRefresh = Promise.resolve();
             return this.pendingRefresh;
         }
-        this.repoInfoEl.textContent = i18n.repoInfoParsing;
-        this.repoInfoEl.style.color = "";
+        this.updateRepoInfoEl({ kind: "parsing" });
         this.onInstallReady?.(false);
-        const parseInfoPromise = parseOwnerRepo(input, this.log, signal).then((parsed) => {
-            if (signal.aborted || !this.repoInfoEl.isConnected) {
-                return;
-            }
-            if (parsed) {
-                this.lastParsed = { input: input, owner: parsed.owner, repo: parsed.repo };
-                this.repoInfoEl.innerHTML = i18n.repoInfoResolved.replace(
-                    "{ownerRepo}",
-                    `<b><a href="https://github.com/${parsed.owner}" target="_blank">${parsed.owner}</a></b> / <b><a href="https://github.com/${parsed.owner}/${parsed.repo}" target="_blank">${parsed.repo}</a></b>`
-                );
-                this.repoInfoEl.style.color = "";
-                this.onRepoResolved?.(parsed.repo);
-                this.onInstallReady?.(true);
-            } else {
-                this.repoInfoEl.textContent = i18n.repoInfoInvalid;
-                this.repoInfoEl.style.color = "var(--b3-theme-error)";
-                this.onRepoResolved?.(null);
-                this.onInstallReady?.(false);
-            }
-        });
-        this.pendingRefresh = parseInfoPromise
-            .catch(() => {
-                if (!this.repoInfoEl.isConnected) {
+
+        this.pendingRefresh = (async () => {
+            if (debounceMs > 0) {
+                await waitDebounce(debounceMs, signal);
+                if (signal.aborted) {
                     return;
                 }
-                this.onInstallReady?.(false);
-            })
-            .then(() => {});
+            }
+            try {
+                const ownerRepo = await parseOwnerRepo(this.data.url, this.log, signal);
+                if (signal.aborted) {
+                    return;
+                }
+                if (ownerRepo) {
+                    this.lastParsed = { url: this.data.url, owner: ownerRepo.owner, repo: ownerRepo.repo };
+                    this.updateRepoInfoEl({ kind: "resolved", owner: ownerRepo.owner, repo: ownerRepo.repo });
+                    this.onRepoResolved?.(ownerRepo.repo);
+                    this.onInstallReady?.(true);
+                } else {
+                    this.updateRepoInfoEl({ kind: "invalid" });
+                    this.onRepoResolved?.(null);
+                    this.onInstallReady?.(false);
+                }
+            } catch {
+                if (!signal.aborted) {
+                    // 请求被取消时不执行
+                    this.onInstallReady?.(false);
+                }
+            }
+        })();
         return this.pendingRefresh;
     }
 
-    async ownerRepoForUrl(url: string): Promise<{ owner: string; repo: string } | null> {
-        url = url.trim();
-        if (url === this.lastParsed?.input) {
+    async getOwnerRepo(): Promise<{ owner: string; repo: string } | null> {
+        await this.pendingRefresh;
+        if (this.lastParsed?.url === this.data.url) {
             return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
         }
-        const input = this.urlInput.value.trim();
-        if (url === input) {
-            await this.pendingRefresh;
-            if (this.lastParsed?.input === url) {
-                return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
-            }
+        await this.refresh();
+        if (this.lastParsed?.url === this.data.url) {
+            return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
         }
-        return parseOwnerRepo(url, this.log);
+        return null;
+    }
+
+    /** 页签关闭或插件关闭时取消未完成的解析与防抖等待 */
+    destroy(): void {
+        this.infoAbort?.abort();
+    }
+
+    private updateRepoInfoEl(state: RepoInfoElState): void {
+        const el = this.repoInfoEl;
+        if (!el.isConnected) {
+            return;
+        }
+        switch (state.kind) {
+            case "tip":
+                el.style.color = "";
+                el.textContent = i18n.repoInfoTip;
+                break;
+            case "parsing":
+                el.style.color = "";
+                el.textContent = i18n.repoInfoParsing;
+                break;
+            case "invalid":
+                el.style.color = "var(--b3-theme-error)";
+                el.textContent = i18n.repoInfoInvalid;
+                break;
+            case "resolved":
+                el.style.color = "";
+                el.innerHTML = i18n.repoInfoResolved.replace(
+                    "{ownerRepo}",
+                    `<b><a href="https://github.com/${state.owner}" target="_blank">${state.owner}</a></b> / <b><a href="https://github.com/${state.owner}/${state.repo}" target="_blank">${state.repo}</a></b>`,
+                );
+                break;
+        }
     }
 }

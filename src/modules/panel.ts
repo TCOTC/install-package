@@ -1,11 +1,49 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "./i18n";
 import { RepoParser } from "./repoParser";
-import { runInstall } from "./installRunner";
+import { isSameTargetInstalling, subscribeActiveInstallChange, runInstall } from "./installRunner";
 import { message } from "./message";
 import { electron, openDirectory, openDevTools } from "./desktop";
 
 export type Logger = (...args: unknown[]) => void;
+
+/** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
+export interface InstallPanelData {
+    url: string;
+    version: string;
+    enableAfterInstall: boolean;
+}
+
+const INSTALL_PANEL_DEFAULT: InstallPanelData = {
+    url: "",
+    version: "",
+    enableAfterInstall: true,
+};
+
+const INSTALL_PANEL_KEYS = Object.keys(INSTALL_PANEL_DEFAULT) as (keyof InstallPanelData)[];
+
+function isDataEqual(a: InstallPanelData, b: InstallPanelData): boolean {
+    return INSTALL_PANEL_KEYS.every((k) => a[k] === b[k]);
+}
+
+/** 标准化自定义页签数据，确保数据格式正确 */
+export function normalizeData(custom: Custom): InstallPanelData {
+    const data: Record<keyof InstallPanelData, string | boolean> = { ...INSTALL_PANEL_DEFAULT };
+    if (custom.data && typeof custom.data === "object") {
+        const raw = custom.data as Record<string, unknown>;
+        for (const key of INSTALL_PANEL_KEYS) {
+            const value = raw[key];
+            const def = INSTALL_PANEL_DEFAULT[key];
+            if (typeof def === "string") {
+                data[key] = typeof value === "string" ? value.trim() : def;
+            } else if (typeof def === "boolean") {
+                data[key] = typeof value === "boolean" ? value : def;
+            }
+        }
+    }
+    custom.data = data;
+    return data as InstallPanelData;
+}
 
 function renderInstallPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
@@ -68,13 +106,6 @@ function renderInstallPanel(root: HTMLElement): void {
     </div>`;
 }
 
-/** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
-export interface InstallPanelData {
-    url: string;
-    version: string;
-    enable: "enable" | "disable";
-}
-
 interface InstallPanelElements {
     urlEl: HTMLInputElement;
     versionEl: HTMLInputElement;
@@ -84,25 +115,28 @@ interface InstallPanelElements {
     installLogEl: HTMLDivElement;
 }
 
-export class InstallPanelController {
+export class InstallPanel {
+    private readonly custom: Custom;
+    private readonly data: InstallPanelData;
     private readonly root: HTMLElement;
     private readonly elements: InstallPanelElements;
-    private readonly panelData: InstallPanelData;
     private readonly log: Logger;
     private readonly clearInstallLog: () => void;
-    private readonly repoUrlController: RepoParser;
-    private readonly custom: Custom;
     private readonly openPluginSettings: () => void;
+    private readonly repoParser: RepoParser;
+    /** 上次已写入 layout 的数据快照，与 `this.data` 一致时不调用 `saveLayout` */
+    private dataSnapshot: InstallPanelData;
     private persistTimer: number | undefined;
     private repoParseReady = false;
-    /** 安装后是否启用集市包（与两份开关 DOM 同步，持久化写入 `panelData.enable`） */
-    private enableAfterInstall: boolean;
+    private installButtonSyncSeq = 0;
+    /** 页签关闭时取消订阅 */
+    private unsubActiveInstall: (() => void) | undefined;
 
     constructor(custom: Custom, openPluginSettings: () => void) {
         this.custom = custom;
-        this.openPluginSettings = openPluginSettings;
-        this.root = custom.element as HTMLElement;
-        // TODO 支持记忆历史安装记录，增加一个按钮打开菜单可以填历史安装的仓库 URL 和版本号
+        this.data = normalizeData(this.custom);
+        this.dataSnapshot = { ...this.data };
+        this.root = this.custom.element as HTMLElement;
         renderInstallPanel(this.root);
         this.elements = {
             urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
@@ -115,52 +149,61 @@ export class InstallPanelController {
         const logger = createInstallLogger(this.elements.installLogEl);
         this.log = logger.log;
         this.clearInstallLog = logger.clear;
-        this.panelData = normalizeInstallTabPanelData(this.custom);
-        this.enableAfterInstall = this.panelData.enable === "enable";
-        this.repoUrlController = new RepoParser(
-            this.elements.urlEl,
-            this.elements.versionEl,
-            this.elements.repoInfoEl,
+        this.openPluginSettings = openPluginSettings;
+        this.repoParser = new RepoParser(
+            this.data,
             this.log,
+            this.elements.repoInfoEl,
             (repoLabel) => {
                 this.custom.tab.updateTitle(repoLabel ?? i18n.title);
             },
             (ready) => {
                 this.repoParseReady = ready;
-                for (const btn of this.elements.installEls) {
-                    btn.disabled = !ready;
-                }
+                this.syncInstallButtonDisabled();
                 if (ready) {
                     this.persistPanelData();
                 }
-            }
+            },
         );
+        this.unsubActiveInstall = subscribeActiveInstallChange(() => this.syncInstallButtonDisabled());
+
+        this.init();
     }
 
-    public init(): void {
-        this.elements.urlEl.value = this.panelData.url;
-        this.elements.versionEl.value = this.panelData.version;
+    private init(): void {
+        this.elements.urlEl.value = this.data.url;
+        this.elements.versionEl.value = this.data.version;
         for (const cb of this.elements.enableAfterInstallSwitchEls) {
-            cb.checked = this.enableAfterInstall;
+            cb.checked = this.data.enableAfterInstall;
         }
 
+        // 从输入框单向同步到 `this.data`（trim），不回写 `value`；`RepoParser` / 持久化均读 `this.data`
+        this.data.url = this.elements.urlEl.value.trim();
+        this.data.version = this.elements.versionEl.value.trim();
         // 立即刷新一次，用于界面重载之后初始化页签
-        void this.repoUrlController.refresh();
+        void this.repoParser.refresh();
         this.elements.urlEl.addEventListener("input", () => {
-            void this.repoUrlController.refresh();
+            this.data.url = this.elements.urlEl.value.trim();
+            void this.repoParser.refresh(300);
         });
-        this.elements.versionEl.addEventListener("input", this.persistPanelData);
+        this.elements.versionEl.addEventListener("input", () => {
+            this.data.version = this.elements.versionEl.value.trim();
+            // TODO 支持通过版本号查询 Release 信息显示在 Info 区域中
+            // await this.repoParser.refresh();
+            // 到时候要删除下面这行，因为 refresh() 之后会自动 persistPanelData()
+            this.persistPanelData();
+        });
         for (const cb of this.elements.enableAfterInstallSwitchEls) {
             cb.addEventListener("change", () => {
-                this.enableAfterInstall = cb.checked;
+                this.data.enableAfterInstall = cb.checked;
                 for (const o of this.elements.enableAfterInstallSwitchEls) {
-                    o.checked = this.enableAfterInstall;
+                    o.checked = cb.checked;
                 }
                 this.persistPanelData();
             });
         }
         this.root.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
-            void this.repoUrlController.refresh();
+            void this.repoParser.refresh();
         });
 
         // 回车安装
@@ -180,9 +223,7 @@ export class InstallPanelController {
                 event.stopPropagation();
             }
         });
-        if (!this.elements.urlEl.value.trim()) {
-            this.elements.urlEl.select();
-        }
+        this.elements.urlEl.select();
 
         for (const btn of this.elements.installEls) {
             btn.addEventListener("click", () => void this.startInstall());
@@ -237,17 +278,42 @@ export class InstallPanelController {
         });
     }
 
+    private syncInstallButtonDisabled(): void {
+        if (!this.repoParseReady) {
+            this.installButtonSyncSeq++;
+            this.elements.installEls.forEach((button) => {
+                button.disabled = true;
+            });
+            return;
+        }
+        const seq = ++this.installButtonSyncSeq;
+        void (async (): Promise<void> => {
+            const ownerRepo = await this.repoParser.getOwnerRepo();
+            if (seq !== this.installButtonSyncSeq) {
+                return;
+            }
+            const ok =
+                this.repoParseReady &&
+                ownerRepo !== null &&
+                !isSameTargetInstalling(ownerRepo.owner, ownerRepo.repo, this.data.version);
+            this.elements.installEls.forEach((b) => {
+                b.disabled = !ok;
+            });
+        })();
+    }
+
     private readonly persistPanelData = (): void => {
         if (!this.repoParseReady) {
             return;
         }
-        this.panelData.url = this.elements.urlEl.value;
-        this.panelData.version = this.elements.versionEl.value;
-        this.panelData.enable = this.enableAfterInstall ? "enable" : "disable";
 
         window.clearTimeout(this.persistTimer);
         this.persistTimer = window.setTimeout(() => {
             this.persistTimer = undefined;
+            if (isDataEqual(this.data, this.dataSnapshot)) {
+                return;
+            }
+            this.dataSnapshot = { ...this.data };
             saveLayout(() => {});
         }, 400);
     };
@@ -270,49 +336,63 @@ export class InstallPanelController {
         if (!this.repoParseReady) {
             return;
         }
-        const url = this.elements.urlEl.value.trim();
-        const version = this.elements.versionEl.value.trim();
-        const enable = this.enableAfterInstall;
-        const parsed = await this.repoUrlController.ownerRepoForUrl(url);
-        if (!parsed) {
+        const ownerRepo = await this.repoParser.getOwnerRepo();
+        if (!ownerRepo) {
             message(i18n.invalidUrl);
             this.log(i18n.invalidUrl);
             return;
         }
-        this.log("install package: url=[" + url + "], version=[" + version + "], enable=[" + enable + "]");
+        const version = this.data.version;
+        const enableAfterInstall = this.data.enableAfterInstall;
+        this.log("install package: url=[" + this.data.url + "], version=[" + this.data.version + "], enableAfterInstall=[" + enableAfterInstall + "]");
         await runInstall({
             version,
-            enable,
-            owner: parsed.owner,
-            repo: parsed.repo,
+            enableAfterInstall,
+            owner: ownerRepo.owner,
+            repo: ownerRepo.repo,
         }, this.log);
     }
-}
 
-/** 标准化自定义页签数据，确保数据格式正确 */
-export function normalizeInstallTabPanelData(custom: Custom): InstallPanelData {
-    if (!custom.data || typeof custom.data !== "object") {
-        custom.data = {
-            url: "",
-            version: "",
-            enable: "enable",
-        } as InstallPanelData;
-        return custom.data as InstallPanelData;
+    /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
+    destroy(): void {
+        window.clearTimeout(this.persistTimer);
+        this.repoParser.destroy();
+        this.unsubActiveInstall?.();
+        this.unsubActiveInstall = undefined;
     }
-    const panelData = custom.data as InstallPanelData;
-    if (typeof panelData.url !== "string") {
-        panelData.url = "";
-    }
-    if (typeof panelData.version !== "string") {
-        panelData.version = "";
-    }
-    if (panelData.enable !== "enable" && panelData.enable !== "disable") {
-        panelData.enable = "enable";
-    }
-    return panelData;
 }
 
 const INSTALL_LOG_PROCESS_LINE_CLASS = "jcip-show__text--log";
+
+function createInstallLogger(installLogElement: HTMLDivElement): { log: Logger; clear: () => void } {
+    const log: Logger = (...args: unknown[]) => {
+        const item = document.createElement("p");
+        item.className = INSTALL_LOG_PROCESS_LINE_CLASS;
+        item.textContent = args.map((arg) => {
+            if (typeof arg === "string") {
+                return arg;
+            }
+            if (arg instanceof Error) {
+                return arg.stack || arg.message;
+            }
+            try {
+                return JSON.stringify(arg);
+            } catch {
+                return String(arg);
+            }
+        }).join(" ");
+        installLogElement.append(item);
+        installLogElement.scrollTop = installLogElement.scrollHeight;
+    };
+    const clear = (): void => {
+        installLogElement.replaceChildren();
+        const placeholder = document.createElement("p");
+        placeholder.className = "jcip-show__text--placeholder";
+        placeholder.textContent = i18n.installProcessPlaceholder;
+        installLogElement.append(placeholder);
+    };
+    return { log, clear };
+}
 
 /**
  * 从选区 cloneContents 中只取 `.jcip-show__text--log` 内文本及行内部分选区对应的文本节点；
@@ -373,35 +453,4 @@ function installLogCopyPayloadAtOpen(logEl: HTMLDivElement): string {
         }
     }
     return joinAllProcessLineTexts(logEl);
-}
-
-function createInstallLogger(installProcessLog: HTMLDivElement): { log: Logger; clear: () => void } {
-    const clear = (): void => {
-        installProcessLog.replaceChildren();
-        const placeholder = document.createElement("p");
-        placeholder.className = "jcip-show__text--placeholder";
-        placeholder.textContent = i18n.installProcessPlaceholder;
-        installProcessLog.append(placeholder);
-    };
-    const log: Logger = (...args: unknown[]) => {
-        const text = args.map((arg) => {
-            if (typeof arg === "string") {
-                return arg;
-            }
-            if (arg instanceof Error) {
-                return arg.stack || arg.message;
-            }
-            try {
-                return JSON.stringify(arg);
-            } catch {
-                return String(arg);
-            }
-        }).join(" ");
-        const item = document.createElement("p");
-        item.className = INSTALL_LOG_PROCESS_LINE_CLASS;
-        item.textContent = text;
-        installProcessLog.append(item);
-        installProcessLog.scrollTop = installProcessLog.scrollHeight;
-    };
-    return { log, clear };
 }

@@ -1,17 +1,23 @@
 import "./index.scss";
-import { Custom, Plugin, openTab } from "siyuan";
+import { Custom, getAllTabs, Plugin, openTab, type Tab } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
-import { setMessagePrefix } from "./modules/message";
-import { createSetting, loadSetting } from "./modules/setting";
-import { InstallPanelController } from "./modules/panel";
-import { setOpenPluginSettingsHandler } from "./modules/githubNotice";
+import { clearMessagePrefix, setMessagePrefix } from "./modules/message";
+import { clearRuntimeSecretCache, createSetting, loadSetting } from "./modules/setting";
+import { InstallPanel } from "./modules/panel";
+import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./modules/githubNotice";
+import { abortAllActiveInstalls } from "./modules/installRunner";
 
 /** 顶栏与 openTab 自定义页签共用的图标 id */
 export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";
 /** 与 addTab 的 type 一致，openTab 的 custom.id 为 plugin.name + INSTALL_TAB_TYPE */
-export const INSTALL_TAB_TYPE = "install_panel";
+export const INSTALL_TAB_TYPE = "install_package_panel";
+
+/** 自定义页签 `Custom` 与面板实例 */
+const installPanels = new Map<Custom, InstallPanel>();
 
 export default class InstallPackage extends Plugin {
+    private installTabCustomId = this.name + INSTALL_TAB_TYPE;
+
     onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
@@ -27,8 +33,14 @@ export default class InstallPackage extends Plugin {
         this.addTab({
             type: INSTALL_TAB_TYPE,
             init(this: Custom) {
-                const controller = new InstallPanelController(this, openPluginSettings);
-                controller.init();
+                installPanels.set(this, new InstallPanel(this, openPluginSettings));
+            },
+            destroy(this: Custom) {
+                const panel = installPanels.get(this);
+                if (panel) {
+                    panel.destroy();
+                    installPanels.delete(this);
+                }
             },
         });
 
@@ -40,7 +52,7 @@ export default class InstallPackage extends Plugin {
                 openTab({
                     app: this.app,
                     custom: {
-                        id: this.name + INSTALL_TAB_TYPE,
+                        id: this.installTabCustomId,
                         icon: INSTALL_PACKAGE_ICON_ID,
                         title: i18n.title,
                         data: {},
@@ -67,7 +79,17 @@ export default class InstallPackage extends Plugin {
     }
 
     onunload() {
-        // console.log("InstallPackage unloaded");
+        abortAllActiveInstalls();
+        destroyGitHubNotice();
+        clearRuntimeSecretCache();
+        clearMessagePrefix();
+        for (const panel of installPanels.values()) {
+            panel.destroy();
+        }
+        installPanels.clear();
+        closeAllPluginTabs(this.installTabCustomId, this.displayName);
+
+        console.log(this.displayName, "plugin unloaded");
     }
 
     uninstall() {
@@ -77,4 +99,40 @@ export default class InstallPackage extends Plugin {
         console.log(this.displayName, "plugin uninstalled");
     }
 
+}
+
+/**
+ * 关闭所有本插件的页签，无论是否已打开。
+ * @param tabCustomId 与 `InstallPackage.installTabCustomId` 相同，即布局里的 `customModelType`
+ * @param pluginDisplayName 写入 `console.error` 前缀，一般为 `Plugin.displayName`
+ */
+function closeAllPluginTabs(tabCustomId: string, pluginDisplayName: string): void {
+    function isTargetTab(tab: Tab): boolean {
+        const model = tab.model as { type?: string } | undefined;
+        if (model && typeof model.type === "string" && model.type === tabCustomId) {
+            return true;
+        }
+        const raw = tab.headElement?.getAttribute("data-initdata");
+        if (!raw) {
+            return false;
+        }
+        try {
+            const init = JSON.parse(raw) as { instance?: string; customModelType?: string };
+            return init.instance === "Custom" && init.customModelType === tabCustomId;
+        } catch {
+            return false;
+        }
+    }
+
+    const tabsToClose = getAllTabs().filter(isTargetTab);
+    if (tabsToClose.length === 0) {
+        return;
+    }
+    for (const tab of [...tabsToClose]) {
+        try {
+            tab.close();
+        } catch (e) {
+            console.error(pluginDisplayName, "close tab failed:", e);
+        }
+    }
 }

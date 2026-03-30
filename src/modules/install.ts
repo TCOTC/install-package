@@ -149,16 +149,16 @@ function getSwitchAppearanceMode(modes: number[]): string {
 export async function setPackageEnabled(
     packageType: string,
     packageName: string,
-    enabled: boolean,
+    enableAfterInstall: boolean,
     log: Logger
 ): Promise<void> {
     switch (packageType) {
         case "plugin": {
-            const action = enabled ? "enable" : "disable";
+            const action = enableAfterInstall ? "enable" : "disable";
             log(`Attempting to ${action} plugin: ${packageName}`);
             const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
                 packageName: packageName,
-                enabled: enabled,
+                enabled: enableAfterInstall,
                 frontend: getFrontend(),
             });
             if (response.code === 0) {
@@ -166,7 +166,7 @@ export async function setPackageEnabled(
                 return;
             }
             log(`Failed to ${action} plugin: ${response.msg}`);
-            const tpl = enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed;
+            const tpl = enableAfterInstall ? i18n.enablePluginFailed : i18n.disablePluginFailed;
             message(tpl.replace("{error}", String(response.msg ?? "")));
         }
         case "theme": {
@@ -176,7 +176,7 @@ export async function setPackageEnabled(
                 message(i18n.themeReloadFailed);
                 return;
             }
-            if (enabled) {
+            if (enableAfterInstall) {
                 const modes = await getSetThemeModes(packageName);
                 const appearanceMode = getSwitchAppearanceMode(modes);
                 log(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
@@ -203,7 +203,7 @@ export async function setPackageEnabled(
                 message(i18n.iconReloadFailed);
                 return;
             }
-            if (enabled) {
+            if (enableAfterInstall) {
                 // TODO 这个接口在 v3.6.2 才支持，要修改 plugin.json 的 minAppVersion 为 3.6.2
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {

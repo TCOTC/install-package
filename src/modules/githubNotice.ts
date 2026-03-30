@@ -10,6 +10,15 @@ export function setOpenPluginSettingsHandler(handler: () => void): void {
     openPluginSettingsHandler = handler;
 }
 
+/** 插件关闭时：关掉可能仍打开的 GitHub 提示框，并清空打开设置的回调，避免仍调用已失效的插件实例 */
+export function destroyGitHubNotice(): void {
+    openPluginSettingsHandler = null;
+    if (sharedGitHubNoticeDialog) {
+        sharedGitHubNoticeDialog.destroy();
+        sharedGitHubNoticeDialog = null;
+    }
+}
+
 export function showGitHubAuthNotice(status: number): void {
     if (sharedGitHubNoticeDialog) {
         return;

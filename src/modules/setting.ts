@@ -16,6 +16,12 @@ export function getGitHubToken(): string {
     return githubToken;
 }
 
+/** 插件关闭时清空内存中的 Token 与缓存路径 */
+export function clearRuntimeSecretCache(): void {
+    githubToken = "";
+    tokenStorageName = "";
+}
+
 async function getTokenStorageName(): Promise<string> {
     if (!tokenStorageName) {
         tokenStorageName = await deriveTokenVaultFileName();

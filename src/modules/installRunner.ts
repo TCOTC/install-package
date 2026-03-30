@@ -7,30 +7,68 @@ import { message } from "./message";
 import type { Logger } from "./panel";
 
 export interface InstallRequest {
-    version: string;
-    enable: boolean;
     owner: string;
     repo: string;
+    version: string;
+    enableAfterInstall: boolean;
 }
 
-/** 同一仓库并发安装去重（模块级，与插件单实例生命周期一致） */
-const installInFlight = new Set<string>();
+/**
+ * 同仓仅一条进行中的安装：再次发起（含同版本重试、换版本）均会 abort 上一轮并接管 Map。
+ * 同版本进行中时面板应禁用安装键；`startInstall` 亦做 `isSameTargetInstalling` 防护以免回车等绕过按钮。
+ */
+type ActiveInstallEntry = { controller: AbortController; version: string };
+
+const activeInstallByRepo = new Map<string, ActiveInstallEntry>();
+
+/** 该 owner / repo 是否正在安装且进行中版本与参数一致（跨面板共用 `activeInstallByRepo`） */
+export function isSameTargetInstalling(owner: string, repo: string, version: string): boolean {
+    const key = `${owner}/${repo}`.toLowerCase();
+    const entry = activeInstallByRepo.get(key);
+    return entry !== undefined && entry.version === version;
+}
+
+const installUiLockListeners = new Set<() => void>();
+
+export function subscribeActiveInstallChange(listener: () => void): () => void {
+    installUiLockListeners.add(listener);
+    return () => installUiLockListeners.delete(listener);
+}
+
+function notifyActiveInstallChange(): void {
+    for (const fn of installUiLockListeners) {
+        try {
+            fn();
+        } catch {
+            /* 忽略面板回调异常 */
+        }
+    }
+}
+
+/** 插件关闭时中止所有进行中的安装，避免关闭后仍访问已移除的 UI */
+export function abortAllActiveInstalls(): void {
+    for (const { controller } of activeInstallByRepo.values()) {
+        controller.abort();
+    }
+}
 
 export async function runInstall(request: InstallRequest, log: Logger): Promise<void> {
-    let repoLockKey = "";
-    let lockAcquired = false;
+    const repoLockKey = `${request.owner}/${request.repo}`.toLowerCase();
+    const installAbort = new AbortController();
+    const signal = installAbort.signal;
     try {
-        const { owner, repo } = request;
-        repoLockKey = `${owner}/${repo}`.toLowerCase();
-        if (installInFlight.has(repoLockKey)) {
-            log(`${repoLockKey} is already in download queue`);
-            return;
+        const previous = activeInstallByRepo.get(repoLockKey);
+        if (previous !== undefined && previous.controller !== installAbort) {
+            previous.controller.abort();
         }
-        installInFlight.add(repoLockKey);
-        lockAcquired = true;
+        activeInstallByRepo.set(repoLockKey, { controller: installAbort, version: request.version });
+        notifyActiveInstallChange();
 
-        const releaseInfo = await getReleaseInfo(owner, repo, request.version, log);
+        const releaseInfo = await getReleaseInfo(request.owner, request.repo, request.version, log, signal);
         if (!releaseInfo) {
+            if (signal.aborted) {
+                return;
+            }
             const releaseError = i18n.releaseInfoError.replace("{version}", request.version || "latest");
             message(releaseError);
             log(releaseError);
@@ -62,9 +100,16 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
         message(i18n.downloading
             .replace("{fileName}", packageZip.name)
             .replace("{fileSize}", formatFileSize(packageZip.size)), true);
-        const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name, log);
+        const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name, log, installAbort);
         if (!downloadResult) {
+            if (signal.aborted) {
+                return;
+            }
             log(i18n.downloadFailed.replace("{error}", "download package failed"));
+            return;
+        }
+
+        if (signal.aborted) {
             return;
         }
 
@@ -78,16 +123,16 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
             await setPackageEnabled(
                 installResult.packageType,
                 installResult.packageName,
-                request.enable,
+                request.enableAfterInstall,
                 log
             );
         }
 
         let autoEnabledText = "";
         if (["plugin", "theme", "icon"].includes(installResult.packageType)) {
-            autoEnabledText = request.enable ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
+            autoEnabledText = request.enableAfterInstall ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
             log(i18n.downloadSuccess
-                .replace("{autoEnabled}", request.enable ? i18n.autoEnabled : i18n.enableManually));
+                .replace("{autoEnabled}", request.enableAfterInstall ? i18n.autoEnabled : i18n.enableManually));
         }
         const installSuccess = i18n.packageInstalledSuccess
             .replace("{packageType}", installResult.packageType)
@@ -99,8 +144,10 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
         log("InstallPackage error:", error);
         message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)));
     } finally {
-        if (lockAcquired && repoLockKey) {
-            installInFlight.delete(repoLockKey);
+        const cur = activeInstallByRepo.get(repoLockKey);
+        if (cur?.controller === installAbort) {
+            activeInstallByRepo.delete(repoLockKey);
+            notifyActiveInstallChange();
         }
     }
 }

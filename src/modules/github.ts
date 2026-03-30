@@ -14,7 +14,7 @@ import type { Logger } from "./panel";
 export type GitHubApiErrorInfo = { status: number; apiMessage?: string };
 type GitHubRateLimitResponse = operations["rate-limit/get"]["responses"][200]["content"]["application/json"];
 
-async function fetchGitHubRateLimit(signal?: AbortSignal): Promise<{
+async function fetchGitHubRateLimit(signal: AbortSignal): Promise<{
     limit: number;
     remaining: number;
     reset: number;
@@ -39,7 +39,7 @@ async function fetchGitHubRateLimit(signal?: AbortSignal): Promise<{
     }
 }
 
-function gitHubRequestInit(signal?: AbortSignal): RequestInit {
+function gitHubRequestInit(signal: AbortSignal): RequestInit {
     const headers: HeadersInit = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
@@ -48,11 +48,7 @@ function gitHubRequestInit(signal?: AbortSignal): RequestInit {
     if (githubToken) {
         headers.Authorization = `Bearer ${githubToken}`;
     }
-    const init: RequestInit = { headers };
-    if (signal) {
-        init.signal = signal;
-    }
-    return init;
+    return { headers, signal };
 }
 
 /** GET /repos/{owner}/{repo} 的 200 响应体 */
@@ -70,7 +66,7 @@ async function fetchGitHubJson<T>(
     url: string,
     log: Logger,
     errorLabel: string,
-    signal?: AbortSignal
+    signal: AbortSignal
 ): Promise<T | null> {
     try {
         const response = await fetch(url, gitHubRequestInit(signal));
@@ -101,17 +97,23 @@ export async function getRepositoryInfo(
     owner: string,
     repo: string,
     log: Logger,
-    signal?: AbortSignal
+    signal: AbortSignal
 ): Promise<GitHubRepository | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}`;
     return fetchGitHubJson<GitHubRepository>(url, log, i18n.githubGetRepositoryInfoFailed, signal);
 }
 
-export async function getReleaseInfo(owner: string, repo: string, version: string, log: Logger): Promise<GitHubRelease | null> {
+export async function getReleaseInfo(
+    owner: string,
+    repo: string,
+    version: string,
+    log: Logger,
+    signal: AbortSignal
+): Promise<GitHubRelease | null> {
     const url = version
         ? `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(version)}`
         : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
-    return fetchGitHubJson<GitHubRelease>(url, log, i18n.githubGetReleaseInfoFailed);
+    return fetchGitHubJson<GitHubRelease>(url, log, i18n.githubGetReleaseInfoFailed, signal);
 }
 
 async function getGitHubIssueTitle(
@@ -119,7 +121,7 @@ async function getGitHubIssueTitle(
     repo: string,
     issueNumber: number,
     log: Logger,
-    signal?: AbortSignal
+    signal: AbortSignal
 ): Promise<string | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
     const data = await fetchGitHubJson<GitHubIssue>(url, log, i18n.githubGetIssueFailed, signal);
@@ -129,12 +131,12 @@ async function getGitHubIssueTitle(
 /**
  * 从用户输入解析 GitHub owner/repo：先识别 GitHub URL（仅 `siyuan-note/bazaar` 下 Issue/PR 从标题解析目标仓库），再识别 `owner/repo` 简写；最后用 API 校验仓库存在并输出摘要
  *
- * @param signal 可选；新一次解析前 abort 时可取消未完成的 GitHub API 请求
+ * @param signal 新一次解析前 abort 时可取消未完成的 GitHub API 请求
  */
 export async function parseOwnerRepo(
     input: string,
     log: Logger,
-    signal?: AbortSignal
+    signal: AbortSignal
 ): Promise<{ owner: string; repo: string } | null> {
     input = input.trim();
 

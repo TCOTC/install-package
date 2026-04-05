@@ -127,6 +127,13 @@ $scrollbar-width: 10px;
         &--log {
             font-family: var(--b3-font-family-code);
         }
+
+        // 日志告警行
+        &--log-warn {
+            line-height: 1.6;
+            color: var(--b3-card-error-color);
+            background-color: var(--b3-card-error-background);
+        }
     }
 }
 

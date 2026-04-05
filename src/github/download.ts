@@ -1,6 +1,5 @@
 import { i18n } from "../infra/i18n";
 import { extractPackageNameFromUrl } from "./github";
-import { message } from "../infra/message";
 import type { Logger } from "../types";
 
 export async function downloadPackage(
@@ -16,14 +15,14 @@ export async function downloadPackage(
     const signal = installAbort.signal;
     // 配置下载超时
     const timeoutId = setTimeout(() => {
-        message(i18n.downloadTimeout);
+        log.warn(i18n.downloadTimeout);
         installAbort.abort();
     }, 30000);
 
     let response: Response;
     try {
         // 下载远程文件
-        log("Downloading file from GitHub:", downloadUrl);
+        log.info("Downloading file from GitHub:", downloadUrl);
         response = await fetch(downloadUrl, {
             signal,
         });
@@ -33,8 +32,7 @@ export async function downloadPackage(
         if ((error as Error).name === "AbortError") {
             return null;
         }
-        const msg = error instanceof Error ? error.message : String(error);
-        message(i18n.downloadFailed.replace("{error}", msg));
+        log.warn(i18n.downloadFailed, error);
         return null;
     }
 
@@ -43,7 +41,7 @@ export async function downloadPackage(
 
     // 校验 HTTP 响应状态
     if (!response.ok) {
-        message(i18n.downloadFailed.replace("{error}", `HTTP ${response.status}`));
+        log.warn(i18n.downloadFailed, `HTTP ${response.status}`);
         return null;
     }
 
@@ -53,19 +51,19 @@ export async function downloadPackage(
         if (signal.aborted) {
             return null;
         }
-        message(i18n.fileValidationFailed);
+        log.warn(i18n.fileValidationFailed);
         return null;
     }
 
-    log("File validation passed");
+    log.info("File validation passed");
 
     // 从 URL 解析包名（与 install 阶段解压目录名、元数据校验一致）
     const packageName = extractPackageNameFromUrl(downloadUrl);
     if (!packageName) {
-        message(i18n.packageNameFromUrlFailed);
+        log.warn(i18n.packageNameFromUrlFailed);
         return null;
     }
-    log(`Package name extracted from URL: ${packageName}`);
+    log.info(`Package name extracted from URL: ${packageName}`);
 
     return { blob, fileName, packageName };
 }
@@ -78,7 +76,7 @@ async function readZipBody(response: Response, log: Logger, signal: AbortSignal)
     // 正常 GET 成功时 body 为 ReadableStream；为 null 时无法按块读取
     const stream = response.body;
     if (!stream) {
-        log("Response body stream is unavailable");
+        log.warn("Response body stream is unavailable");
         return null;
     }
 
@@ -111,11 +109,11 @@ async function readZipBody(response: Response, log: Logger, signal: AbortSignal)
             }
             if (done) {
                 if (prefixFilled === 0) {
-                    log("File size is 0");
+                    log.warn("File size is 0");
                     return null;
                 }
                 if (prefixFilled < 4) {
-                    log("ZIP file header validation failed");
+                    log.warn("ZIP file header validation failed");
                     return null;
                 }
                 break;
@@ -130,7 +128,7 @@ async function readZipBody(response: Response, log: Logger, signal: AbortSignal)
             prefix[3] !== 0x04
         ) {
             await reader.cancel();
-            log("ZIP file header validation failed");
+            log.warn("ZIP file header validation failed");
             return null;
         }
 
@@ -151,7 +149,7 @@ async function readZipBody(response: Response, log: Logger, signal: AbortSignal)
         // TS 5.7+ 中 Uint8Array 默认带 ArrayBufferLike，与 BlobPart 的 ArrayBuffer 狭义定义不兼容，运行时与流式 chunk 一致
         return new Blob([prefix, ...restChunks] as BlobPart[]);
     } catch (error) {
-        log("File validation failed:", error);
+        log.warn("File validation failed:", error);
         return null;
     } finally {
         signal.removeEventListener("abort", onAbort);

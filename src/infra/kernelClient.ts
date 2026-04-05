@@ -2,7 +2,6 @@
  * 思源内核 HTTP 封装
  */
 
-import { message } from "./message";
 import type { Logger } from "../types";
 
 export interface KernelApiResponse {
@@ -124,43 +123,35 @@ export async function pathExists(path: string): Promise<boolean> {
 }
 
 export async function writeTempFile(fileBlob: Blob, path: string, log: Logger): Promise<boolean> {
-    log(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
+    log.info(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
 
     const result = await putFile({
         path,
         isDir: false,
         file: fileBlob,
     });
-
-    log(`Write temporary file response: code=${result.code}`);
-
     if (result.code !== 0) {
-        log(`Failed to write temporary file: ${result.msg}`);
-        message(`Failed to write temporary file: ${result.msg}`);
+        log.warn(`Failed to write temporary file [${path}]: code=[${result.code}], msg=[${result.msg}]`);
         return false;
     }
 
-    log(`Temporary file written successfully: ${path}`);
+    log.info(`Temporary file written successfully: ${path}`);
     return true;
 }
 
 export async function unzipFile(zipPath: string, extractPath: string, log: Logger): Promise<boolean> {
-    log(`Unzipping file: ${zipPath} -> ${extractPath}`);
+    log.info(`Unzipping file: ${zipPath} -> ${extractPath}`);
 
     const response = await fetchSyncPost("/api/archive/unzip", {
         zipPath: zipPath,
         path: extractPath,
     });
-
-    log(`Unzip file response: code=${response.code}`);
-
     if (response.code !== 0) {
-        log(`Failed to unzip file: ${response.msg}`);
-        message(`Failed to unzip file: ${response.msg}`);
+        log.warn(`Failed to unzip file [${zipPath} -> ${extractPath}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
 
-    log(`File unzipped successfully: ${zipPath} -> ${extractPath}`);
+    log.info(`File unzipped successfully: ${zipPath} -> ${extractPath}`);
     return true;
 }
 
@@ -168,12 +159,11 @@ export async function removeFileOrDirectory(path: string, log: Logger): Promise<
     const response = await fetchSyncPost("/api/file/removeFile", { path });
 
     if (response.code !== 0) {
-        log(`Delete failed: ${path} - ${response.msg}`);
-        message(`Delete failed: ${response.msg}`);
+        log.warn(`Failed to delete file or directory [${path}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
 
-    log(`Delete successful: ${path}`);
+    log.info(`Delete successful: ${path}`);
     return true;
 }
 
@@ -182,28 +172,28 @@ export async function removeFiles(paths: string[], log: Logger): Promise<void> {
     for (const path of effectivePaths) {
         const response = await fetchSyncPost("/api/file/removeFile", { path });
         if (response.code !== 0) {
-            log(`Failed to clean up temporary file: ${path}`);
+            log.warn(`Failed to clean up temporary file [${path}]: code=[${response.code}], msg=[${response.msg}]`);
         }
     }
 }
 
 /** 删除目录（包括非空目录） */
-export async function clearDirectory(dirPath: string, log: Logger): Promise<boolean> {
-    log(`Starting to delete directory: ${dirPath}`);
+export async function removeDirectory(dirPath: string, log: Logger): Promise<boolean> {
+    log.info(`Starting to delete directory: ${dirPath}`);
 
     if (!(await pathExists(dirPath))) {
-        log(`Directory does not exist: ${dirPath}, no need to delete`);
+        log.info(`Directory does not exist: ${dirPath}, no need to delete`);
         return true;
     }
 
-    log(`Deleting directory: ${dirPath}`);
+    log.info(`Deleting directory: ${dirPath}`);
     const rm = await removeFileOrDirectory(dirPath, log);
     if (!rm) {
-        log(`Failed to delete directory: ${dirPath}`);
+        log.warn(`Failed to delete directory: ${dirPath}`);
         return false;
     }
 
-    log(`Directory deleted successfully: ${dirPath}`);
+    log.info(`Directory deleted successfully: ${dirPath}`);
     return true;
 }
 
@@ -211,7 +201,7 @@ export async function clearDirectory(dirPath: string, log: Logger): Promise<bool
  * 复制到安装路径（整个目录复制，globalCopyFiles 会保留源目录名）
  */
 export async function copyToInstallPath(sourcePath: string, targetPath: string, log: Logger): Promise<boolean> {
-    log(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
+    log.info(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
 
     const workspaceDir = window.siyuan.config.system.workspaceDir || "";
     const absoluteSourcePath = workspaceDir ? `${workspaceDir}/${sourcePath}` : sourcePath;
@@ -222,32 +212,30 @@ export async function copyToInstallPath(sourcePath: string, targetPath: string, 
 
     const sourceDirName = sourcePath.split("/").pop() || sourcePath;
 
-    log(`Workspace directory: ${workspaceDir}`);
-    log(`Absolute source path: ${absoluteSourcePath}`);
-    log(`Source directory name: ${sourceDirName}`);
-    log(`Target parent directory: ${destDir}`);
-    log(`Target directory name: ${targetDirName}`);
+    log.info(`Workspace directory: ${workspaceDir}`);
+    log.info(`Absolute source path: ${absoluteSourcePath}`);
+    log.info(`Source directory name: ${sourceDirName}`);
+    log.info(`Target parent directory: ${destDir}`);
+    log.info(`Target directory name: ${targetDirName}`);
 
     const response = await fetchSyncPost("/api/file/globalCopyFiles", {
         srcs: [absoluteSourcePath],
         destDir: destDir,
     });
 
-    log(`Copy directory response: code=${response.code}`, response);
-
     if (response.code !== 0) {
-        message(`Failed to copy directory: ${response.msg}`);
+        log.warn(`Failed to copy directory [${sourcePath} -> ${targetPath}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
 
-    log(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
+    log.info(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
 
     if (sourceDirName !== targetDirName) {
-        log("Warning: Source and target directory names do not match!");
-        log("This should not happen. The directory may have been copied with the wrong name.");
+        log.warn("Warning: Source and target directory names do not match!");
+        log.warn("This should not happen. The directory may have been copied with the wrong name.");
     }
 
-    log(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
+    log.info(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
     return true;
 }
 

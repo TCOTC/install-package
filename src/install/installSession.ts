@@ -3,7 +3,6 @@ import { Dialog } from "siyuan";
 import { downloadPackage } from "../github/download";
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
-import { message } from "../infra/message";
 import type { Logger } from "../types";
 
 export interface InstallRequest {
@@ -52,7 +51,11 @@ export function abortAllActiveInstalls(): void {
     }
 }
 
-export async function runInstall(request: InstallRequest, log: Logger): Promise<void> {
+/**
+ * 执行一次安装请求（下载 release 包并安装）。
+ * @returns `true` 成功（需提示）、`false` 失败（需提示）、`null` 中性（取消 / 被中止等，不提示）
+ */
+export async function runInstall(request: InstallRequest, log: Logger): Promise<boolean | null> {
     const repoLockKey = `${request.owner}/${request.repo}`.toLowerCase();
     const installAbort = new AbortController();
     const signal = installAbort.signal;
@@ -65,58 +68,51 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
         notifyActiveInstallChange();
 
         const releaseInfo = await getReleaseInfo(request.owner, request.repo, request.version, log, signal);
-        if (!releaseInfo) {
-            if (signal.aborted) {
-                return;
-            }
-            const releaseError = i18n.releaseInfoError.replace("{version}", request.version || "latest");
-            message(releaseError);
-            log(releaseError);
-            return;
+        if (signal.aborted) {
+            return null;
         }
-        log("Release description: " + (releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : "")));
-        message(i18n.foundRelease
+        if (!releaseInfo) {
+            log.warn(i18n.releaseInfoError.replace("{version}", request.version || "latest"));
+            return false;
+        }
+        log.info("Release description: " + (releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : "")));
+        log.info(i18n.foundRelease
             .replace("{tagName}", releaseInfo.tag_name)
-            .replace("{publishedAt}", (
-                releaseInfo.published_at ? i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""
-            )), true);
+            .replace("{publishedAt}", releaseInfo.published_at ? i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""),
+        );
 
         const packageZip = findPackageZip(releaseInfo.assets);
         if (!packageZip) {
-            message(i18n.packageZipNotFound);
-            log(i18n.packageZipNotFound);
-            return;
+            log.warn(i18n.packageZipNotFound);
+            return false;
         }
 
         const largePackageThresholdBytes = 20 * 1024 * 1024;
         if (packageZip.size > largePackageThresholdBytes) {
             const proceed = await confirmLargeDownload(packageZip.name, packageZip.size, largePackageThresholdBytes);
             if (!proceed) {
-                log("User canceled download");
-                return;
+                return null;
             }
         }
 
-        message(i18n.downloading
-            .replace("{fileName}", packageZip.name)
-            .replace("{fileSize}", formatFileSize(packageZip.size)), true);
+        log.info(
+            i18n.downloading
+                .replace("{fileName}", packageZip.name)
+                .replace("{fileSize}", formatFileSize(packageZip.size)),
+        );
         const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name, log, installAbort);
-        if (!downloadResult) {
-            if (signal.aborted) {
-                return;
-            }
-            log(i18n.downloadFailed.replace("{error}", "download package failed"));
-            return;
-        }
-
         if (signal.aborted) {
-            return;
+            return null;
+        }
+        if (!downloadResult) {
+            log.warn(i18n.downloadFailed, "download package failed");
+            return false;
         }
 
         const installResult = await installPackage(downloadResult, log);
         if (!installResult) {
-            log(i18n.packageInstallFailed);
-            return;
+            log.warn(i18n.packageInstallFailed);
+            return false;
         }
 
         if (installResult.packageType && installResult.packageName) {
@@ -131,18 +127,17 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
         let autoEnabledText = "";
         if (["plugin", "theme", "icon"].includes(installResult.packageType)) {
             autoEnabledText = request.enableAfterInstall ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
-            log(i18n.downloadSuccess
-                .replace("{autoEnabled}", request.enableAfterInstall ? i18n.autoEnabled : i18n.enableManually));
+            log.info(i18n.downloadSuccess + (request.enableAfterInstall ? i18n.autoEnabled : i18n.enableManually));
         }
         const installSuccess = i18n.packageInstalledSuccess
             .replace("{packageType}", installResult.packageType)
             .replace("{packageName}", installResult.packageName)
             .replace("{autoEnabled}", autoEnabledText);
-        message(installSuccess, true);
-        log(installSuccess);
+        log.info(installSuccess);
+        return true;
     } catch (error) {
-        log("InstallPackage error:", error);
-        message(i18n.downloadFailed.replace("{error}", error instanceof Error ? error.message : String(error)));
+        log.warn(i18n.installationFailed, error);
+        return false;
     } finally {
         const cur = activeInstallByRepo.get(repoLockKey);
         if (cur?.controller === installAbort) {

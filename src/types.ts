@@ -1,5 +1,8 @@
-/** 安装日志等场景使用的日志函数类型 */
-export type Logger = (...args: unknown[]) => void;
+/** 安装日志：`log.info` 为普通行，`log.warn` 为告警行 */
+export type Logger = {
+    info: (...args: unknown[]) => void;
+    warn: (...args: unknown[]) => void;
+};
 
 /** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
 export interface InstallPanelData {

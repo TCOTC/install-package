@@ -7,7 +7,6 @@
 import type { operations } from "@octokit/openapi-types";
 import { i18n } from "../infra/i18n";
 import { getGitHubToken } from "../settings/setting";
-import { message } from "../infra/message";
 import { showGitHubAuthNotice } from "./githubNotice";
 import type { Logger } from "../types";
 
@@ -86,8 +85,7 @@ async function fetchGitHubJson<T>(
         return (await response.json()) as T;
     } catch (error) {
         if (!(error instanceof Error && error.name === "AbortError")) {
-            log(errorLabel, error);
-            message(errorLabel + (error instanceof Error ? error.message : String(error)));
+            log.warn(errorLabel, error);
         }
         return null;
     }
@@ -150,33 +148,36 @@ export async function parseOwnerRepo(
             // 从集市 PR 的标题中提取 owner/repo
             const issueNumberMatch = (githubUrlMatch[3] ?? "").match(/^\/(?:pull|issues)\/(\d+)/i);
             if (!issueNumberMatch) {
-                log("Issue/PR URL has no issue/pull number:", input);
+                log.warn("Issue/PR URL has no issue/pull number:", input);
                 return null;
             }
             const issueNumber = parseInt(issueNumberMatch[1], 10);
             if (!Number.isFinite(issueNumber)) {
-                log("Issue/PR number is not a number:", issueNumber);
+                log.warn("Issue/PR number is not a number:", issueNumber);
                 return null;
             }
             const issueTitle = await getGitHubIssueTitle(owner, repo, issueNumber, log, signal);
             if (!issueTitle) {
-                log("Issue/PR title not found:", issueTitle);
+                if (signal.aborted) {
+                    return null;
+                }
+                log.warn("Issue/PR title not found for #:", issueNumber);
                 return null;
             }
             const titleMatch = issueTitle.match(/([^/\s]+)\/([^/\s]+)/); // bazaar PR 标题：匹配首个 `owner/repo` 片段
             if (!titleMatch) {
-                log("Issue/PR title has no owner/repo segment:", issueTitle);
+                log.warn("Issue/PR title has no owner/repo segment:", issueTitle);
                 return null;
             }
             owner = titleMatch[1];
             repo = titleMatch[2];
-            log(`extract from bazaar issue/PR title: ${owner}/${repo}`);
+            log.info(`extract from bazaar issue/PR title: ${owner}/${repo}`);
         } else {
             // 从集市包仓库的 URL 中提取 owner/repo
             if (repo.length >= 4 && repo.slice(-4).toLowerCase() === ".git") {
                 repo = repo.slice(0, -4);
             }
-            log(`extract from GitHub URL: ${owner}/${repo}`);
+            log.info(`extract from GitHub URL: ${owner}/${repo}`);
         }
     } else {
         // 从短格式中提取 owner/repo
@@ -186,7 +187,7 @@ export async function parseOwnerRepo(
         }
         owner = shortFormatMatch[1];
         repo = shortFormatMatch[2];
-        log(`extract from short format: ${owner}/${repo}`);
+        log.info(`extract from short format: ${owner}/${repo}`);
     }
 
     const repoInfo = await getRepositoryInfo(owner, repo, log, signal);
@@ -194,10 +195,10 @@ export async function parseOwnerRepo(
         return null;
     }
     // 输出仓库摘要
-    log("Repository:", repoInfo.full_name);
-    log("Description:", repoInfo.description || "");
-    log("Stars:", repoInfo.stargazers_count);
-    log("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
+    log.info("Repository:", repoInfo.full_name);
+    log.info("Description:", repoInfo.description || "");
+    log.info("Stars:", repoInfo.stargazers_count);
+    log.info("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
     return { owner, repo };
 }
 

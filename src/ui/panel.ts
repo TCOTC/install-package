@@ -330,19 +330,29 @@ export class InstallPanel {
         }
         const ownerRepo = await this.repoParser.getOwnerRepo();
         if (!ownerRepo) {
-            message(i18n.invalidUrl);
-            this.log(i18n.invalidUrl);
+            this.log.warn(i18n.invalidUrl);
             return;
         }
         const version = this.data.version;
         const enableAfterInstall = this.data.enableAfterInstall;
-        this.log("install package: url=[" + this.data.url + "], version=[" + this.data.version + "], enableAfterInstall=[" + enableAfterInstall + "]");
-        await runInstall({
-            version,
-            enableAfterInstall,
-            owner: ownerRepo.owner,
-            repo: ownerRepo.repo,
-        }, this.log);
+        this.log.info("install package: url=[" + this.data.url + "], version=[" + this.data.version + "], enableAfterInstall=[" + enableAfterInstall + "]");
+        const result = await runInstall({
+                version,
+                enableAfterInstall,
+                owner: ownerRepo.owner,
+                repo: ownerRepo.repo,
+            },
+            this.log,
+        );
+        if (result === true) {
+            this.log.info(i18n.installDone);
+            message(i18n.installDone, true);
+        } else if (result === false) {
+            this.log.warn(i18n.installFailed);
+            message(i18n.installFailed);
+        } else if (result === null) {
+            this.log.info("User canceled download");
+        }
     }
 
     /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
@@ -355,26 +365,38 @@ export class InstallPanel {
 }
 
 const INSTALL_LOG_PROCESS_LINE_CLASS = "jcip-show__text--log";
+const INSTALL_LOG_WARN_MODIFIER_CLASS = "jcip-show__text--log-warn";
+
+/** 将不同类型的参数转换为字符串 */
+function formatLogArg(arg: unknown): string {
+    if (typeof arg === "string") {
+        return arg;
+    }
+    if (arg instanceof Error) {
+        return arg.message || String(arg);
+    }
+    if (typeof arg === "object" && arg !== null) {
+        try {
+            return JSON.stringify(arg);
+        } catch {
+            return String(arg);
+        }
+    }
+    return String(arg);
+}
 
 function createInstallLogger(installLogElement: HTMLDivElement): { log: Logger; clear: () => void } {
-    const log: Logger = (...args: unknown[]) => {
+    const appendLine = (level: "info" | "warn", args: unknown[]): void => {
         const item = document.createElement("p");
-        item.className = INSTALL_LOG_PROCESS_LINE_CLASS;
-        item.textContent = args.map((arg) => {
-            if (typeof arg === "string") {
-                return arg;
-            }
-            if (arg instanceof Error) {
-                return arg.stack || arg.message;
-            }
-            try {
-                return JSON.stringify(arg);
-            } catch {
-                return String(arg);
-            }
-        }).join(" ");
+        item.className =
+            INSTALL_LOG_PROCESS_LINE_CLASS + (level === "warn" ? " " + INSTALL_LOG_WARN_MODIFIER_CLASS : "");
+        item.textContent = args.map((arg) => formatLogArg(arg)).join(" ");
         installLogElement.append(item);
         installLogElement.scrollTop = installLogElement.scrollHeight;
+    };
+    const log: Logger = {
+        info: (...args: unknown[]) => appendLine("info", args),
+        warn: (...args: unknown[]) => appendLine("warn", args),
     };
     const clear = (): void => {
         installLogElement.replaceChildren();

@@ -206,8 +206,13 @@ export async function setPackageEnabled(
             log(`Failed to ${action} plugin: ${response.msg}`);
             const tpl = enableAfterInstall ? i18n.enablePluginFailed : i18n.disablePluginFailed;
             message(tpl.replace("{error}", String(response.msg ?? "")));
+            break;
         }
         case "theme": {
+            const appearance = window.siyuan.config.appearance;
+            const wasLightTheme = appearance.themeLight === packageName;
+            const wasDarkTheme = appearance.themeDark === packageName;
+
             const response = await fetchSyncPost("/api/ui/reloadTheme", {});
             if (response.code !== 0) {
                 log(`reloadTheme before setTheme failed: ${response.msg}`);
@@ -215,6 +220,7 @@ export async function setPackageEnabled(
                 return;
             }
             if (enableAfterInstall) {
+                // TODO 看看能不能复用前面获取的 JSON 对象（另外前面必须要 parse JSON 不报错以验证元数据文件是否合法）
                 const modes = await getSetThemeModes(packageName);
                 const appearanceMode = getSwitchAppearanceMode(modes);
                 log(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
@@ -230,11 +236,35 @@ export async function setPackageEnabled(
                 log(`Failed to apply theme: ${response.msg}`);
                 message(i18n.enablePackageFailed.replace("{error}", String(response.msg ?? "")));
                 return;
+            } else {
+                // 禁用时重置为默认主题
+                if (wasLightTheme) {
+                    const resetLight = await fetchSyncPost("/api/setting/setTheme", {
+                        theme: "daylight",
+                        modes: [0],
+                    });
+                    if (resetLight.code !== 0) {
+                        log(`Failed to reset light theme to default: ${resetLight.msg}`);
+                        return;
+                    }
+                }
+                if (wasDarkTheme) {
+                    const resetDark = await fetchSyncPost("/api/setting/setTheme", {
+                        theme: "midnight",
+                        modes: [1],
+                    });
+                    if (resetDark.code !== 0) {
+                        log(`Failed to reset dark theme to default: ${resetDark.msg}`);
+                        return;
+                    }
+                }
             }
-            // TODO 如果禁用主题，需要将正在使用该主题的外观模式切换回默认主题（在调用 reloadTheme 之前获取当前的主题和外观模式，就知道了）
             log(`Theme ${packageName} installed (not switching)`);
+            break;
         }
         case "icon": {
+            const wasCurrentIcon = window.siyuan.config.appearance.icon === packageName;
+
             const response = await fetchSyncPost("/api/ui/reloadIcon", {});
             if (response.code !== 0) {
                 log(`reloadIcon before setAppearance failed: ${response.msg}`);
@@ -250,13 +280,22 @@ export async function setPackageEnabled(
                 log(`Failed to apply icon: ${response.msg}`);
                 message(i18n.enablePackageFailed.replace("{error}", String(response.msg ?? "")));
                 return;
+            } else {
+                // 禁用时重置为默认图标
+                if (wasCurrentIcon) {
+                    const resetIcon = await fetchSyncPost("/api/setting/setIcon", { icon: "material" });
+                    if (resetIcon.code !== 0) {
+                        log(`Failed to reset icon to default: ${resetIcon.msg}`);
+                        return;
+                    }
+                }
             }
-            // TODO 如果当前正在使用该图标，需要将图标切换回默认图标（在调用 reloadIcon 之前获取当前的图标，就知道了）
             log(`Icon ${packageName} installed (not switching)`);
-            return;
+            break;
         }
         default: {
             log(`${packageType} ${packageName} installed`);
+            break;
         }
     }
 }

@@ -1,6 +1,6 @@
 import { getFrontend } from "siyuan";
-import { i18n } from "./i18n";
-import { message } from "./message";
+import { i18n } from "../infra/i18n";
+import { message } from "../infra/message";
 import {
     fetchSyncPost,
     getFile,
@@ -10,8 +10,8 @@ import {
     pathExists,
     unzipFile,
     writeTempFile,
-} from "./kernelClient";
-import type { Logger } from "./panel";
+} from "../infra/kernelClient";
+import type { Logger } from "../types";
 
 export function getInstallPath(packageType: string): string {
     switch (packageType) {

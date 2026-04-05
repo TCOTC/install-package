@@ -1,6 +1,6 @@
 import { Dialog } from "siyuan";
-import { i18n } from "./i18n";
-import { getGitHubToken } from "./setting";
+import { i18n } from "../infra/i18n";
+import { getGitHubToken } from "../settings/setting";
 
 /** GitHub 相关通知对话框单例 */
 let sharedGitHubNoticeDialog: Dialog | null = null;

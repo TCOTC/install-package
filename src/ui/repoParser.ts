@@ -1,6 +1,6 @@
-import { i18n } from "./i18n";
-import { parseOwnerRepo } from "./github";
-import { Logger, type InstallPanelData } from "./panel";
+import { i18n } from "../infra/i18n";
+import { parseOwnerRepo } from "../github/github";
+import type { InstallPanelData, Logger } from "../types";
 
 type RepoInfoElState =
     | { kind: "tip" }

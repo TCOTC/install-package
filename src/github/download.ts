@@ -1,7 +1,7 @@
-import { i18n } from "./i18n";
+import { i18n } from "../infra/i18n";
 import { extractPackageNameFromUrl } from "./github";
-import { message } from "./message";
-import { Logger } from "./panel";
+import { message } from "../infra/message";
+import type { Logger } from "../types";
 
 export async function downloadPackage(
     downloadUrl: string,

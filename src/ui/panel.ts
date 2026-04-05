@@ -1,18 +1,10 @@
 import { Custom, Menu, saveLayout } from "siyuan";
-import { i18n } from "./i18n";
+import { i18n } from "../infra/i18n";
 import { RepoParser } from "./repoParser";
-import { isSameTargetInstalling, subscribeActiveInstallChange, runInstall } from "./installRunner";
-import { message } from "./message";
-import { electron, openDirectory, openDevTools } from "./desktop";
-
-export type Logger = (...args: unknown[]) => void;
-
-/** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
-export interface InstallPanelData {
-    url: string;
-    version: string;
-    enableAfterInstall: boolean;
-}
+import { isSameTargetInstalling, subscribeActiveInstallChange, runInstall } from "../install/installSession";
+import { message } from "../infra/message";
+import { electron, openDirectory, openDevTools } from "../infra/desktop";
+import type { InstallPanelData, Logger } from "../types";
 
 const INSTALL_PANEL_DEFAULT: InstallPanelData = {
     url: "",

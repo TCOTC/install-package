@@ -1,10 +1,10 @@
-import { i18n } from "./i18n";
+import { i18n } from "../infra/i18n";
 import { Dialog } from "siyuan";
-import { downloadPackage } from "./download";
-import { findPackageZip, getReleaseInfo } from "./github";
+import { downloadPackage } from "../github/download";
+import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
-import { message } from "./message";
-import type { Logger } from "./panel";
+import { message } from "../infra/message";
+import type { Logger } from "../types";
 
 export interface InstallRequest {
     owner: string;

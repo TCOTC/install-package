@@ -5,11 +5,11 @@
  */
 
 import type { operations } from "@octokit/openapi-types";
-import { i18n } from "./i18n";
-import { getGitHubToken } from "./setting";
-import { message } from "./message";
+import { i18n } from "../infra/i18n";
+import { getGitHubToken } from "../settings/setting";
+import { message } from "../infra/message";
 import { showGitHubAuthNotice } from "./githubNotice";
-import type { Logger } from "./panel";
+import type { Logger } from "../types";
 
 export type GitHubApiErrorInfo = { status: number; apiMessage?: string };
 type GitHubRateLimitResponse = operations["rate-limit/get"]["responses"][200]["content"]["application/json"];

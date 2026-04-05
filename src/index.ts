@@ -1,11 +1,11 @@
 import "./index.scss";
 import { Custom, getAllTabs, Plugin, openTab, type Tab } from "siyuan";
-import { i18n, setI18n, type PluginI18n } from "./modules/i18n";
-import { clearMessagePrefix, setMessagePrefix } from "./modules/message";
-import { clearRuntimeSecretCache, createSetting, loadSetting } from "./modules/setting";
-import { InstallPanel } from "./modules/panel";
-import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./modules/githubNotice";
-import { abortAllActiveInstalls } from "./modules/installRunner";
+import { i18n, setI18n, type PluginI18n } from "./infra/i18n";
+import { clearMessagePrefix, setMessagePrefix } from "./infra/message";
+import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/setting";
+import { InstallPanel } from "./ui/panel";
+import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
+import { abortAllActiveInstalls } from "./install/installSession";
 
 /** 顶栏与 openTab 自定义页签共用的图标 id */
 export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";

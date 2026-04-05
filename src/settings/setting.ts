@@ -3,9 +3,9 @@
  */
 
 import { Setting, type Plugin } from "siyuan";
-import { i18n } from "./i18n";
-import { message } from "./message";
-import { decryptToken, deriveTokenVaultFileName, encryptToken } from "./tokenCrypto";
+import { i18n } from "../infra/i18n";
+import { message } from "../infra/message";
+import { decryptToken, deriveTokenVaultFileName, encryptToken } from "../infra/tokenCrypto";
 
 /** 内存中的明文 Token，用于设置页展示与 API；不落盘 */
 let githubToken = "";

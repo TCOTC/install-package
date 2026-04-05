@@ -3,7 +3,7 @@ import { showMessage } from "siyuan";
 let messagePrefix = "";
 
 export function setMessagePrefix(name: string): void {
-    messagePrefix = name.trim() + ": ";
+    messagePrefix = name + ": ";
 }
 
 export function clearMessagePrefix(): void {

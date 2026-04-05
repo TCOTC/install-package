@@ -3,7 +3,7 @@
  */
 
 import { message } from "./message";
-import { Logger } from "./panel";
+import type { Logger } from "../types";
 
 export interface KernelApiResponse {
     code: number;

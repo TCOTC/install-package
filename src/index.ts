@@ -87,7 +87,32 @@ export default class InstallPackage extends Plugin {
             panel.destroy();
         }
         installPanels.clear();
-        closeAllPluginTabs(this.installTabCustomId, this.displayName);
+        function isTargetTab(tab: Tab): boolean {
+            const model = tab.model as { type?: string } | undefined;
+            if (model && typeof model.type === "string" && model.type === this.installTabCustomId) {
+                return true;
+            }
+            const raw = tab.headElement?.getAttribute("data-initdata");
+            if (!raw) {
+                return false;
+            }
+            try {
+                const init = JSON.parse(raw) as { instance?: string; customModelType?: string };
+                return init.instance === "Custom" && init.customModelType === this.installTabCustomId;
+            } catch {
+                return false;
+            }
+        }
+        // TODO 思源 v3.6.4 之后可以使用：
+        // const tabsToClose = getAllTabs(tabCustomId);
+        const tabsToClose = getAllTabs().filter(isTargetTab);
+        for (const tab of tabsToClose) {
+            try {
+                tab.close();
+            } catch (e) {
+                console.error(this.displayName, "close tab failed:", e);
+            }
+        }
 
         console.log(this.displayName, "plugin unloaded");
     }
@@ -99,40 +124,4 @@ export default class InstallPackage extends Plugin {
         console.log(this.displayName, "plugin uninstalled");
     }
 
-}
-
-/**
- * 关闭所有本插件的页签，无论是否已打开。
- * @param tabCustomId 与 `InstallPackage.installTabCustomId` 相同，即布局里的 `customModelType`
- * @param pluginDisplayName 写入 `console.error` 前缀，一般为 `Plugin.displayName`
- */
-function closeAllPluginTabs(tabCustomId: string, pluginDisplayName: string): void {
-    function isTargetTab(tab: Tab): boolean {
-        const model = tab.model as { type?: string } | undefined;
-        if (model && typeof model.type === "string" && model.type === tabCustomId) {
-            return true;
-        }
-        const raw = tab.headElement?.getAttribute("data-initdata");
-        if (!raw) {
-            return false;
-        }
-        try {
-            const init = JSON.parse(raw) as { instance?: string; customModelType?: string };
-            return init.instance === "Custom" && init.customModelType === tabCustomId;
-        } catch {
-            return false;
-        }
-    }
-
-    const tabsToClose = getAllTabs().filter(isTargetTab);
-    if (tabsToClose.length === 0) {
-        return;
-    }
-    for (const tab of [...tabsToClose]) {
-        try {
-            tab.close();
-        } catch (e) {
-            console.error(pluginDisplayName, "close tab failed:", e);
-        }
-    }
 }

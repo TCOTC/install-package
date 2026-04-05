@@ -64,6 +64,7 @@
   "downloadTimeout": "Download timeout (30s), please check network connection",
   "packageNameFromUrlFailed": "Unable to extract repository name from download URL",
   "readDirFailed": "Failed to read directory: {error}",
+  "extractUnwrapRenameFailed": "Failed to rename extracted directory to match install path: {error}",
   "packageNameMismatch": "Package name mismatch: package name in metadata is [{metadataName}], but repository name is [{repoName}]. Package name must match repository name",
   "openPluginsDir": "Plugins Directory",
   "openPetalDir": "Petal Directory",

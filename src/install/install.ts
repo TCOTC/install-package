@@ -25,8 +25,6 @@ export function getInstallPath(packageType: string): string {
             return "conf/appearance/themes";
         case "icon":
             return "conf/appearance/icons";
-        default:
-            return "data/plugins";
     }
 }
 
@@ -61,6 +59,46 @@ export async function getPackageType(packagePath: string): Promise<string | null
         return null;
     }
     return foundTypes[0];
+}
+
+/**
+ * 解压根目录下仅有一个子文件夹时，将该文件夹视为集市包根目录。
+ * 内核 globalCopyFiles 以源路径最后一级为安装目录名，故当该文件夹名与 packageName 不一致时先重命名为 packageName。
+ */
+async function resolveUnwrappedExtractRoot(
+    outerExtractPath: string,
+    packageName: string,
+    log: Logger
+): Promise<string | null> {
+    const response = await fetchSyncPost("/api/file/readDir", { path: outerExtractPath });
+    if (response.code !== 0 || !Array.isArray(response.data)) {
+        message(i18n.readDirFailed.replace("{error}", response.msg));
+        return null;
+    }
+    if (response.data.length !== 1) {
+        return outerExtractPath;
+    }
+    const only = response.data[0] as { isDir?: boolean; name?: string };
+    if (!only.isDir || typeof only.name !== "string") {
+        return outerExtractPath;
+    }
+    const innerPath = `${outerExtractPath}/${only.name}`;
+    if (only.name === packageName) {
+        log(`检测到单一顶层文件夹，作为集市包根目录: ${innerPath}`);
+        return innerPath;
+    }
+    const renamedPath = `${outerExtractPath}/${packageName}`;
+    log(`单一顶层目录名与包名不一致，重命名以匹配安装路径: ${innerPath} -> ${renamedPath}`);
+    const renameRes = await fetchSyncPost("/api/file/renameFile", {
+        path: innerPath,
+        newPath: renamedPath,
+    });
+    if (renameRes.code !== 0) {
+        log(`重命名解压目录失败: ${renameRes.msg}`);
+        message(i18n.extractUnwrapRenameFailed.replace("{error}", String(renameRes.msg ?? "")));
+        return null;
+    }
+    return renamedPath;
 }
 
 export async function getPackageName(extractPath: string, packageType: string, log: Logger): Promise<string | null> {
@@ -204,7 +242,6 @@ export async function setPackageEnabled(
                 return;
             }
             if (enableAfterInstall) {
-                // TODO 这个接口在 v3.6.2 才支持，要修改 plugin.json 的 minAppVersion 为 3.6.2
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {
                     log(`Icon ${packageName} applied successfully`);
@@ -241,9 +278,11 @@ export async function installPackage(pack: {
     let tempPath = "";
     let extractPath = "";
 
+    const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const extractRootDir = `temp/export/extract_${tempId}`;
+
     const runCleanup = async () => {
-        const extractBaseDir = extractPath ? extractPath.substring(0, extractPath.lastIndexOf("/")) : "";
-        const pathsToClean = [tempPath, extractBaseDir].filter(Boolean);
+        const pathsToClean = [tempPath, extractRootDir].filter(Boolean);
         if (pathsToClean.length > 0) {
             log(`Cleaning up temporary files: ${pathsToClean.join(", ")}`);
             await removeFiles(pathsToClean, log);
@@ -262,7 +301,6 @@ export async function installPackage(pack: {
 
     log(`Starting package installation: ${fileName}, name: ${packageName}`);
 
-    const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const tempFileName = `temp_${tempId}_${fileName}`;
     tempPath = `temp/export/${tempFileName}`;
     log(`Creating temporary file: ${tempPath}`);
@@ -274,12 +312,18 @@ export async function installPackage(pack: {
     pack.blob = null;
     log(`Temporary file written successfully: ${tempPath}`);
 
-    extractPath = `temp/export/extract_${tempId}/${packageName}`;
+    extractPath = `${extractRootDir}/${packageName}`;
     log(`Extracting to final directory: ${extractPath}`);
     if (!(await unzipFile(tempPath, extractPath, log))) {
         return bail();
     }
     log(`Extraction completed: ${extractPath}`);
+
+    const resolvedRoot = await resolveUnwrappedExtractRoot(extractPath, packageName, log);
+    if (resolvedRoot === null) {
+        return bail();
+    }
+    extractPath = resolvedRoot;
 
     const packageType = await getPackageType(extractPath);
     if (!packageType) {

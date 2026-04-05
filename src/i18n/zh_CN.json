@@ -64,6 +64,7 @@
   "downloadTimeout": "下载超时（30s），请检查网络连接",
   "packageNameFromUrlFailed": "无法从下载地址中解析集市包仓库名",
   "readDirFailed": "读取目录失败：{error}",
+  "extractUnwrapRenameFailed": "为匹配安装路径重命名解压目录失败：{error}",
   "packageNameMismatch": "包名不匹配：元数据文件中的包名为 [{metadataName}]，但仓库名为 [{repoName}]。包名必须与仓库名一致",
   "openPluginsDir": "Plugins 目录",
   "openPetalDir": "Petal 目录",

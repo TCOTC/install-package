@@ -27,6 +27,19 @@ export function isSameTargetInstalling(owner: string, repo: string, version: str
     return entry !== undefined && entry.version === version;
 }
 
+/** 该仓库是否有一条进行中的安装（与版本无关，同仓互斥） */
+export function isRepoInstalling(owner: string, repo: string): boolean {
+    const key = `${owner}/${repo}`.toLowerCase();
+    // 存在时说明有进行中的安装，还没执行到 finally
+    return activeInstallByRepo.has(key);
+}
+
+/** 中止指定仓库的进行中安装 */
+export function abortInstall(owner: string, repo: string): void {
+    const key = `${owner}/${repo}`.toLowerCase();
+    activeInstallByRepo.get(key)?.controller.abort();
+}
+
 const installUiLockListeners = new Set<() => void>();
 
 export function subscribeActiveInstallChange(listener: () => void): () => void {

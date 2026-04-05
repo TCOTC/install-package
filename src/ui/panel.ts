@@ -1,7 +1,13 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { RepoParser } from "./repoParser";
-import { isSameTargetInstalling, subscribeActiveInstallChange, runInstall } from "../install/installSession";
+import {
+    abortInstall,
+    isRepoInstalling,
+    isSameTargetInstalling,
+    subscribeActiveInstallChange,
+    runInstall,
+} from "../install/installSession";
 import { message } from "../infra/message";
 import { electron, openDirectory, openDevTools } from "../infra/desktop";
 import type { InstallPanelData, Logger } from "../types";
@@ -41,6 +47,7 @@ function renderInstallPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
     const actionInstallCore = `
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
+                <button data-type="abort-install" type="button" class="b3-button fn__none">${i18n.abortInstallButton}</button>
                 <div class="jcip-action__enable">
                     <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
@@ -104,6 +111,7 @@ interface InstallPanelElements {
     repoInfoEl: HTMLDivElement;
     enableAfterInstallSwitchEls: NodeListOf<HTMLInputElement>;
     installEls: NodeListOf<HTMLButtonElement>;
+    abortEls: NodeListOf<HTMLButtonElement>;
     installLogEl: HTMLDivElement;
 }
 
@@ -121,6 +129,11 @@ export class InstallPanel {
     private persistTimer: number | undefined;
     private repoParseReady = false;
     private installButtonSyncSeq = 0;
+    /**
+     * 本面板当前 `await runInstall` 对应的仓库。与输入框解析解耦，用于中止本面板发起的安装。
+     * 在 `runInstall` 返回（成功 / 失败 / 中止）后于 `finally` 中清空。
+     */
+    private panelInstallContext: { owner: string; repo: string } | null = null;
     /** 页签关闭时取消订阅 */
     private unsubActiveInstall: (() => void) | undefined;
 
@@ -136,6 +149,7 @@ export class InstallPanel {
             repoInfoEl: this.root.querySelector("div[data-type='repo-info']") as HTMLDivElement,
             enableAfterInstallSwitchEls: this.root.querySelectorAll("input[data-type='enableAfterInstall']") as NodeListOf<HTMLInputElement>,
             installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
+            abortEls: this.root.querySelectorAll("button[data-type='abort-install']") as NodeListOf<HTMLButtonElement>,
             installLogEl: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
         };
         const logger = createInstallLogger(this.elements.installLogEl);
@@ -220,6 +234,11 @@ export class InstallPanel {
         for (const btn of this.elements.installEls) {
             btn.addEventListener("click", () => void this.startInstall());
         }
+        for (const btn of this.elements.abortEls) {
+            btn.addEventListener("click", () => {
+                this.abortCurrentRepoInstall();
+            });
+        }
 
         this.elements.installLogEl.addEventListener("contextmenu", (event) => {
             event.preventDefault();
@@ -270,28 +289,68 @@ export class InstallPanel {
         });
     }
 
+    private setInstallAbortButtonVisibility(installing: boolean): void {
+        for (const b of this.elements.installEls) {
+            b.classList.toggle("fn__none", installing);
+        }
+        for (const b of this.elements.abortEls) {
+            b.classList.toggle("fn__none", !installing);
+        }
+    }
+
     private syncInstallButtonDisabled(): void {
+        const isPanelRepoInstalling = (): boolean => {
+            const c = this.panelInstallContext;
+            return c !== null && isRepoInstalling(c.owner, c.repo);
+        };
+        const setInstallDisabled = (d: boolean): void => {
+            for (const b of this.elements.installEls) {
+                b.disabled = d;
+            }
+        };
+
+        // 解析新 URL 时 `repoParseReady` 会暂时为 false，但不能因此隐藏「中断安装」按钮，所以先判断是否正在安装
+        if (isPanelRepoInstalling()) {
+            this.installButtonSyncSeq++;
+            setInstallDisabled(true);
+            this.setInstallAbortButtonVisibility(true);
+            return;
+        }
         if (!this.repoParseReady) {
             this.installButtonSyncSeq++;
-            this.elements.installEls.forEach((button) => {
-                button.disabled = true;
-            });
+            setInstallDisabled(true);
+            this.setInstallAbortButtonVisibility(false);
             return;
         }
         const seq = ++this.installButtonSyncSeq;
         void (async (): Promise<void> => {
+            if (isPanelRepoInstalling()) {
+                if (seq !== this.installButtonSyncSeq) {
+                    return;
+                }
+                this.setInstallAbortButtonVisibility(true);
+                return;
+            }
             const ownerRepo = await this.repoParser.getOwnerRepo();
             if (seq !== this.installButtonSyncSeq) {
                 return;
             }
+            this.setInstallAbortButtonVisibility(false);
             const ok =
                 this.repoParseReady &&
                 ownerRepo !== null &&
                 !isSameTargetInstalling(ownerRepo.owner, ownerRepo.repo, this.data.version);
-            this.elements.installEls.forEach((b) => {
-                b.disabled = !ok;
-            });
+            setInstallDisabled(!ok);
         })();
+    }
+
+    /** 中止本面板发起的安装 */
+    private abortCurrentRepoInstall(): void {
+        const ctx = this.panelInstallContext;
+        if (ctx === null) {
+            return;
+        }
+        abortInstall(ctx.owner, ctx.repo);
     }
 
     private readonly persistPanelData = (): void => {
@@ -336,22 +395,31 @@ export class InstallPanel {
         const version = this.data.version;
         const enableAfterInstall = this.data.enableAfterInstall;
         this.log.info("install package: url=[" + this.data.url + "], version=[" + this.data.version + "], enableAfterInstall=[" + enableAfterInstall + "]");
-        const result = await runInstall({
-                version,
-                enableAfterInstall,
-                owner: ownerRepo.owner,
-                repo: ownerRepo.repo,
-            },
-            this.log,
-        );
-        if (result === true) {
-            this.log.info(i18n.installDone);
-            message(i18n.installDone, true);
-        } else if (result === false) {
-            this.log.warn(i18n.installFailed);
-            message(i18n.installFailed);
-        } else if (result === null) {
-            this.log.info("User canceled download");
+        this.panelInstallContext = { owner: ownerRepo.owner, repo: ownerRepo.repo };
+        try {
+            const result = await runInstall(
+                {
+                    version,
+                    enableAfterInstall,
+                    owner: ownerRepo.owner,
+                    repo: ownerRepo.repo,
+                },
+                this.log,
+            );
+            if (result === true) {
+                const text = i18n.installDone.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
+                this.log.info(text);
+                message(text, true);
+            } else if (result === false) {
+                const text = i18n.installFailed.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
+                this.log.warn(text);
+                message(text);
+            } else if (result === null) {
+                this.log.info("User canceled download");
+            }
+        } finally {
+            this.panelInstallContext = null;
+            this.syncInstallButtonDisabled();
         }
     }
 

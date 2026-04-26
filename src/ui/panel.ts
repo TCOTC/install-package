@@ -337,11 +337,13 @@ export class InstallPanel {
     }
 
     /**
-     * 解析事件落地：页签标题、`dispatch` 更新切片、版本控件与安装按钮投影。
+     * 解析事件落地：`dispatch` 更新切片、版本控件与安装按钮投影；
+     * 页签标题仅在 settled 后更新，不需要在 `parsing` 阶段把标题刷成默认文案。
      */
     private applyRepoParseEvent(event: RepoParseEvent): void {
-        const installReady = event.type === "settled" && event.data !== null;
-        this.custom.tab.updateTitle(installReady ? event.data!.repo : i18n.title);
+        if (event.type === "settled") {
+            this.custom.tab.updateTitle(event.data !== null ? event.data.repo : i18n.title);
+        }
 
         if (event.type === "parsing") {
             this.uiStore.dispatch({ type: "parse/parsing" });
@@ -353,6 +355,7 @@ export class InstallPanel {
             }
         }
 
+        const installReady = event.type === "settled" && event.data !== null;
         this.versionUI.setRepoParseReady(installReady);
         this.syncInstallButtonDisabled();
     }

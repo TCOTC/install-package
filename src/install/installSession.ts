@@ -3,7 +3,7 @@ import { Dialog } from "siyuan";
 import { downloadPackage } from "../github/download";
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
-import type { Logger } from "../types";
+import type { Logger } from "../ui/logger";
 
 export interface InstallRequest {
     owner: string;
@@ -88,7 +88,7 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
             log.warn(i18n.releaseInfoError.replace("{version}", request.version || "latest"));
             return false;
         }
-        log.info("Release description: " + (releaseInfo.body?.substring(0, 200) + (releaseInfo.body?.length > 200 ? "..." : "")));
+        log.info("Release description: " + (releaseInfo.body?.substring(0, 200) + ((releaseInfo.body?.length ?? 0) > 200 ? "..." : "")));
         log.info(i18n.foundRelease
             .replace("{tagName}", releaseInfo.tag_name)
             .replace("{publishedAt}", releaseInfo.published_at ? i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""),
@@ -118,7 +118,6 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
             return null;
         }
         if (!downloadResult) {
-            log.warn(i18n.downloadFailed, "download package failed");
             return false;
         }
 
@@ -128,14 +127,7 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
             return false;
         }
 
-        if (installResult.packageType && installResult.packageName) {
-            await setPackageEnabled(
-                installResult.packageType,
-                installResult.packageName,
-                request.enableAfterInstall,
-                log
-            );
-        }
+        await setPackageEnabled(installResult.packageType, installResult.packageName, request.enableAfterInstall, log);
 
         let autoEnabledText = "";
         if (["plugin", "theme", "icon"].includes(installResult.packageType)) {

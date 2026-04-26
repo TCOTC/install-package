@@ -2,7 +2,8 @@
  * 思源内核 HTTP 封装
  */
 
-import type { Logger } from "../types";
+import { i18n } from "./i18n";
+import type { Logger } from "../ui/logger";
 
 export interface KernelApiResponse {
     code: number;
@@ -117,150 +118,89 @@ export async function getFile(path: string): Promise<GetFileResult> {
     }
 }
 
+/** 删除文件或目录 */
+export async function removeFile(path: string, log: Logger): Promise<boolean> {
+    log.info(`Removing file: [${path}]`);
+    const response = await fetchSyncPost("/api/file/removeFile", { path });
+    if (response.code !== 0) {
+        log.warn(`Failed to remove [${path}]: code=[${response.code}], msg=[${response.msg}]`);
+        return false;
+    }
+    log.info(`Removed successfully`);
+    return true;
+}
+
+/** 重命名文件或目录，`path` / `newPath` 均为工作空间下的路径 */
+export async function renameFile(path: string, newPath: string, log: Logger): Promise<boolean> {
+    const response = await fetchSyncPost("/api/file/renameFile", { path, newPath });
+    if (response.code !== 0) {
+        log.warn(`${i18n.renameFileFailed} [${path}] -> [${newPath}] code=[${response.code}], msg=[${response.msg}]`);
+        return false;
+    }
+    return true;
+}
+
+export interface ReadDirEntry {
+    isDir: boolean;
+    isSymlink: boolean;
+    name: string;
+    updated: number;
+}
+
+/**
+ * 读取目录；失败时写日志并返回 null
+ */
+export async function readDir(path: string, log: Logger): Promise<ReadDirEntry[] | null> {
+    const response = await fetchSyncPost("/api/file/readDir", { path });
+    if (response.code !== 0 || !Array.isArray(response.data)) {
+        log.warn(i18n.readDirFailed, response.msg);
+        return null;
+    }
+    return response.data as ReadDirEntry[];
+}
+
 export async function pathExists(path: string): Promise<boolean> {
     const response = await fetchSyncPost("/api/file/readDir", { path });
     return response.code === 0 && Array.isArray(response.data);
 }
 
-export async function writeTempFile(fileBlob: Blob, path: string, log: Logger): Promise<boolean> {
-    log.info(`Writing temporary file: ${path}, data size: ${fileBlob.size} bytes`);
-
-    const result = await putFile({
-        path,
-        isDir: false,
-        file: fileBlob,
-    });
-    if (result.code !== 0) {
-        log.warn(`Failed to write temporary file [${path}]: code=[${result.code}], msg=[${result.msg}]`);
-        return false;
-    }
-
-    log.info(`Temporary file written successfully: ${path}`);
-    return true;
-}
-
 export async function unzipFile(zipPath: string, extractPath: string, log: Logger): Promise<boolean> {
-    log.info(`Unzipping file: ${zipPath} -> ${extractPath}`);
+    log.info(`Unzipping file: [${zipPath}] -> [${extractPath}]`);
 
     const response = await fetchSyncPost("/api/archive/unzip", {
         zipPath: zipPath,
         path: extractPath,
     });
     if (response.code !== 0) {
-        log.warn(`Failed to unzip file [${zipPath} -> ${extractPath}]: code=[${response.code}], msg=[${response.msg}]`);
+        log.warn(`Failed to unzip file [${zipPath}] -> [${extractPath}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
 
-    log.info(`File unzipped successfully: ${zipPath} -> ${extractPath}`);
+    log.info(`Unzipped successfully`);
     return true;
 }
 
-export async function removeFileOrDirectory(path: string, log: Logger): Promise<boolean> {
-    const response = await fetchSyncPost("/api/file/removeFile", { path });
-
-    if (response.code !== 0) {
-        log.warn(`Failed to delete file or directory [${path}]: code=[${response.code}], msg=[${response.msg}]`);
-        return false;
-    }
-
-    log.info(`Delete successful: ${path}`);
-    return true;
-}
-
-export async function removeFiles(paths: string[], log: Logger): Promise<void> {
-    const effectivePaths = paths.filter(path => typeof path === "string" && path.trim().length > 0);
-    for (const path of effectivePaths) {
-        const response = await fetchSyncPost("/api/file/removeFile", { path });
-        if (response.code !== 0) {
-            log.warn(`Failed to clean up temporary file [${path}]: code=[${response.code}], msg=[${response.msg}]`);
-        }
-    }
-}
-
-/** 删除目录（包括非空目录） */
-export async function removeDirectory(dirPath: string, log: Logger): Promise<boolean> {
-    log.info(`Starting to delete directory: ${dirPath}`);
-
-    if (!(await pathExists(dirPath))) {
-        log.info(`Directory does not exist: ${dirPath}, no need to delete`);
-        return true;
-    }
-
-    log.info(`Deleting directory: ${dirPath}`);
-    const rm = await removeFileOrDirectory(dirPath, log);
-    if (!rm) {
-        log.warn(`Failed to delete directory: ${dirPath}`);
-        return false;
-    }
-
-    log.info(`Directory deleted successfully: ${dirPath}`);
-    return true;
-}
-
+// TODO 直接改成用 /api/file/renameFile 实现移动文件夹（等 PR 过了）（还需要先判断对应位置是否已经存在文件或文件夹，要先 removeFile 才能 renameFile）
 /**
- * 复制到安装路径（整个目录复制，globalCopyFiles 会保留源目录名）
+ * 工作空间内复制文件或目录
+ * 
+ * @param sourcePath 复制源。相对于工作空间的路径
+ * @param targetPath 复制目标。相对于工作空间的路径
+ * @param log 日志记录器
+ * @returns 是否成功
  */
-export async function copyToInstallPath(sourcePath: string, targetPath: string, log: Logger): Promise<boolean> {
-    log.info(`Starting to copy directory: ${sourcePath} -> ${targetPath}`);
-
-    const workspaceDir = window.siyuan.config.system.workspaceDir || "";
-    const absoluteSourcePath = workspaceDir ? `${workspaceDir}/${sourcePath}` : sourcePath;
-
-    const lastSlashIndex = targetPath.lastIndexOf("/");
-    const destDir = lastSlashIndex > 0 ? targetPath.substring(0, lastSlashIndex) : "";
-    const targetDirName = lastSlashIndex > 0 ? targetPath.substring(lastSlashIndex + 1) : targetPath;
-
-    const sourceDirName = sourcePath.split("/").pop() || sourcePath;
-
-    log.info(`Workspace directory: ${workspaceDir}`);
-    log.info(`Absolute source path: ${absoluteSourcePath}`);
-    log.info(`Source directory name: ${sourceDirName}`);
-    log.info(`Target parent directory: ${destDir}`);
-    log.info(`Target directory name: ${targetDirName}`);
-
-    const response = await fetchSyncPost("/api/file/globalCopyFiles", {
-        srcs: [absoluteSourcePath],
-        destDir: destDir,
+export async function workspaceCopyFiles(sourcePath: string, targetPath: string, log: Logger): Promise<boolean> {
+    log.info(`Copying file: [${sourcePath}] -> [${targetPath}]`);
+    const response = await fetchSyncPost("/api/file/workspaceCopyFiles", {
+        srcs: [sourcePath],
+        destDir: targetPath,
     });
 
     if (response.code !== 0) {
-        log.warn(`Failed to copy directory [${sourcePath} -> ${targetPath}]: code=[${response.code}], msg=[${response.msg}]`);
+        log.warn(`Failed to copy [${sourcePath}] -> [${targetPath}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
 
-    log.info(`Verifying: sourceDirName="${sourceDirName}", targetDirName="${targetDirName}"`);
-
-    if (sourceDirName !== targetDirName) {
-        log.warn("Warning: Source and target directory names do not match!");
-        log.warn("This should not happen. The directory may have been copied with the wrong name.");
-    }
-
-    log.info(`Directory copy successful: ${sourcePath} -> ${targetPath}`);
+    log.info(`Copied successfully`);
     return true;
 }
-
-// /**
-//  * 重命名目录
-//  */
-// export async function renameDirectory(oldPath: string, newPath: string): Promise<void> {
-//     logInfo(`Renaming directory: ${oldPath} -> ${newPath}`);
-//
-//     if (await pathExists(newPath)) {
-//         logInfo(`Target path already exists: ${newPath}, deleting it first`);
-//         await clearDirectory(newPath);
-//         logInfo(`Cleared target path: ${newPath}`);
-//     }
-//
-//     const responseData = await fetchSyncPost("/api/file/renameFile", {
-//         path: oldPath,
-//         newPath: newPath,
-//     });
-//
-//     logInfo(`Rename response: code=${responseData.code}`, responseData);
-//
-//     if (responseData.code !== 0) {
-//         throw new Error(`Failed to rename directory: ${responseData.msg}`);
-//     }
-//
-//     logInfo(`Directory renamed successfully: ${oldPath} -> ${newPath}`);
-// }

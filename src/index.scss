@@ -69,6 +69,16 @@ $scrollbar-width: 10px;
         // 与操作区列 max 300px 及 padding-left 大档间距一致，使按钮宽度与「安装集市包」相同
         padding-left: $spacing-b;
     }
+
+    // 版本选择按钮
+    .jcip-version-select {
+        text-align: left;
+
+        &:disabled {
+            opacity: 0.38;
+            cursor: not-allowed;
+        }
+    }
 }
 
 // 展示区块

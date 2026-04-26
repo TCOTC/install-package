@@ -26,7 +26,7 @@ export async function openDirectory(path: string): Promise<void> {
             message(i18n.openDirectoryFailed + i18n.openDirectoryNoElectron);
             return;
         }
-        const workspaceDir = (window.siyuan.config.system.workspaceDir ?? "").trim();
+        const workspaceDir = (window.siyuan.config?.system.workspaceDir ?? "").trim();
         if (!workspaceDir) {
             message(i18n.openDirectoryFailed + i18n.openDirectoryNoWorkspace);
             return;

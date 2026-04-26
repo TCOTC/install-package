@@ -106,10 +106,10 @@ function getWorkspaceSeed(): string {
     const language = nav?.language ?? "";
     const memory = String(navEx?.deviceMemory ?? "");
     const cores = String(nav?.hardwareConcurrency ?? "");
-    const workspaceDir = window.siyuan.config.system.workspaceDir ?? "";
-    const deviceId = window.siyuan.config.system.id ?? "";
-    const deviceName = window.siyuan.config.system.name ?? "";
-    const devicePlatform = window.siyuan.config.system.osPlatform ?? "";
+    const workspaceDir = window.siyuan.config?.system.workspaceDir ?? "";
+    const deviceId = window.siyuan.config?.system.id ?? "";
+    const deviceName = window.siyuan.config?.system.name ?? "";
+    const devicePlatform = window.siyuan.config?.system.osPlatform ?? "";
     return [workspaceDir, platform, language, tz, memory, cores, deviceId, deviceName, devicePlatform].join("|");
 }
 

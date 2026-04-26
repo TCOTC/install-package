@@ -3,9 +3,9 @@
   "author": "TCOTC",
   "url": "https://github.com/TCOTC/install-package",
   "version": "0.3.0",
-  "minAppVersion": "3.6.2",
+  "minAppVersion": "3.6.5",
   "backends": ["windows","linux","darwin"],
-  "frontends": ["desktop"],
+  "frontends": ["desktop", "desktop-window"],
   "disabledInPublish": true,
   "displayName": {
     "default": "Install Marketplace Package",

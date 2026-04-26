@@ -10,7 +10,7 @@
   "repoInfoParsing": "正在解析仓库信息...",
   "repoInfoResolved": "仓库：{ownerRepo}",
   "repoInfoInvalid": "无法解析为有效的 GitHub 仓库",
-  "versionLabel": "集市包的版本（Git Tag）（可选）",
+  "versionLabel": "集市包的版本（Git Tag）",
   "versionPlaceholder": "默认安装最新版本",
   "enableLabel": "安装后",
   "enableAfterInstall": "安装后启用集市包，否则禁用集市包",
@@ -67,8 +67,8 @@
   "downloadTimeout": "下载超时（30s），请检查网络连接",
   "packageNameFromUrlFailed": "无法从下载地址中解析集市包仓库名",
   "readDirFailed": "读取目录失败：",
-  "extractUnwrapRenameFailed": "为匹配安装路径重命名解压目录失败：",
-  "packageNameMismatch": "包名不匹配：元数据文件中的包名为 [{metadataName}]，但仓库名为 [{repoName}]。包名必须与仓库名一致",
+  "renameFileFailed": "重命名失败：",
+  "packageNameMismatch": "包名与仓库名不一致：元数据文件中的包名为 [{metadataName}]，仓库名为 [{repoName}]，将按元数据包名安装",
   "openPluginsDir": "Plugins 目录",
   "openPetalDir": "Petal 目录",
   "openWidgetsDir": "Widgets 目录",
@@ -95,5 +95,8 @@
   "githubRateLimitDialogContent": "是否配置 Token 以提高速率限制？",
   "githubGetRepositoryInfoFailed": "获取仓库信息失败：",
   "githubGetReleaseInfoFailed": "获取 Release 信息失败：",
-  "githubGetIssueFailed": "获取 GitHub Issue 信息失败："
+  "githubGetIssueFailed": "获取 GitHub Issue 信息失败：",
+  "githubListReleasesFailed": "获取 Release 列表失败：",
+  "versionTagSuffixLatest": "（最新）",
+  "versionTagSuffixPrerelease": "（预发布）"
 }

@@ -1,36 +1,38 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
-import { RepoParser } from "./repoParser";
-import {
-    abortInstall,
-    isRepoInstalling,
-    isSameTargetInstalling,
-    subscribeActiveInstallChange,
-    runInstall,
-} from "../install/installSession";
+import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
+import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import { message } from "../infra/message";
 import { electron, openDirectory, openDevTools } from "../infra/desktop";
-import type { InstallPanelData, Logger } from "../types";
+import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS, type Logger } from "./logger";
+import { InstallPanelUiStore, isRepoParseReadyForInstall, type InstallButtonState } from "./uiStore";
+import { InstallPanelVersion } from "./version";
+
+/** 持久化在自定义页签 layout.customModelData 中的表单（与 Custom.data 为同一引用） */
+export interface InstallPanelData {
+    url: string;
+    version: string;
+    enableAfterInstall: boolean;
+    /** 最近一次成功解析的仓库键，形如 "owner/repo"；空字符串表示当前无有效仓库 */
+    repoKey: string;
+}
 
 const INSTALL_PANEL_DEFAULT: InstallPanelData = {
     url: "",
     version: "",
     enableAfterInstall: true,
+    repoKey: "",
 };
 
 const INSTALL_PANEL_KEYS = Object.keys(INSTALL_PANEL_DEFAULT) as (keyof InstallPanelData)[];
 
-function isDataEqual(a: InstallPanelData, b: InstallPanelData): boolean {
-    return INSTALL_PANEL_KEYS.every((k) => a[k] === b[k]);
-}
-
-/** 标准化自定义页签数据，确保数据格式正确 */
-export function normalizeData(custom: Custom): InstallPanelData {
+/** 从 layout 读出的 `custom.data` 生成标准表单对象（新对象；由调用方赋回 `custom.data`） */
+export function normalizeData(raw: unknown): InstallPanelData {
     const data: Record<keyof InstallPanelData, string | boolean> = { ...INSTALL_PANEL_DEFAULT };
-    if (custom.data && typeof custom.data === "object") {
-        const raw = custom.data as Record<string, unknown>;
+    if (raw && typeof raw === "object") {
+        const record = raw as Record<string, unknown>;
         for (const key of INSTALL_PANEL_KEYS) {
-            const value = raw[key];
+            const value = record[key];
             const def = INSTALL_PANEL_DEFAULT[key];
             if (typeof def === "string") {
                 data[key] = typeof value === "string" ? value.trim() : def;
@@ -39,7 +41,6 @@ export function normalizeData(custom: Custom): InstallPanelData {
             }
         }
     }
-    custom.data = data;
     return data as InstallPanelData;
 }
 
@@ -48,10 +49,10 @@ function renderInstallPanel(root: HTMLElement): void {
     const actionInstallCore = `
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
                 <button data-type="abort-install" type="button" class="b3-button fn__none">${i18n.abortInstallButton}</button>
-                <div class="jcip-action__enable">
+                <label class="jcip-action__enable">
                     <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
-                </div>`;
+                </label>`;
     root.innerHTML = `
     <div class="jcip-panel">
         <div class="jcip-input">
@@ -61,7 +62,7 @@ function renderInstallPanel(root: HTMLElement): void {
             </section>
             <section class="jcip__vflow jcip-input__field">
                 <div class="jcip__label">${i18n.versionLabel}</div>
-                <input data-type="version" class="b3-text-field fn__block" value="" placeholder="${i18n.versionPlaceholder}" spellcheck="false">
+                <button type="button" data-type="version" class="jcip-version-select fn__block b3-select" disabled></button>
             </section>
             <section class="jcip__vflow jcip-input__button">
                 <div class="jcip__label jcip__label--placeholder" aria-hidden="true">&nbsp;</div>
@@ -107,7 +108,7 @@ function renderInstallPanel(root: HTMLElement): void {
 
 interface InstallPanelElements {
     urlEl: HTMLInputElement;
-    versionEl: HTMLInputElement;
+    versionEl: HTMLButtonElement;
     repoInfoEl: HTMLDivElement;
     enableAfterInstallSwitchEls: NodeListOf<HTMLInputElement>;
     installEls: NodeListOf<HTMLButtonElement>;
@@ -124,28 +125,23 @@ export class InstallPanel {
     private readonly clearInstallLog: () => void;
     private readonly openPluginSettings: () => void;
     private readonly repoParser: RepoParser;
-    /** 上次已写入 layout 的数据快照，与 `this.data` 一致时不调用 `saveLayout` */
-    private dataSnapshot: InstallPanelData;
+    private readonly versionUI: InstallPanelVersion;
     private persistTimer: number | undefined;
-    private repoParseReady = false;
-    private installButtonSyncSeq = 0;
-    /**
-     * 本面板当前 `await runInstall` 对应的仓库。与输入框解析解耦，用于中止本面板发起的安装。
-     * 在 `runInstall` 返回（成功 / 失败 / 中止）后于 `finally` 中清空。
-     */
-    private panelInstallContext: { owner: string; repo: string } | null = null;
+    /** 仅通过 `dispatch` 修改的解析/安装面板 UI 状态管理器 */
+    private readonly uiStore: InstallPanelUiStore;
     /** 页签关闭时取消订阅 */
     private unsubActiveInstall: (() => void) | undefined;
 
     constructor(custom: Custom, openPluginSettings: () => void) {
         this.custom = custom;
-        this.data = normalizeData(this.custom);
-        this.dataSnapshot = { ...this.data };
+        this.data = this.debounceSaveLayout(normalizeData(this.custom.data));
+        this.custom.data = this.data;
+        this.uiStore = new InstallPanelUiStore(this.data.repoKey);
         this.root = this.custom.element as HTMLElement;
         renderInstallPanel(this.root);
         this.elements = {
             urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
-            versionEl: this.root.querySelector("input[data-type='version']") as HTMLInputElement,
+            versionEl: this.root.querySelector("[data-type='version']") as HTMLButtonElement,
             repoInfoEl: this.root.querySelector("div[data-type='repo-info']") as HTMLDivElement,
             enableAfterInstallSwitchEls: this.root.querySelectorAll("input[data-type='enableAfterInstall']") as NodeListOf<HTMLInputElement>,
             installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
@@ -156,21 +152,13 @@ export class InstallPanel {
         this.log = logger.log;
         this.clearInstallLog = logger.clear;
         this.openPluginSettings = openPluginSettings;
-        this.repoParser = new RepoParser(
-            this.data,
-            this.log,
-            this.elements.repoInfoEl,
-            (repoLabel) => {
-                this.custom.tab.updateTitle(repoLabel ?? i18n.title);
-            },
-            (ready) => {
-                this.repoParseReady = ready;
-                this.syncInstallButtonDisabled();
-                if (ready) {
-                    this.persistPanelData();
-                }
-            },
-        );
+        this.versionUI = new InstallPanelVersion(this.data, this.elements.versionEl, this.log, {
+            onPickedVersion: this.syncInstallButtonDisabled.bind(this),
+        });
+        this.repoParser = new RepoParser(this.data, this.log, this.elements.repoInfoEl, {
+            onRepoParseEvent: this.applyRepoParseEvent.bind(this),
+            onRepoReleasesEvent: this.applyRepoReleasesEvent.bind(this),
+        });
         this.unsubActiveInstall = subscribeActiveInstallChange(() => this.syncInstallButtonDisabled());
 
         this.init();
@@ -178,26 +166,17 @@ export class InstallPanel {
 
     private init(): void {
         this.elements.urlEl.value = this.data.url;
-        this.elements.versionEl.value = this.data.version;
+        this.versionUI.syncVersionDisplay();
         for (const cb of this.elements.enableAfterInstallSwitchEls) {
             cb.checked = this.data.enableAfterInstall;
         }
 
-        // 从输入框单向同步到 `this.data`（trim），不回写 `value`；`RepoParser` / 持久化均读 `this.data`
-        this.data.url = this.elements.urlEl.value.trim();
-        this.data.version = this.elements.versionEl.value.trim();
+        // 从 URL 输入框单向同步到 `this.data`（trim）；版本由下拉框写入 `this.data`
         // 立即刷新一次，用于界面重载之后初始化页签
         void this.repoParser.refresh();
         this.elements.urlEl.addEventListener("input", () => {
             this.data.url = this.elements.urlEl.value.trim();
-            void this.repoParser.refresh(300);
-        });
-        this.elements.versionEl.addEventListener("input", () => {
-            this.data.version = this.elements.versionEl.value.trim();
-            // TODO 支持通过版本号查询 Release 信息显示在 Info 区域中
-            // await this.repoParser.refresh();
-            // 到时候要删除下面这行，因为 refresh() 之后会自动 persistPanelData()
-            this.persistPanelData();
+            void this.repoParser.refresh(400);
         });
         for (const cb of this.elements.enableAfterInstallSwitchEls) {
             cb.addEventListener("change", () => {
@@ -205,7 +184,6 @@ export class InstallPanel {
                 for (const o of this.elements.enableAfterInstallSwitchEls) {
                     o.checked = cb.checked;
                 }
-                this.persistPanelData();
             });
         }
         this.root.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
@@ -298,76 +276,91 @@ export class InstallPanel {
         }
     }
 
-    private syncInstallButtonDisabled(): void {
-        const isPanelRepoInstalling = (): boolean => {
-            const c = this.panelInstallContext;
-            return c !== null && isRepoInstalling(c.owner, c.repo);
-        };
-        const setInstallDisabled = (d: boolean): void => {
-            for (const b of this.elements.installEls) {
-                b.disabled = d;
-            }
-        };
+    private applyInstallButtonState(phase: InstallButtonState): void {
+        const installDisabled = phase !== "canInstall";
+        for (const b of this.elements.installEls) {
+            b.disabled = installDisabled;
+        }
+        this.setInstallAbortButtonVisibility(phase === "installing");
+    }
 
-        // 解析新 URL 时 `repoParseReady` 会暂时为 false，但不能因此隐藏「中断安装」按钮，所以先判断是否正在安装
-        if (isPanelRepoInstalling()) {
-            this.installButtonSyncSeq++;
-            setInstallDisabled(true);
-            this.setInstallAbortButtonVisibility(true);
-            return;
-        }
-        if (!this.repoParseReady) {
-            this.installButtonSyncSeq++;
-            setInstallDisabled(true);
-            this.setInstallAbortButtonVisibility(false);
-            return;
-        }
-        const seq = ++this.installButtonSyncSeq;
-        void (async (): Promise<void> => {
-            if (isPanelRepoInstalling()) {
-                if (seq !== this.installButtonSyncSeq) {
-                    return;
-                }
-                this.setInstallAbortButtonVisibility(true);
-                return;
-            }
-            const ownerRepo = await this.repoParser.getOwnerRepo();
-            if (seq !== this.installButtonSyncSeq) {
-                return;
-            }
-            this.setInstallAbortButtonVisibility(false);
-            const ok =
-                this.repoParseReady &&
-                ownerRepo !== null &&
-                !isSameTargetInstalling(ownerRepo.owner, ownerRepo.repo, this.data.version);
-            setInstallDisabled(!ok);
-        })();
+    /** 安装区三态由 `uiStore.syncInstallButtonState` / `resolveInstallButtonState` 统一推导 */
+    private syncInstallButtonDisabled(): void {
+        this.uiStore.syncInstallButtonState({
+            getSelectedVersion: () => this.data.version,
+            resolveOwnerRepo: () => this.repoParser.getOwnerRepo(),
+            apply: (state) => this.applyInstallButtonState(state),
+        });
     }
 
     /** 中止本面板发起的安装 */
     private abortCurrentRepoInstall(): void {
-        const ctx = this.panelInstallContext;
-        if (ctx === null) {
+        const ownerRepo = this.uiStore.getState().activeOwnerRepo;
+        if (ownerRepo === null) {
             return;
         }
-        abortInstall(ctx.owner, ctx.repo);
+        abortInstall(ownerRepo.owner, ownerRepo.repo);
     }
 
-    private readonly persistPanelData = (): void => {
-        if (!this.repoParseReady) {
+    /**
+     * 用 Proxy 包装表单：属性赋值且值变化时 400ms 防抖写入 layout。
+     * 假定仅通过类型化的 `InstallPanelData` 字段写入。
+     */
+    private debounceSaveLayout(plain: InstallPanelData): InstallPanelData {
+        return new Proxy(plain, {
+            set: (target, prop, value, receiver) => {
+                const prev = Reflect.get(target, prop, receiver);
+                const ok = Reflect.set(target, prop, value, receiver);
+                if (!ok) {
+                    return false;
+                }
+                if (prev !== value) {
+                    window.clearTimeout(this.persistTimer);
+                    this.persistTimer = window.setTimeout(() => {
+                        this.persistTimer = undefined;
+                        saveLayout(() => {});
+                    }, 400);
+                }
+                return true;
+            },
+        }) as InstallPanelData;
+    }
+
+    /** Release：拉取开始，或列表 / `latestTag` 更新 */
+    private applyRepoReleasesEvent(event: RepoReleasesEvent): void {
+        if (event.type === "fetchStart") {
+            this.versionUI.onReleasesFetchStart();
             return;
         }
+        this.versionUI.onReleasesChanged(event.data);
+        this.syncInstallButtonDisabled();
+    }
 
-        window.clearTimeout(this.persistTimer);
-        this.persistTimer = window.setTimeout(() => {
-            this.persistTimer = undefined;
-            if (isDataEqual(this.data, this.dataSnapshot)) {
-                return;
+    /**
+     * 解析事件落地：页签标题、`dispatch` 更新切片、版本控件与安装按钮投影。
+     */
+    private applyRepoParseEvent(event: RepoParseEvent): void {
+        const installReady = event.type === "settled" && event.data !== null;
+        this.custom.tab.updateTitle(installReady ? event.data!.repo : i18n.title);
+
+        if (event.type === "parsing") {
+            this.uiStore.dispatch({ type: "parse/parsing" });
+        } else {
+            const { clearVersion, state } = this.uiStore.dispatch({ type: "parse/settled", ownerRepo: event.data });
+            this.data.repoKey = state.lastParsedRepoKey;
+            if (clearVersion) {
+                this.clearVersionFieldAndRefreshUi();
             }
-            this.dataSnapshot = { ...this.data };
-            saveLayout(() => {});
-        }, 400);
-    };
+        }
+
+        this.versionUI.setRepoParseReady(installReady);
+        this.syncInstallButtonDisabled();
+    }
+
+    private clearVersionFieldAndRefreshUi(): void {
+        this.data.version = "";
+        this.versionUI.syncDisplayFromData();
+    }
 
     /** 复制日志纯文本；`payload` 为右键菜单打开时已算好的内容（避免点击菜单时选区丢失） */
     private async copyInstallLogPlainText(payload?: string): Promise<void> {
@@ -384,7 +377,7 @@ export class InstallPanel {
     }
 
     private async startInstall(): Promise<void> {
-        if (!this.repoParseReady) {
+        if (!isRepoParseReadyForInstall(this.uiStore.getState()) || !this.data.version) {
             return;
         }
         const ownerRepo = await this.repoParser.getOwnerRepo();
@@ -392,15 +385,13 @@ export class InstallPanel {
             this.log.warn(i18n.invalidUrl);
             return;
         }
-        const version = this.data.version;
-        const enableAfterInstall = this.data.enableAfterInstall;
-        this.log.info("install package: url=[" + this.data.url + "], version=[" + this.data.version + "], enableAfterInstall=[" + enableAfterInstall + "]");
-        this.panelInstallContext = { owner: ownerRepo.owner, repo: ownerRepo.repo };
+        this.log.info("install package: url=[" + this.data.url + "], version=[" + this.data.version + "], enableAfterInstall=[" + this.data.enableAfterInstall + "]");
+        this.uiStore.dispatch({ type: "install/started", ownerRepo });
         try {
             const result = await runInstall(
                 {
-                    version,
-                    enableAfterInstall,
+                    version: this.data.version,
+                    enableAfterInstall: this.data.enableAfterInstall,
                     owner: ownerRepo.owner,
                     repo: ownerRepo.repo,
                 },
@@ -418,7 +409,7 @@ export class InstallPanel {
                 this.log.info("User canceled download");
             }
         } finally {
-            this.panelInstallContext = null;
+            this.uiStore.dispatch({ type: "install/ended" });
             this.syncInstallButtonDisabled();
         }
     }
@@ -426,54 +417,11 @@ export class InstallPanel {
     /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
     destroy(): void {
         window.clearTimeout(this.persistTimer);
+        this.versionUI.destroy();
         this.repoParser.destroy();
         this.unsubActiveInstall?.();
         this.unsubActiveInstall = undefined;
     }
-}
-
-const INSTALL_LOG_PROCESS_LINE_CLASS = "jcip-show__text--log";
-const INSTALL_LOG_WARN_MODIFIER_CLASS = "jcip-show__text--log-warn";
-
-/** 将不同类型的参数转换为字符串 */
-function formatLogArg(arg: unknown): string {
-    if (typeof arg === "string") {
-        return arg;
-    }
-    if (arg instanceof Error) {
-        return arg.message || String(arg);
-    }
-    if (typeof arg === "object" && arg !== null) {
-        try {
-            return JSON.stringify(arg);
-        } catch {
-            return String(arg);
-        }
-    }
-    return String(arg);
-}
-
-function createInstallLogger(installLogElement: HTMLDivElement): { log: Logger; clear: () => void } {
-    const appendLine = (level: "info" | "warn", args: unknown[]): void => {
-        const item = document.createElement("p");
-        item.className =
-            INSTALL_LOG_PROCESS_LINE_CLASS + (level === "warn" ? " " + INSTALL_LOG_WARN_MODIFIER_CLASS : "");
-        item.textContent = args.map((arg) => formatLogArg(arg)).join(" ");
-        installLogElement.append(item);
-        installLogElement.scrollTop = installLogElement.scrollHeight;
-    };
-    const log: Logger = {
-        info: (...args: unknown[]) => appendLine("info", args),
-        warn: (...args: unknown[]) => appendLine("warn", args),
-    };
-    const clear = (): void => {
-        installLogElement.replaceChildren();
-        const placeholder = document.createElement("p");
-        placeholder.className = "jcip-show__text--placeholder";
-        placeholder.textContent = i18n.installProcessPlaceholder;
-        installLogElement.append(placeholder);
-    };
-    return { log, clear };
 }
 
 /**

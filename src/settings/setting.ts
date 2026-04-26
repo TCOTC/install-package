@@ -33,6 +33,32 @@ async function getTokenStorageName(): Promise<string> {
  * 构建插件设置面板；由入口 `this.setting = createSetting(this)` 挂载
  */
 export function createSetting(plugin: Plugin): Setting {
+    // GitHub「经典」个人访问令牌创建页
+    const tokenURL = "https://github.com/settings/tokens/new";
+    const openPatPageButton = document.createRange().createContextualFragment(`
+        <button type="button" class="b3-button b3-button--outline fn__flex-center fn__size200" title="${tokenURL}">${i18n.githubTokenOpenGithubButton}</button>
+    `).firstElementChild as HTMLButtonElement | null;
+    if (!openPatPageButton) {
+        throw new Error("Failed to create GitHub PAT button");
+    }
+    openPatPageButton.addEventListener("click", () => {
+        window.open(tokenURL, "_blank", "noopener,noreferrer");
+    });
+
+    const tokenInputWrapper = document.createRange().createContextualFragment(`
+        <div class="b3-form__icona fn__block">
+            <input id="secretKey" type="password" class="b3-text-field b3-form__icona-input"  placeholder="${i18n.githubTokenPlaceholder}" spellcheck="false" autocomplete="off">
+            <svg class="b3-form__icona-icon" data-action="togglePassword" style="cursor: pointer; user-select: none;"><use xlink:href="#iconEye"></use></svg>
+        </div>
+    `).firstElementChild as HTMLDivElement | null;
+    const tokenInput = tokenInputWrapper?.querySelector("#secretKey") as HTMLInputElement | null;
+    const togglePasswordIcon = tokenInputWrapper?.querySelector("[data-action='togglePassword']") as SVGElement | null;
+    if (!tokenInputWrapper || !tokenInput || !togglePasswordIcon) {
+        throw new Error("Failed to create token input elements");
+    }
+    togglePasswordIcon.addEventListener("click", () => {
+        tokenInput.type = tokenInput.type === "password" ? "text" : "password";
+    });
 
     const setting = new Setting({
         confirmCallback: async () => {
@@ -65,33 +91,6 @@ export function createSetting(plugin: Plugin): Setting {
             }
             githubToken = token;
         },
-    });
-
-    // GitHub「经典」个人访问令牌创建页
-    const tokenURL = "https://github.com/settings/tokens/new";
-    const openPatPageButton = document.createRange().createContextualFragment(`
-        <button type="button" class="b3-button b3-button--outline fn__flex-center fn__size200" title="${tokenURL}">${i18n.githubTokenOpenGithubButton}</button>
-    `).firstElementChild as HTMLButtonElement | null;
-    if (!openPatPageButton) {
-        throw new Error("Failed to create GitHub PAT button");
-    }
-    openPatPageButton.addEventListener("click", () => {
-        window.open(tokenURL, "_blank", "noopener,noreferrer");
-    });
-
-    const tokenInputWrapper = document.createRange().createContextualFragment(`
-        <div class="b3-form__icona fn__block">
-            <input id="secretKey" type="password" class="b3-text-field b3-form__icona-input"  placeholder="${i18n.githubTokenPlaceholder}" spellcheck="false" autocomplete="off">
-            <svg class="b3-form__icona-icon" data-action="togglePassword" style="cursor: pointer; user-select: none;"><use xlink:href="#iconEye"></use></svg>
-        </div>
-    `).firstElementChild as HTMLDivElement | null;
-    const tokenInput = tokenInputWrapper?.querySelector("#secretKey") as HTMLInputElement | null;
-    const togglePasswordIcon = tokenInputWrapper?.querySelector("[data-action='togglePassword']") as SVGElement | null;
-    if (!tokenInput || !togglePasswordIcon) {
-        throw new Error("Failed to create token input elements");
-    }
-    togglePasswordIcon.addEventListener("click", () => {
-        tokenInput.type = tokenInput.type === "password" ? "text" : "password";
     });
 
     setting.addItem({

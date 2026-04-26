@@ -87,25 +87,7 @@ export default class InstallPackage extends Plugin {
             panel.destroy();
         }
         installPanels.clear();
-        function isTargetTab(tab: Tab): boolean {
-            const model = tab.model as { type?: string } | undefined;
-            if (model && typeof model.type === "string" && model.type === this.installTabCustomId) {
-                return true;
-            }
-            const raw = tab.headElement?.getAttribute("data-initdata");
-            if (!raw) {
-                return false;
-            }
-            try {
-                const init = JSON.parse(raw) as { instance?: string; customModelType?: string };
-                return init.instance === "Custom" && init.customModelType === this.installTabCustomId;
-            } catch {
-                return false;
-            }
-        }
-        // TODO 思源 v3.6.4 之后可以使用：
-        // const tabsToClose = getAllTabs(tabCustomId);
-        const tabsToClose = getAllTabs().filter(isTargetTab);
+        const tabsToClose = getAllTabs(this.installTabCustomId);
         for (const tab of tabsToClose) {
             try {
                 tab.close();

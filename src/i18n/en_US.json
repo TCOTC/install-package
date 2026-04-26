@@ -10,7 +10,7 @@
   "repoInfoParsing": "Parsing repository information...",
   "repoInfoResolved": "Repository: {ownerRepo}",
   "repoInfoInvalid": "Cannot parse as a valid GitHub repository",
-  "versionLabel": "Version (Git Tag) of the package (optional)",
+  "versionLabel": "Version (Git Tag) of the package",
   "versionPlaceholder": "install latest version by default",
   "enableLabel": "After install",
   "enableAfterInstall": "Enable Bazaar package after install, otherwise disable it",
@@ -67,8 +67,8 @@
   "downloadTimeout": "Download timeout (30s), please check network connection",
   "packageNameFromUrlFailed": "Unable to extract repository name from download URL",
   "readDirFailed": "Failed to read directory:",
-  "extractUnwrapRenameFailed": "Failed to rename extracted directory to match install path:",
-  "packageNameMismatch": "Package name mismatch: package name in metadata is [{metadataName}], but repository name is [{repoName}]. Package name must match repository name",
+  "renameFileFailed": "Rename failed:",
+  "packageNameMismatch": "Package name differs from repository name: metadata has [{metadataName}], repository is [{repoName}]; installing under the metadata package name",
   "openPluginsDir": "Plugins Directory",
   "openPetalDir": "Petal Directory",
   "openWidgetsDir": "Widgets Directory",
@@ -95,5 +95,8 @@
   "githubRateLimitDialogContent": "Would you like to configure a Token to increase the rate limit?",
   "githubGetRepositoryInfoFailed": "Failed to get repository information: ",
   "githubGetReleaseInfoFailed": "Failed to get Release information: ",
-  "githubGetIssueFailed": "Failed to get GitHub issue: "
+  "githubGetIssueFailed": "Failed to get GitHub issue: ",
+  "githubListReleasesFailed": "Failed to list releases: ",
+  "versionTagSuffixLatest": " (latest)",
+  "versionTagSuffixPrerelease": " (pre-release)"
 }

@@ -8,7 +8,47 @@ import type { operations } from "@octokit/openapi-types";
 import { i18n } from "../infra/i18n";
 import { getGitHubToken } from "../settings/setting";
 import { showGitHubAuthNotice } from "./githubNotice";
-import type { Logger } from "../types";
+import type { Logger } from "../ui/logger";
+
+/**
+ * 列表分页用的 `per_page`，全链路须一致（否则 `page` 与全局偏移错位）。
+ * 首页 1 次请求；滚动到底每次再请求 1 页并追加。
+ */
+export const GITHUB_RELEASES_PER_PAGE = 30;
+
+/** 仓库 Release 列表中的一行（用于版本下拉，按发布时间排序） */
+export interface InstallReleaseRow {
+    tag: string;
+    publishedAt: string;
+    prerelease: boolean;
+}
+
+export function sortInstallReleaseRowsByPublishedDesc(rows: InstallReleaseRow[]): void {
+    rows.sort((a, b) => {
+        const ta = Date.parse(a.publishedAt);
+        const tb = Date.parse(b.publishedAt);
+        if (Number.isFinite(tb) && Number.isFinite(ta)) {
+            return tb - ta;
+        }
+        return 0;
+    });
+}
+
+/** 合并多页结果并按发布时间降序；同 tag 保留先出现的条目 */
+export function mergeInstallReleasePages(existing: InstallReleaseRow[], page: InstallReleaseRow[]): InstallReleaseRow[] {
+    const map = new Map<string, InstallReleaseRow>();
+    for (const r of existing) {
+        map.set(r.tag, r);
+    }
+    for (const r of page) {
+        if (!map.has(r.tag)) {
+            map.set(r.tag, r);
+        }
+    }
+    const merged = Array.from(map.values());
+    sortInstallReleaseRowsByPublishedDesc(merged);
+    return merged;
+}
 
 export type GitHubApiErrorInfo = { status: number; apiMessage?: string };
 type GitHubRateLimitResponse = operations["rate-limit/get"]["responses"][200]["content"]["application/json"];
@@ -70,7 +110,7 @@ async function fetchGitHubJson<T>(
     try {
         const response = await fetch(url, gitHubRequestInit(signal));
         if (!response.ok) {
-            let error: string;
+            let error = response.statusText;
             if (response.status === 403) {
                 const quota = await fetchGitHubRateLimit(signal);
                 if (quota) {
@@ -80,7 +120,7 @@ async function fetchGitHubJson<T>(
                 }
             }
             showGitHubAuthNotice(response.status);
-            throw new Error(`HTTP ${response.status}: ${error ?? response.statusText}`);
+            throw new Error(`HTTP ${response.status}: ${error}`);
         }
         return (await response.json()) as T;
     } catch (error) {
@@ -114,6 +154,50 @@ export async function getReleaseInfo(
     return fetchGitHubJson<GitHubRelease>(url, log, i18n.githubGetReleaseInfoFailed, signal);
 }
 
+/** 拉取单页已发布 Release（不含草稿）；`pageFull` 依据 API 返回的原始数组长度是否达到 `perPage` */
+export async function listReleasesPage(
+    owner: string,
+    repo: string,
+    log: Logger,
+    signal: AbortSignal,
+    page: number,
+    perPage = GITHUB_RELEASES_PER_PAGE
+): Promise<{ rows: InstallReleaseRow[]; pageFull: boolean } | null> {
+    const url = `https://api.github.com/repos/${owner}/${repo}/releases?per_page=${perPage}&page=${page}`;
+    const data = await fetchGitHubJson<GitHubRelease[]>(url, log, i18n.githubListReleasesFailed, signal);
+    if (signal.aborted) {
+        return null;
+    }
+    if (!data || !Array.isArray(data)) {
+        return { rows: [], pageFull: false };
+    }
+    const pageFull = data.length >= perPage;
+    const rows = data
+        .filter((r) => r && !r.draft && typeof r.tag_name === "string")
+        .map((r) => ({
+            tag: r.tag_name,
+            publishedAt: typeof r.published_at === "string" ? r.published_at : "",
+            prerelease: r.prerelease === true,
+        }));
+    sortInstallReleaseRowsByPublishedDesc(rows);
+    return { rows, pageFull };
+}
+
+/** 列出首页已发布 Release（不含草稿）；默认 `per_page` 与 `GITHUB_RELEASES_PER_PAGE` 一致 */
+export async function listReleases(
+    owner: string,
+    repo: string,
+    log: Logger,
+    signal: AbortSignal,
+    perPage = GITHUB_RELEASES_PER_PAGE
+): Promise<InstallReleaseRow[]> {
+    const result = await listReleasesPage(owner, repo, log, signal, 1, perPage);
+    if (result === null) {
+        return [];
+    }
+    return result.rows;
+}
+
 async function getGitHubIssueTitle(
     owner: string,
     repo: string,
@@ -136,8 +220,6 @@ export async function parseOwnerRepo(
     log: Logger,
     signal: AbortSignal
 ): Promise<{ owner: string; repo: string } | null> {
-    input = input.trim();
-
     let owner: string;
     let repo: string;
     const githubUrlMatch = input.match(/^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)(\/[^?#]*)?/i); // GitHub 仓库 URL：`https://github.com/owner/repo` 及可选后续路径（不含 query/hash）

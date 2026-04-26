@@ -3,14 +3,16 @@ import { i18n } from "../infra/i18n";
 import {
     fetchSyncPost,
     getFile,
-    removeFiles,
-    removeDirectory,
-    copyToInstallPath,
+    putFile,
+    removeFile,
+    workspaceCopyFiles,
     pathExists,
+    readDir,
+    renameFile,
+    type ReadDirEntry,
     unzipFile,
-    writeTempFile,
 } from "../infra/kernelClient";
-import type { Logger } from "../types";
+import type { Logger } from "../ui/logger";
 
 export function getInstallPath(packageType: string): string {
     switch (packageType) {
@@ -24,6 +26,8 @@ export function getInstallPath(packageType: string): string {
             return "conf/appearance/themes";
         case "icon":
             return "conf/appearance/icons";
+        default:
+            throw new Error(`Unknown package type: ${packageType}`);
     }
 }
 
@@ -36,16 +40,10 @@ const METADATA_JSON_FILES = [
 ];
 
 /**
- * 根据集市包目录内容识别集市包类型（根目录须包含一个元数据 json）
+ * 根据已列举的目录项识别集市包类型（根目录须包含一个元数据 json）
  */
-export async function getPackageType(packagePath: string, log: Logger): Promise<string | null> {
-    const response = await fetchSyncPost("/api/file/readDir", { path: packagePath });
-    if (response.code !== 0 || !Array.isArray(response.data)) {
-        log.warn(i18n.readDirFailed, response.msg);
-        return null;
-    }
-
-    const foundTypes = response.data
+function getPackageType(entries: ReadDirEntry[], log: Logger): string | null {
+    const foundTypes = entries
         .filter((item) => !item.isDir && typeof item.name === "string" && METADATA_JSON_FILES.includes(item.name))
         .map((item) => item.name.slice(0, -5));
 
@@ -61,42 +59,46 @@ export async function getPackageType(packagePath: string, log: Logger): Promise<
 }
 
 /**
- * 解压根目录下仅有一个子文件夹时，将该文件夹视为集市包根目录。
- * 内核 globalCopyFiles 以源路径最后一级为安装目录名，故当该文件夹名与 packageName 不一致时先重命名为 packageName。
+ * 解析解压后的集市包根路径并列举其内容：若目录内仅有单个子文件夹，则视其为包根（与 GitHub Release 常见「多包一层」结构一致）；
+ * 否则沿用当前路径。子文件夹名须与 `packageName` 一致以便 `globalCopyFiles` 安装目录名正确，不一致时先重命名。
+ * 最终路径与首次列举路径相同时复用第一次 readDir 结果，避免重复请求。
  */
-async function resolveUnwrappedExtractRoot(
+async function resolveExtractRoot(
     outerExtractPath: string,
     packageName: string,
     log: Logger
-): Promise<string | null> {
-    const response = await fetchSyncPost("/api/file/readDir", { path: outerExtractPath });
-    if (response.code !== 0 || !Array.isArray(response.data)) {
-        log.warn(i18n.readDirFailed, response.msg);
+): Promise<{ path: string; entries: ReadDirEntry[] } | null> {
+    const outerEntries = await readDir(outerExtractPath, log);
+    if (!outerEntries) {
         return null;
     }
-    if (response.data.length !== 1) {
-        return outerExtractPath;
+
+    let finalPath = outerExtractPath;
+
+    const only = outerEntries[0];
+    if (outerEntries.length === 1 && only.isDir && typeof only.name === "string") {
+        const innerPath = `${outerExtractPath}/${only.name}`;
+        if (only.name === packageName) {
+            log.info(`Detected a single top-level directory, using as marketplace package root: ${innerPath}`);
+            finalPath = innerPath;
+        } else {
+            const renamedPath = `${outerExtractPath}/${packageName}`;
+            log.warn(`The single top-level directory name does not match the package name. Renaming to match installation path: ${innerPath} -> ${renamedPath}`);
+            if (!(await renameFile(innerPath, renamedPath, log))) {
+                return null;
+            }
+            finalPath = renamedPath;
+        }
     }
-    const only = response.data[0] as { isDir?: boolean; name?: string };
-    if (!only.isDir || typeof only.name !== "string") {
-        return outerExtractPath;
-    }
-    const innerPath = `${outerExtractPath}/${only.name}`;
-    if (only.name === packageName) {
-        log.info(`检测到单一顶层文件夹，作为集市包根目录: ${innerPath}`);
-        return innerPath;
-    }
-    const renamedPath = `${outerExtractPath}/${packageName}`;
-    log.warn(`单一顶层目录名与包名不一致，重命名以匹配安装路径: ${innerPath} -> ${renamedPath}`);
-    const renameRes = await fetchSyncPost("/api/file/renameFile", {
-        path: innerPath,
-        newPath: renamedPath,
-    });
-    if (renameRes.code !== 0) {
-        log.warn(i18n.extractUnwrapRenameFailed, renameRes.msg);
+
+    const entries =
+        finalPath === outerExtractPath
+            ? outerEntries
+            : await readDir(finalPath, log);
+    if (!entries) {
         return null;
     }
-    return renamedPath;
+    return { path: finalPath, entries };
 }
 
 export async function getPackageName(extractPath: string, packageType: string, log: Logger): Promise<string | null> {
@@ -170,7 +172,11 @@ async function getSetThemeModes(packageName: string): Promise<number[]> {
  * 根据主题支持的所有外观模式数组和当前外观模式，得到需要切换的外观模式，不需要切换时返回空字符串
  */
 function getSwitchAppearanceMode(modes: number[]): string {
-    if (modes.includes(window.siyuan.config.appearance.mode)) {
+    const config = window.siyuan.config;
+    if (!config) {
+        return "";
+    }
+    if (modes.includes(config.appearance.mode)) {
         return "";
     }
     if (modes.includes(0)) {
@@ -205,7 +211,12 @@ export async function setPackageEnabled(
             break;
         }
         case "theme": {
-            const appearance = window.siyuan.config.appearance;
+            const config = window.siyuan.config;
+            if (!config) {
+                log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
+                return;
+            }
+            const appearance = config.appearance;
             const wasLightTheme = appearance.themeLight === packageName;
             const wasDarkTheme = appearance.themeDark === packageName;
 
@@ -257,7 +268,12 @@ export async function setPackageEnabled(
             break;
         }
         case "icon": {
-            const wasCurrentIcon = window.siyuan.config.appearance.icon === packageName;
+            const config = window.siyuan.config;
+            if (!config) {
+                log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
+                return;
+            }
+            const wasCurrentIcon = config.appearance.icon === packageName;
 
             const response = await fetchSyncPost("/api/ui/reloadIcon", {});
             if (response.code !== 0) {
@@ -313,10 +329,14 @@ export async function installPackage(pack: {
     const extractRootDir = `temp/export/extract_${tempId}`;
 
     const runCleanup = async () => {
-        const pathsToClean = [tempPath, extractRootDir].filter(Boolean);
+        const pathsToClean = [tempPath, extractRootDir].filter(
+            (p) => typeof p === "string" && p.trim().length > 0
+        );
         if (pathsToClean.length > 0) {
-            log.info(`Cleaning up temporary files: ${pathsToClean.join(", ")}`);
-            await removeFiles(pathsToClean, log);
+            log.info("Cleaning up temporary files");
+            for (const p of pathsToClean) {
+                await removeFile(p, log);
+            }
         }
     };
 
@@ -335,13 +355,15 @@ export async function installPackage(pack: {
     const tempFileName = `temp_${tempId}_${fileName}`;
     tempPath = `temp/export/${tempFileName}`;
     log.info(`Creating temporary file: ${tempPath}`);
-
-    if (!(await writeTempFile(blob, tempPath, log))) {
+    log.info(`Writing temporary file: ${tempPath}, data size: ${blob.size} bytes`);
+    const putResult = await putFile({ path: tempPath, isDir: false, file: blob });
+    if (putResult.code !== 0) {
+        log.warn(`Failed to write temporary file [${tempPath}]: code=[${putResult.code}], msg=[${putResult.msg}]`);
         return bail();
     }
+    log.info(`Temporary file written successfully: ${tempPath}`);
     // 内核已落盘，去掉渲染进程侧对整包 ZIP 的引用（含调用方 downloadResult.blob）
     pack.blob = null;
-    log.info(`Temporary file written successfully: ${tempPath}`);
 
     extractPath = `${extractRootDir}/${packageName}`;
     log.info(`Extracting to final directory: ${extractPath}`);
@@ -350,20 +372,20 @@ export async function installPackage(pack: {
     }
     log.info(`Extraction completed: ${extractPath}`);
 
-    const resolvedRoot = await resolveUnwrappedExtractRoot(extractPath, packageName, log);
-    if (resolvedRoot === null) {
+    const extractRootResult = await resolveExtractRoot(extractPath, packageName, log);
+    if (extractRootResult === null) {
         return bail();
     }
-    extractPath = resolvedRoot;
+    extractPath = extractRootResult.path;
+    const extractEntries = extractRootResult.entries;
 
-    const packageType = await getPackageType(extractPath, log);
+    const packageType = getPackageType(extractEntries, log);
     if (!packageType) {
         return bail();
     }
     log.info(`Package type detected: ${packageType}`);
 
-    const extractDirData = await fetchSyncPost("/api/file/readDir", { path: extractPath });
-    log.info("Extracted directory contents:", extractDirData);
+    log.info("Extracted directory contents:", extractEntries);
 
     const metadataPackageName = await getPackageName(extractPath, packageType, log);
     if (!metadataPackageName) {
@@ -371,25 +393,45 @@ export async function installPackage(pack: {
     }
     log.info(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
 
+    const installPackageName = metadataPackageName;
+
     if (metadataPackageName !== packageName) {
         log.warn(i18n.packageNameMismatch
             .replace("{metadataName}", metadataPackageName)
             .replace("{repoName}", packageName),
         );
-        return bail();
     }
 
-    log.info("Package name verification passed");
+    // workspaceCopyFiles 以源路径最后一级为子目录名落盘，须与元数据包名一致
+    const lastSlash = extractPath.lastIndexOf("/");
+    const extractParent = lastSlash >= 0 ? extractPath.slice(0, lastSlash) : "";
+    const extractBasename = lastSlash >= 0 ? extractPath.slice(lastSlash + 1) : extractPath;
+    if (extractBasename !== installPackageName) {
+        if (!extractParent) {
+            log.warn("Cannot rename extract root: missing parent path");
+            return bail();
+        }
+        const renamedExtractPath = `${extractParent}/${installPackageName}`;
+        if (await pathExists(renamedExtractPath)) {
+            log.warn(`Cannot rename extract directory: target already exists [${renamedExtractPath}]`);
+            return bail();
+        }
+        log.info(`Renaming extract directory to metadata package name: ${extractPath} -> ${renamedExtractPath}`);
+        if (!(await renameFile(extractPath, renamedExtractPath, log))) {
+            return bail();
+        }
+        extractPath = renamedExtractPath;
+    }
 
-    const installPath = `${getInstallPath(packageType)}/${packageName}`;
-    log.info(`Final package name: ${packageName}`);
+    const installPath = `${getInstallPath(packageType)}/${installPackageName}`;
+    log.info(`Final package name: ${installPackageName}`);
     log.info(`Target installation path: ${installPath}`);
 
     if (await pathExists(installPath)) {
         log.info(`Target directory already exists: ${installPath}`);
         log.info(i18n.targetDirExists.replace("{path}", installPath));
 
-        if (!(await removeDirectory(installPath, log))) {
+        if (!(await removeFile(installPath, log))) {
             return bail();
         }
         log.info(`Cleared old package files: ${installPath}`);
@@ -397,15 +439,13 @@ export async function installPackage(pack: {
         log.info(`Target directory does not exist: ${installPath}`);
     }
 
-    log.info(`Starting to copy files from ${extractPath} to ${installPath}`);
-    if (!(await copyToInstallPath(extractPath, installPath, log))) {
+    const installDestDir = getInstallPath(packageType);
+    log.info(`Starting to copy files from ${extractPath} to ${installDestDir}`);
+    if (!(await workspaceCopyFiles(extractPath, installDestDir, log))) {
         return bail();
     }
     log.info(`File copy completed: ${installPath}`);
 
-    const installDirData = await fetchSyncPost("/api/file/readDir", { path: installPath });
-    log.info("Post-installation directory contents:", installDirData);
-
-    log.info(`Package installed successfully: ${packageName}`);
-    return succeed(packageType, packageName);
+    log.info(`Package installed successfully: ${installPackageName}`);
+    return succeed(packageType, installPackageName);
 }

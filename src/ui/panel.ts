@@ -75,10 +75,7 @@ function renderInstallPanel(root: HTMLElement): void {
         <div class="jcip-show">
             <section class="jcip__vflow jcip-show__info">
                 <div class="jcip__label">${i18n.packageInfoTitle}</div>
-                <div class="jcip__vflow jcip-show__card">
-                    <p class="jcip-show__text--placeholder">${i18n.packageInfoPlaceholder}</p>
-                    <div data-type="repo-info">${i18n.repoInfoTip}</div>
-                </div>
+                <div class="jcip__vflow jcip-show__card" data-type="repo-info">${i18n.repoInfoTip}</div>
             </section>
 
             <section class="jcip__vflow jcip-show__log">

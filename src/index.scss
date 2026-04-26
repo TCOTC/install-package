@@ -110,6 +110,7 @@ $scrollbar-width: 10px;
         border-radius: var(--b3-border-radius);
         padding: $spacing-s ($spacing-s - $scrollbar-width) $spacing-s $spacing-s;
         scrollbar-gutter: stable;
+        user-select: text;
 
         &::-webkit-scrollbar {
             width: $scrollbar-width;
@@ -120,11 +121,15 @@ $scrollbar-width: 10px;
             font-size: 12px;
             white-space: pre-wrap;
             word-break: break-all;
-            user-select: text;
         }
     }
 
     &__text {
+        // 信息行
+        &--info {
+            word-break: break-word;
+        }
+
         // 占位提示行
         &--placeholder {
             font-size: 12px;

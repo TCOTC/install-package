@@ -1,8 +1,16 @@
 import { i18n } from "../infra/i18n";
-import { getReleaseInfo, listReleasesPage, parseOwnerRepo } from "../github/github";
+import {
+    getReleaseInfo,
+    listReleasesPage,
+    parseOwnerRepo,
+    type ParsedPackageInfo,
+} from "../github/github";
 import type { InstallReleaseRow } from "../github/github";
 import type { Logger } from "./logger";
 import type { InstallPanelData } from "./panel";
+
+/** 简介 / 日期缺省时的占位 */
+const REPO_SUMMARY_DASH = "—";
 
 /** Release 列表与 `latestTag`（与 `RepoReleasesEvent` 中 `type: "data"` 的载荷一致） */
 export type InstallReleasesPayload = {
@@ -20,7 +28,11 @@ type RepoInfoElState =
     | { kind: "tip" }
     | { kind: "parsing" }
     | { kind: "invalid" }
-    | { kind: "resolved"; owner: string; repo: string };
+    | { kind: "resolved"; packageInfo: ParsedPackageInfo };
+
+function escapeHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 /**
  * 防抖等待；`signal` abort 时清除定时器并立即结束，供新一轮 `refresh` 顶替时结束 `pendingRefresh`。
@@ -134,7 +146,7 @@ export class RepoParser {
                 if (ownerRepo) {
                     const { owner, repo } = ownerRepo;
                     this.lastParsed = { url, owner, repo };
-                    this.updateRepoInfoEl({ kind: "resolved", owner, repo });
+                    this.updateRepoInfoEl({ kind: "resolved", packageInfo: ownerRepo });
                     this.hooks.onRepoParseEvent?.({
                         type: "settled",
                         data: { owner, repo },
@@ -173,25 +185,32 @@ export class RepoParser {
             return;
         }
         switch (state.kind) {
-            case "tip":
+            case "tip": {
                 this.repoInfoEl.style.color = "";
                 this.repoInfoEl.textContent = i18n.repoInfoTip;
                 break;
-            case "parsing":
+            }
+            case "parsing": {
                 this.repoInfoEl.style.color = "";
                 this.repoInfoEl.textContent = i18n.repoInfoParsing;
                 break;
-            case "invalid":
+            }
+            case "invalid": {
                 this.repoInfoEl.style.color = "var(--b3-theme-error)";
                 this.repoInfoEl.textContent = i18n.repoInfoInvalid;
                 break;
-            case "resolved":
+            }
+            case "resolved": {
                 this.repoInfoEl.style.color = "";
-                this.repoInfoEl.innerHTML = i18n.repoInfoResolved.replace(
-                    "{ownerRepo}",
-                    `<b><a href="https://github.com/${state.owner}" target="_blank">${state.owner}</a></b> / <b><a href="https://github.com/${state.owner}/${state.repo}" target="_blank">${state.repo}</a></b>`,
-                );
+                const info = state.packageInfo;
+                this.repoInfoEl.innerHTML = `
+<div class="jcip-show__text--info">${i18n.repoInfoResolvedPrefix}<b><a href="https://github.com/${info.owner}" target="_blank">${info.owner}</a></b> / <b><a href="https://github.com/${info.owner}/${info.repo}" target="_blank">${info.repo}</a></b></div>
+<div class="jcip-show__text--info">${i18n.repoSummaryDescriptionPrefix}${info.description.trim() ? escapeHtml(info.description) : REPO_SUMMARY_DASH}</div>
+<div class="jcip-show__text--info">${i18n.repoSummaryStarsPrefix}${String(info.stars)}</div>
+<div class="jcip-show__text--info">${i18n.repoSummaryUpdatedPrefix}${info.updatedAtDisplay || REPO_SUMMARY_DASH}</div>`;
                 break;
+            }
+       
         }
     }
 

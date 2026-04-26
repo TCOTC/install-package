@@ -210,8 +210,16 @@ async function getGitHubIssueTitle(
     return data?.title ?? null;
 }
 
+export interface ParsedPackageInfo {
+    owner: string;
+    repo: string;
+    description: string;
+    stars: number;
+    updatedAtDisplay: string;
+}
+
 /**
- * 从用户输入解析 GitHub owner/repo：先识别 GitHub URL（仅 `siyuan-note/bazaar` 下 Issue/PR 从标题解析目标仓库），再识别 `owner/repo` 简写；最后用 API 校验仓库存在并输出摘要
+ * 从用户输入解析 GitHub owner/repo：先识别 GitHub URL（仅 `siyuan-note/bazaar` 下 Issue/PR 从标题解析目标仓库），再识别 `owner/repo` 简写；最后用 API 校验仓库存在并返回摘要展示
  *
  * @param signal 新一次解析前 abort 时可取消未完成的 GitHub API 请求
  */
@@ -219,7 +227,7 @@ export async function parseOwnerRepo(
     input: string,
     log: Logger,
     signal: AbortSignal
-): Promise<{ owner: string; repo: string } | null> {
+): Promise<ParsedPackageInfo | null> {
     let owner: string;
     let repo: string;
     const githubUrlMatch = input.match(/^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)(\/[^?#]*)?/i); // GitHub 仓库 URL：`https://github.com/owner/repo` 及可选后续路径（不含 query/hash）
@@ -276,12 +284,13 @@ export async function parseOwnerRepo(
     if (!repoInfo) {
         return null;
     }
-    // 输出仓库摘要
-    log.info("Repository:", repoInfo.full_name);
-    log.info("Description:", repoInfo.description || "");
-    log.info("Stars:", repoInfo.stargazers_count);
-    log.info("Last updated:", new Date(repoInfo.updated_at).toLocaleDateString());
-    return { owner, repo };
+    return {
+        owner,
+        repo,
+        description: repoInfo.description ?? "",
+        stars: repoInfo.stargazers_count,
+        updatedAtDisplay: new Date(repoInfo.updated_at).toLocaleDateString(),
+    };
 }
 
 /** 查找包文件 package.zip */

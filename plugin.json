@@ -9,15 +9,15 @@
   "disabledInPublish": true,
   "displayName": {
     "default": "Install Marketplace Package",
-    "zh_CN": "安装集市包"
+    "zh-CN": "安装集市包"
   },
   "description": {
     "default": "Install marketplace packages via GitHub links — faster than the official marketplace!",
-    "zh_CN": "使用 GitHub 链接安装集市包，比官方集市更快一步！"
+    "zh-CN": "使用 GitHub 链接安装集市包，比官方集市更快一步！"
   },
   "readme": {
     "default": "README.md",
-    "zh_CN": "README_zh_CN.md"
+    "zh-CN": "README.zh-CN.md"
   },
   "funding": {"custom": ["https://mytemos.com/"]},
   "keywords": ["开发者工具","developer tool"]

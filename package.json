@@ -3,22 +3,19 @@
   "version": "0.4.6",
   "description": "Install the specified GitHub repository marketplace package Release",
   "main": ".src/index.js",
-  "pnpm": {
-    "neverBuiltDependencies": [
-      "electron"
-    ]
-  },
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "lint": "eslint . --fix --cache",
     "typecheck": "tsc --noEmit",
     "dev": "webpack --mode development",
-    "build": "webpack --mode production"
+    "build": "webpack --mode production",
+    "push": "git push origin HEAD --tags"
   },
   "keywords": [
     "开发者工具",
     "developer tool"
   ],
-  "author": "TCOTC",
+  "author": "Jeffrey Chen",
   "license": "MIT",
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

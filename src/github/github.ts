@@ -216,6 +216,57 @@ export interface ParsedPackageInfo {
     description: string;
     stars: number;
     updatedAtDisplay: string;
+    /** 仓库 owner 头像 URL，来自 `GET /repos/{owner}/{repo}` 的 `owner.avatar_url` */
+    ownerAvatarUrl: string;
+    /** 规范化后的项目主页（仅 http / https），无则空串 */
+    homepageUrl: string;
+    /** 默认分支名（可能含 `/`），来自 API `default_branch`；用于 raw 资源 URL，无则空串 */
+    defaultBranch: string;
+    /** 许可证展示文案，优先 `license.spdx_id`，否则 `license.name`；无许可证时为空串 */
+    licenseDisplay: string;
+}
+
+/**
+ * 构造 `raw.githubusercontent.com` 下仓库根目录文件的 URL。
+ * `branch` 按路径段编码，以支持含 `/` 的分支名。
+ */
+export function githubRawRootFileUrl(owner: string, repo: string, branch: string, fileName: string): string {
+    const branchPath = branch.split("/").map(encodeURIComponent).join("/");
+    return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${branchPath}/${encodeURIComponent(fileName)}`;
+}
+
+/** 将 API 返回的 homepage 规范为可安全用于 `href` 的 URL */
+function normalizeRepositoryHomepage(raw: unknown): string {
+    if (typeof raw !== "string") {
+        return "";
+    }
+    const t = raw.trim();
+    if (!t) {
+        return "";
+    }
+    try {
+        const u = new URL(/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(t) ? t : `https://${t}`);
+        if (u.protocol === "https:" || u.protocol === "http:") {
+            return u.href;
+        }
+    } catch {
+        return "";
+    }
+    return "";
+}
+
+/** 从 `GET /repos` 的 `license` 生成摘要展示用短文本 */
+function licenseDisplayFromRepository(repoInfo: GitHubRepository): string {
+    const lic = repoInfo.license;
+    if (!lic || typeof lic !== "object") {
+        return "";
+    }
+    const spdx = typeof lic.spdx_id === "string" ? lic.spdx_id.trim() : "";
+    if (spdx && spdx !== "NOASSERTION") {
+        return spdx;
+    }
+    const name = typeof lic.name === "string" ? lic.name.trim() : "";
+    return name;
 }
 
 /**
@@ -284,12 +335,33 @@ export async function parseOwnerRepo(
     if (!repoInfo) {
         return null;
     }
+    const updatedRaw = repoInfo.updated_at;
+    let updatedAtDisplay = "";
+    if (typeof updatedRaw === "string" && updatedRaw) {
+        const d = new Date(updatedRaw);
+        if (Number.isFinite(d.getTime())) {
+            updatedAtDisplay = d.toLocaleDateString();
+        }
+    }
+    const avatar =
+        repoInfo.owner && typeof repoInfo.owner.avatar_url === "string" ? repoInfo.owner.avatar_url : "";
+    const stars =
+        typeof repoInfo.stargazers_count === "number" && Number.isFinite(repoInfo.stargazers_count)
+            ? repoInfo.stargazers_count
+            : 0;
+    const defaultBranchRaw = repoInfo.default_branch;
+    const defaultBranch =
+        typeof defaultBranchRaw === "string" && defaultBranchRaw.trim() ? defaultBranchRaw.trim() : "";
     return {
         owner,
         repo,
         description: repoInfo.description ?? "",
-        stars: repoInfo.stargazers_count,
-        updatedAtDisplay: new Date(repoInfo.updated_at).toLocaleDateString(),
+        stars,
+        updatedAtDisplay,
+        ownerAvatarUrl: avatar,
+        homepageUrl: normalizeRepositoryHomepage(repoInfo.homepage),
+        defaultBranch,
+        licenseDisplay: licenseDisplayFromRepository(repoInfo),
     };
 }
 

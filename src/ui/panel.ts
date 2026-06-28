@@ -75,7 +75,10 @@ function renderInstallPanel(root: HTMLElement): void {
         <div class="jcip-show">
             <section class="jcip__vflow jcip-show__info">
                 <div class="jcip__label">${i18n.packageInfoTitle}</div>
-                <div class="jcip__vflow jcip-show__card" data-type="repo-info">${i18n.repoInfoTip}</div>
+                <div class="jcip__vflow jcip-show__card jcip-show__card--package-info" data-type="repo-info">
+                    <p class="jcip-show__text--placeholder" data-type="repo-info-placeholder">${i18n.repoInfoTip}</p>
+                    <div class="jcip-repo-summary fn__none" data-type="repo-info-main"></div>
+                </div>
             </section>
 
             <section class="jcip__vflow jcip-show__log">
@@ -106,7 +109,8 @@ function renderInstallPanel(root: HTMLElement): void {
 interface InstallPanelElements {
     urlEl: HTMLInputElement;
     versionEl: HTMLButtonElement;
-    repoInfoEl: HTMLDivElement;
+    repoInfoPlaceholderEl: HTMLParagraphElement;
+    repoInfoMainEl: HTMLDivElement;
     enableAfterInstallSwitchEls: NodeListOf<HTMLInputElement>;
     installEls: NodeListOf<HTMLButtonElement>;
     abortEls: NodeListOf<HTMLButtonElement>;
@@ -139,7 +143,8 @@ export class InstallPanel {
         this.elements = {
             urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
             versionEl: this.root.querySelector("[data-type='version']") as HTMLButtonElement,
-            repoInfoEl: this.root.querySelector("div[data-type='repo-info']") as HTMLDivElement,
+            repoInfoPlaceholderEl: this.root.querySelector("p[data-type='repo-info-placeholder']") as HTMLParagraphElement,
+            repoInfoMainEl: this.root.querySelector("div[data-type='repo-info-main']") as HTMLDivElement,
             enableAfterInstallSwitchEls: this.root.querySelectorAll("input[data-type='enableAfterInstall']") as NodeListOf<HTMLInputElement>,
             installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
             abortEls: this.root.querySelectorAll("button[data-type='abort-install']") as NodeListOf<HTMLButtonElement>,
@@ -149,10 +154,16 @@ export class InstallPanel {
         this.log = logger.log;
         this.clearInstallLog = logger.clear;
         this.openPluginSettings = openPluginSettings;
-        this.versionUI = new InstallPanelVersion(this.data, this.elements.versionEl, this.log, {
-            onPickedVersion: this.syncInstallButtonDisabled.bind(this),
-        });
-        this.repoParser = new RepoParser(this.data, this.log, this.elements.repoInfoEl, {
+        this.versionUI = new InstallPanelVersion(
+            this.data,
+            this.elements.versionEl,
+            this.elements.repoInfoMainEl,
+            this.log,
+            {
+                onPickedVersion: this.syncInstallButtonDisabled.bind(this),
+            },
+        );
+        this.repoParser = new RepoParser(this.data, this.log, this.elements.repoInfoMainEl, this.elements.repoInfoPlaceholderEl, {
             onRepoParseEvent: this.applyRepoParseEvent.bind(this),
             onRepoReleasesEvent: this.applyRepoReleasesEvent.bind(this),
         });

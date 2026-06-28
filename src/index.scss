@@ -1,6 +1,10 @@
 // 布局间距：大档用于面板内边距、列 / 输入区间距、操作区左缩进；小档用于纵向堆叠 gap、卡片内边距等
 $spacing-s: 12px;
 $spacing-b: 24px;
+// 字号三档：s 为标签、正文、胶囊与日志；m 为摘要内次级强调；b 为仓库标题
+$font-size-s: 12px;
+$font-size-m: 14px;
+$font-size-b: 15px;
 // 卡片内 WebKit 纵向滚动条宽度；右侧 padding 为小档间距减去该值，与 scrollbar-gutter: stable 配合使内容区与其它三边对齐
 $scrollbar-width: 10px;
 
@@ -37,7 +41,7 @@ $scrollbar-width: 10px;
 
     // 各区块小标题
     &__label {
-        font-size: 12px;
+        font-size: $font-size-s;
         // 统一行高，避免仅含 &nbsp; 的占位行与中文标签在 line-height: normal 下度量不一致
         line-height: 1em;
         user-select: text;
@@ -90,7 +94,8 @@ $scrollbar-width: 10px;
     // 信息区块
     &__info {
         flex: 1 1 0;
-        min-height: 170px;
+        min-height: 130px;
+        max-height: 160px;
         overflow: hidden;
     }
 
@@ -118,7 +123,7 @@ $scrollbar-width: 10px;
 
         // 日志卡片变体
         &--log {
-            font-size: 12px;
+            font-size: $font-size-s;
             white-space: pre-wrap;
             word-break: break-all;
         }
@@ -132,7 +137,7 @@ $scrollbar-width: 10px;
 
         // 占位提示行
         &--placeholder {
-            font-size: 12px;
+            font-size: $font-size-s;
             color: var(--b3-theme-on-surface-light);
             padding-bottom: $spacing-s;
             border-bottom: 1px solid var(--b3-border-color);
@@ -149,6 +154,206 @@ $scrollbar-width: 10px;
             color: var(--b3-card-error-color);
             background-color: var(--b3-card-error-background);
         }
+    }
+}
+
+// 解析成功后的仓库摘要卡片（根节点即横向主行：左侧为 __body，右侧为预览区）
+$jcip-repo-summary-avatar-size: 50px;
+.jcip-repo-summary {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: flex-start;
+    gap: $spacing-s;
+    min-width: 0;
+
+    &__body {
+        display: flex;
+        flex: 1 1 160px;
+        flex-direction: column;
+        gap: $spacing-s;
+        min-width: 0;
+    }
+
+    &__head {
+        display: flex;
+        align-items: flex-start;
+        gap: $spacing-s;
+        min-width: 0;
+    }
+
+    &__avatar {
+        flex-shrink: 0;
+        display: block;
+        width: $jcip-repo-summary-avatar-size;
+        height: $jcip-repo-summary-avatar-size;
+        border: none; // 避免与 border 叠加在盒模型上算两遍
+        border-radius: 50%;
+        object-fit: cover;
+        outline: 1px solid var(--b3-border-color);
+        outline-offset: -1px;
+        background-color: var(--b3-theme-surface);
+    }
+
+    &__head-main {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: $jcip-repo-summary-avatar-size;
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    &__title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px 0;
+        font-size: $font-size-b;
+        font-weight: 600;
+        // 子项继承为定值行盒，后缀含全角字时不增高、基线不乱跳
+        line-height: 1.5;
+        word-break: break-word;
+
+        > span:first-of-type {
+            margin: 0 2px;
+            font-weight: 500;
+            color: var(--b3-theme-on-surface-light);
+            user-select: none;
+        }
+    }
+
+    &__title-link,
+    &__chip--link {
+        color: var(--b3-theme-primary);
+        text-decoration: none;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    &__picked {
+        display: inline-flex;
+        align-items: baseline;
+        margin-left: 4px;
+        max-width: 100%;
+        font-size: $font-size-m;
+        font-weight: 500;
+
+        [data-jcip-picked-version-link] {
+            word-break: break-all;
+        }
+    }
+
+    &__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: $spacing-s * 0.5 8px;
+        align-items: center;
+    }
+
+    &__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        max-width: 100%;
+        padding: 2px 9px;
+        border-radius: var(--b3-border-radius-b);
+        font-size: $font-size-s;
+        font-weight: 500;
+        color: var(--b3-theme-on-surface-light);
+        background-color: var(--b3-theme-surface);
+        border: 1px solid var(--b3-border-color);
+        box-sizing: border-box;
+
+        > span[aria-hidden="true"]:first-child {
+            font-size: $font-size-s;
+            line-height: 1;
+            color: var(--b3-theme-primary);
+            opacity: 0.9;
+        }
+
+        &--release-time {
+            flex-wrap: wrap;
+            gap: $spacing-s * 0.5 8px;
+            align-items: center;
+        }
+
+        &--prerelease {
+            border-color: var(--b3-border-color);
+            color: var(--b3-theme-warning);
+        }
+    }
+
+    &__chip--prerelease &__chip-mark {
+        color: var(--b3-theme-warning);
+    }
+
+    &__chip-body {
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__chip-mark {
+        display: inline-flex;
+        align-items: center;
+        padding: 0 $spacing-s * 0.5;
+        font-size: $font-size-s;
+        font-weight: 600;
+        line-height: 1.4;
+        border-radius: 999px;
+        border: 1px solid var(--b3-border-color);
+        background-color: var(--b3-theme-background);
+    }
+
+    &__desc {
+        margin: 0;
+        font-size: $font-size-s;
+        line-height: 1.55;
+        word-break: break-word;
+        color: var(--b3-theme-on-background);
+
+        &--muted {
+            color: var(--b3-theme-on-surface-light);
+        }
+    }
+
+    &__previews {
+        display: grid;
+        flex: 0 0 auto;
+        grid-template-columns: repeat(2, minmax(0, 68px));
+        gap: $spacing-s * 0.5;
+        align-self: stretch;
+    }
+
+    &__preview {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-s * 0.25;
+    }
+
+    [data-jcip-preview-frame] {
+        display: flex;
+        flex: 1 1 auto;
+        align-items: center;
+        justify-content: center;
+        min-height: 52px;
+        min-width: 0;
+        padding: 4px;
+        border: 1px solid var(--b3-border-color);
+        border-radius: var(--b3-border-radius);
+        background-color: var(--b3-theme-surface);
+        box-sizing: border-box;
+    }
+
+    &__previews img[data-jcip-raw-img] {
+        max-width: 100%;
+        max-height: 52px;
+        object-fit: contain;
+    }
+
+    &__previews [data-jcip-raw-missing] {
+        font-size: $font-size-s;
+        color: var(--b3-theme-on-surface-light);
     }
 }
 
@@ -179,7 +384,7 @@ $scrollbar-width: 10px;
 
         &-label {
             flex: 1;
-            font-size: 13px;
+            font-size: $font-size-s;
             user-select: text;
         }
     }

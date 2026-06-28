@@ -1,6 +1,7 @@
 import { i18n } from "../infra/i18n";
 import {
     getReleaseInfo,
+    githubRawRootFileUrl,
     listReleasesPage,
     parseOwnerRepo,
     type ParsedPackageInfo,
@@ -32,6 +33,63 @@ type RepoInfoElState =
 
 function escapeHtml(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function renderResolvedRepoSummaryHtml(info: ParsedPackageInfo): string {
+    const ownerUrl = `https://github.com/${encodeURIComponent(info.owner)}`;
+    const repoUrl = `${ownerUrl}/${encodeURIComponent(info.repo)}`;
+    const starsTitle = escapeHtml(i18n.repoSummaryStarsTitle.replace("{count}", String(info.stars)));
+    const licenseChip = info.licenseDisplay
+        ? `<span class="jcip-repo-summary__chip" translate="no" title="${escapeHtml(
+              i18n.repoSummaryLicenseTitle + info.licenseDisplay,
+          )}">${escapeHtml(info.licenseDisplay)}</span>`
+        : "";
+    const avatarBlock = info.ownerAvatarUrl
+        ? `<img class="jcip-repo-summary__avatar" src="${escapeHtml(info.ownerAvatarUrl)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
+        : "";
+    const homepageChip = info.homepageUrl
+        ? `<a class="jcip-repo-summary__chip jcip-repo-summary__chip--link" href="${escapeHtml(info.homepageUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(i18n.repoSummaryHomepageLabel)}</a>`
+        : "";
+    const descHas = info.description.trim().length > 0;
+    const descBody = descHas ? escapeHtml(info.description) : escapeHtml(REPO_SUMMARY_DASH);
+    const descClass = descHas ? "jcip-repo-summary__desc" : "jcip-repo-summary__desc jcip-repo-summary__desc--muted";
+    const previewsBlock =
+        info.defaultBranch.length > 0
+            ? `<div class="jcip-repo-summary__previews" aria-label="${escapeHtml(i18n.repoRootPreviewGroupAria)}">
+<div class="jcip-repo-summary__preview">
+<span class="jcip__label">${escapeHtml(i18n.repoRootPreviewIconCaption)}</span>
+<div data-jcip-preview-frame>
+<img data-jcip-raw-img src="${escapeHtml(githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, "icon.png"))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+<span class="fn__none" data-jcip-raw-missing>${REPO_SUMMARY_DASH}</span>
+</div>
+</div>
+<div class="jcip-repo-summary__preview">
+<span class="jcip__label">${escapeHtml(i18n.repoRootPreviewPreviewCaption)}</span>
+<div data-jcip-preview-frame>
+<img data-jcip-raw-img src="${escapeHtml(githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, "preview.png"))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+<span class="fn__none" data-jcip-raw-missing>${REPO_SUMMARY_DASH}</span>
+</div>
+</div>
+</div>`
+            : "";
+    return `<div class="jcip-repo-summary__body">
+<div class="jcip-repo-summary__head">
+${avatarBlock}
+<div class="jcip-repo-summary__head-main">
+<div class="jcip-repo-summary__title">
+<a class="jcip-repo-summary__title-link" href="${ownerUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.owner)}</a><span aria-hidden="true">/</span><a class="jcip-repo-summary__title-link" href="${repoUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.repo)}</a><span class="jcip-repo-summary__picked fn__none" data-jcip-picked-version-wrap aria-hidden="true"><a class="jcip-repo-summary__title-link" data-jcip-picked-version-link target="_blank" rel="noopener noreferrer"></a></span>
+</div>
+<div class="jcip-repo-summary__meta">
+${licenseChip}
+<span class="jcip-repo-summary__chip" title="${starsTitle}"><span aria-hidden="true">★</span>${escapeHtml(String(info.stars))}</span>
+<span class="jcip-repo-summary__chip jcip-repo-summary__chip--release-time fn__none" data-jcip-release-published-chip title=""></span>
+${homepageChip}
+</div>
+</div>
+</div>
+<p class="${descClass}">${descBody}</p>
+</div>
+${previewsBlock}`;
 }
 
 /**
@@ -85,6 +143,31 @@ export type RepoParserHooks = {
     onRepoReleasesEvent?: (event: RepoReleasesEvent) => void;
 };
 
+function wireRawPreviewImages(root: HTMLElement): void {
+    for (const img of root.querySelectorAll<HTMLImageElement>("img[data-jcip-raw-img]")) {
+        const frame = img.closest("[data-jcip-preview-frame]");
+        const miss = frame?.querySelector("[data-jcip-raw-missing]");
+        if (!(miss instanceof HTMLElement)) {
+            continue;
+        }
+        img.addEventListener(
+            "error",
+            () => {
+                img.classList.add("fn__none");
+                miss.classList.remove("fn__none");
+            },
+            { once: true },
+        );
+        img.addEventListener(
+            "load",
+            () => {
+                miss.classList.add("fn__none");
+            },
+            { once: true },
+        );
+    }
+}
+
 export class RepoParser {
     private infoAbort?: AbortController;
     private lastParsed: { url: string; owner: string; repo: string } | null = null;
@@ -94,7 +177,8 @@ export class RepoParser {
     constructor(
         private readonly data: InstallPanelData,
         private readonly log: Logger,
-        private readonly repoInfoEl: HTMLDivElement,
+        private readonly repoInfoMainEl: HTMLDivElement,
+        private readonly repoInfoPlaceholderEl: HTMLParagraphElement,
         private readonly hooks: RepoParserHooks,
     ) {}
 
@@ -121,8 +205,9 @@ export class RepoParser {
         if (!url) {
             this.pendingRefreshUrl = null;
             this.updateRepoInfoEl({ kind: "tip" });
-            this.hooks.onRepoReleasesEvent?.({ type: "data", data: { releases: [], latestTag: null } });
+            // 须先 settled 再通知 Release 清空，否则 uiStore 仍为 ready 时会同步调用 getOwnerRepo → refresh 死循环（重现操作：全选剪切 URL 输入框内容）
             this.hooks.onRepoParseEvent?.({ type: "settled", data: null });
+            this.hooks.onRepoReleasesEvent?.({ type: "data", data: { releases: [], latestTag: null } });
             this.pendingRefresh = Promise.resolve();
             return this.pendingRefresh;
         }
@@ -181,36 +266,47 @@ export class RepoParser {
     }
 
     private updateRepoInfoEl(state: RepoInfoElState): void {
-        if (!this.repoInfoEl.isConnected) {
+        if (!this.repoInfoMainEl.isConnected) {
             return;
         }
+        const ph = this.repoInfoPlaceholderEl;
         switch (state.kind) {
             case "tip": {
-                this.repoInfoEl.style.color = "";
-                this.repoInfoEl.textContent = i18n.repoInfoTip;
+                this.repoInfoMainEl.style.color = "";
+                this.repoInfoMainEl.innerHTML = "";
+                this.repoInfoMainEl.classList.add("fn__none");
+                ph.style.color = "";
+                ph.textContent = i18n.repoInfoTip;
+                ph.classList.remove("fn__none");
                 break;
             }
             case "parsing": {
-                this.repoInfoEl.style.color = "";
-                this.repoInfoEl.textContent = i18n.repoInfoParsing;
+                this.repoInfoMainEl.style.color = "";
+                this.repoInfoMainEl.innerHTML = "";
+                this.repoInfoMainEl.classList.add("fn__none");
+                ph.style.color = "";
+                ph.textContent = i18n.repoInfoParsing;
+                ph.classList.remove("fn__none");
                 break;
             }
             case "invalid": {
-                this.repoInfoEl.style.color = "var(--b3-theme-error)";
-                this.repoInfoEl.textContent = i18n.repoInfoInvalid;
+                this.repoInfoMainEl.style.color = "";
+                this.repoInfoMainEl.innerHTML = "";
+                this.repoInfoMainEl.classList.add("fn__none");
+                ph.style.color = "var(--b3-theme-error)";
+                ph.textContent = i18n.repoInfoInvalid;
+                ph.classList.remove("fn__none");
                 break;
             }
             case "resolved": {
-                this.repoInfoEl.style.color = "";
-                const info = state.packageInfo;
-                this.repoInfoEl.innerHTML = `
-<div class="jcip-show__text--info">${i18n.repoInfoResolvedPrefix}<b><a href="https://github.com/${info.owner}" target="_blank">${info.owner}</a></b> / <b><a href="https://github.com/${info.owner}/${info.repo}" target="_blank">${info.repo}</a></b></div>
-<div class="jcip-show__text--info">${i18n.repoSummaryDescriptionPrefix}${info.description.trim() ? escapeHtml(info.description) : REPO_SUMMARY_DASH}</div>
-<div class="jcip-show__text--info">${i18n.repoSummaryStarsPrefix}${String(info.stars)}</div>
-<div class="jcip-show__text--info">${i18n.repoSummaryUpdatedPrefix}${info.updatedAtDisplay || REPO_SUMMARY_DASH}</div>`;
+                this.repoInfoMainEl.style.color = "";
+                ph.style.color = "";
+                ph.classList.add("fn__none");
+                this.repoInfoMainEl.classList.remove("fn__none");
+                this.repoInfoMainEl.innerHTML = renderResolvedRepoSummaryHtml(state.packageInfo);
+                wireRawPreviewImages(this.repoInfoMainEl);
                 break;
             }
-       
         }
     }
 
@@ -226,7 +322,14 @@ export class RepoParser {
         }
         const latestTag = typeof latestRelease?.tag_name === "string" ? latestRelease.tag_name : null;
         if (page1 === null) {
-            this.hooks.onRepoReleasesEvent?.({ type: "data", data: { releases: [], latestTag } });
+            this.hooks.onRepoReleasesEvent?.({
+                type: "data",
+                data: {
+                    releases: [],
+                    latestTag,
+                    meta: { owner, repo, initialPageFull: false },
+                },
+            });
             return;
         }
         this.hooks.onRepoReleasesEvent?.({

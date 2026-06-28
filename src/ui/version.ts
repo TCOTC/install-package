@@ -34,6 +34,7 @@ export class InstallPanelVersion {
     constructor(
         private readonly data: InstallPanelData,
         private readonly versionEl: HTMLButtonElement,
+        private readonly packageInfoMainEl: HTMLDivElement,
         private readonly log: Logger,
         private readonly hooks: InstallPanelVersionHooks,
     ) {
@@ -70,12 +71,20 @@ export class InstallPanelVersion {
     /** 仓库解析完成且可安装 */
     setRepoParseReady(ready: boolean): void {
         this.versionEl.disabled = !ready;
+        this.syncRepoSummaryReleaseExtras();
     }
 
     /** 开始加载首页 Release */
     onReleasesFetchStart(): void {
         this.releasesFirstPagePending = true;
+        this.releaseRows = [];
+        this.latestReleaseTag = null;
+        this.releasesListOwner = null;
+        this.releasesListRepo = null;
+        this.releasesHasMore = false;
+        this.releasesNextPage = 2;
         this.renderVersionList();
+        this.syncRepoSummaryReleaseExtras();
     }
 
     /** Release 列表更新 */
@@ -100,6 +109,7 @@ export class InstallPanelVersion {
     syncVersionDisplay(): void {
         if (!this.data.version) {
             this.versionEl.textContent = "";
+            this.syncRepoSummaryReleaseExtras();
             return;
         }
         let out = this.data.version;
@@ -111,6 +121,7 @@ export class InstallPanelVersion {
             out += i18n.versionTagSuffixPrerelease;
         }
         this.versionEl.textContent = out;
+        this.syncRepoSummaryReleaseExtras();
     }
 
     /**
@@ -119,6 +130,74 @@ export class InstallPanelVersion {
     syncDisplayFromData(): void {
         this.syncVersionDisplay();
         this.renderVersionList();
+    }
+
+    /**
+     * 在 `.jcip-repo-summary` 内同步：标题行后的选中版本链接（与下拉列表一致附带「（最新）」等后缀）、元信息区 Release 发布时间胶囊（首屏 Release 返回后才显示；「最新」不在胶囊内）。
+     */
+    private syncRepoSummaryReleaseExtras(): void {
+        const root = this.packageInfoMainEl;
+        if (!root.isConnected) {
+            return;
+        }
+        const chip = root.querySelector("[data-jcip-release-published-chip]");
+        const pickedWrap = root.querySelector("[data-jcip-picked-version-wrap]");
+        const pickedLink = root.querySelector("[data-jcip-picked-version-link]");
+        if (!(chip instanceof HTMLElement) || !(pickedWrap instanceof HTMLElement) || !(pickedLink instanceof HTMLAnchorElement)) {
+            return;
+        }
+
+        const tag = this.data.version.trim();
+        const owner = this.releasesListOwner;
+        const repo = this.releasesListRepo;
+        const releaseRow = tag ? this.releaseRows.find((r) => r.tag === tag) : undefined;
+        const releaseUrl =
+            owner && repo && tag
+                ? `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/tag/${encodeURIComponent(tag)}`
+                : null;
+
+        if (tag && releaseUrl) {
+            pickedWrap.classList.remove("fn__none");
+            pickedWrap.setAttribute("aria-hidden", "false");
+            pickedLink.href = releaseUrl;
+            pickedLink.textContent = this.formatTagRowLabel(tag, releaseRow ?? { tag, publishedAt: "", prerelease: false });
+            pickedLink.title = i18n.packageVersionSideOpenRelease;
+        } else {
+            pickedWrap.classList.add("fn__none");
+            pickedWrap.setAttribute("aria-hidden", "true");
+            pickedLink.removeAttribute("href");
+            pickedLink.textContent = "";
+            pickedLink.removeAttribute("title");
+        }
+
+        if (this.releasesFirstPagePending || !owner || !repo) {
+            chip.classList.add("fn__none");
+            chip.textContent = "";
+            chip.removeAttribute("title");
+            chip.classList.remove("jcip-repo-summary__chip--prerelease");
+            return;
+        }
+
+        if (!tag || !releaseRow?.publishedAt) {
+            chip.classList.add("fn__none");
+            chip.textContent = "";
+            chip.removeAttribute("title");
+            chip.classList.remove("jcip-repo-summary__chip--prerelease");
+            return;
+        }
+
+        const dateStr = formatReleasePublishedDateTime(releaseRow.publishedAt);
+        chip.title = i18n.repoSummaryReleasePublishedTitle + dateStr;
+        chip.classList.remove("fn__none");
+        chip.classList.toggle("jcip-repo-summary__chip--prerelease", !!releaseRow.prerelease);
+
+        const parts: string[] = [`<span class="jcip-repo-summary__chip-body">${escapeHtml(dateStr)}</span>`];
+        if (releaseRow.prerelease) {
+            parts.push(
+                `<span class="jcip-repo-summary__chip-mark">${escapeHtml(i18n.packageVersionSidePrereleaseBadge)}</span>`,
+            );
+        }
+        chip.innerHTML = parts.join("");
     }
 
     private formatTagRowLabel(tag: string, row: InstallReleaseRow): string {
@@ -366,6 +445,23 @@ export class InstallPanelVersion {
         closeMenu?.();
         this.hooks.onPickedVersion();
     }
+}
+
+/** 将 ISO 8601 发布时间格式化为本地日期时间（含秒、24 小时制）。 */
+function formatReleasePublishedDateTime(iso: string): string {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) {
+        return iso;
+    }
+    return d.toLocaleString(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    });
 }
 
 function escapeHtml(s: string): string {

@@ -12,8 +12,8 @@
     "zh_CN": "安装集市包"
   },
   "description": {
-    "default": "Install the specified GitHub repository marketplace package Release",
-    "zh_CN": "安装指定 GitHub 仓库的集市包 Release"
+    "default": "Install marketplace packages via GitHub links — faster than the official marketplace!",
+    "zh_CN": "使用 GitHub 链接安装集市包，比官方集市更快一步！"
   },
   "readme": {
     "default": "README.md",

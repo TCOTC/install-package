@@ -126,7 +126,7 @@ export async function removeFile(path: string, log: Logger): Promise<boolean> {
         log.warn(`Failed to remove [${path}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
-    log.info(`Removed successfully`);
+    log.info("Removed successfully");
     return true;
 }
 
@@ -176,7 +176,7 @@ export async function unzipFile(zipPath: string, extractPath: string, log: Logge
         return false;
     }
 
-    log.info(`Unzipped successfully`);
+    log.info("Unzipped successfully");
     return true;
 }
 
@@ -201,6 +201,6 @@ export async function workspaceCopyFiles(sourcePath: string, targetPath: string,
         return false;
     }
 
-    log.info(`Copied successfully`);
+    log.info("Copied successfully");
     return true;
 }

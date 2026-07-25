@@ -3,6 +3,7 @@ import {
     getReleaseInfo,
     githubRawRootFileUrl,
     listReleasesPage,
+    mergeInstallReleasePages,
     parseOwnerRepo,
     type ParsedPackageInfo,
 } from "../github/github";
@@ -17,6 +18,13 @@ const REPO_SUMMARY_DASH = "—";
 export type InstallReleasesPayload = {
     releases: InstallReleaseRow[];
     latestTag: string | null;
+    /**
+     * URL 中带了 `/releases/tag/...` 时才会出现该字段：
+     * - 字符串：校验存在后的 tag，须强制选中
+     * - `null`：URL 指定了 tag 但未找到，强制回退到 `latestTag`（或清空）
+     * 省略时：保持「仅 version 为空才用 latest」的旧行为
+     */
+    preferredTag?: string | null;
     meta?: {
         owner: string;
         repo: string;
@@ -229,14 +237,14 @@ export class RepoParser {
                     return;
                 }
                 if (ownerRepo) {
-                    const { owner, repo } = ownerRepo;
+                    const { owner, repo, urlTag } = ownerRepo;
                     this.lastParsed = { url, owner, repo };
                     this.updateRepoInfoEl({ kind: "resolved", packageInfo: ownerRepo });
                     this.hooks.onRepoParseEvent?.({
                         type: "settled",
                         data: { owner, repo },
                     });
-                    await this.loadReleases(owner, repo, signal);
+                    await this.loadReleases(owner, repo, signal, urlTag);
                 } else {
                     throw new Error("Invalid repository URL");
                 }
@@ -310,33 +318,61 @@ export class RepoParser {
         }
     }
 
-    private async loadReleases(owner: string, repo: string, signal: AbortSignal): Promise<void> {
+    private async loadReleases(
+        owner: string,
+        repo: string,
+        signal: AbortSignal,
+        urlTag: string | null,
+    ): Promise<void> {
         this.hooks.onRepoReleasesEvent?.({ type: "fetchStart" });
-        const [latestRelease, page1] = await Promise.all([
-            // TODO 如果此时 version 存在的话要请求对应 version 的 release，否则才请求 latest
-            getReleaseInfo(owner, repo, "", this.log, signal), // latest
+        // 始终拉 latest 以标记「（最新）」；URL 带了 tag 时并行校验该 Release（含 pre-release）
+        const [latestRelease, page1, urlTagRelease] = await Promise.all([
+            getReleaseInfo(owner, repo, "", this.log, signal),
             listReleasesPage(owner, repo, this.log, signal, 1),
+            urlTag ? getReleaseInfo(owner, repo, urlTag, this.log, signal) : Promise.resolve(null),
         ]);
         if (signal.aborted) {
             return;
         }
         const latestTag = typeof latestRelease?.tag_name === "string" ? latestRelease.tag_name : null;
+
+        let preferredTag: string | null | undefined;
+        let preferredRow: InstallReleaseRow | null = null;
+        if (urlTag) {
+            if (urlTagRelease && typeof urlTagRelease.tag_name === "string") {
+                preferredTag = urlTagRelease.tag_name;
+                preferredRow = {
+                    tag: urlTagRelease.tag_name,
+                    publishedAt: typeof urlTagRelease.published_at === "string" ? urlTagRelease.published_at : "",
+                    prerelease: urlTagRelease.prerelease === true,
+                };
+            } else {
+                preferredTag = null;
+                this.log.warn(`Release tag from URL not found: ${urlTag}`);
+            }
+        }
+
         if (page1 === null) {
             this.hooks.onRepoReleasesEvent?.({
                 type: "data",
                 data: {
-                    releases: [],
+                    releases: preferredRow ? [preferredRow] : [],
                     latestTag,
+                    ...(preferredTag !== undefined ? { preferredTag } : {}),
                     meta: { owner, repo, initialPageFull: false },
                 },
             });
             return;
         }
+        const releases = preferredRow
+            ? mergeInstallReleasePages(page1.rows, [preferredRow])
+            : page1.rows;
         this.hooks.onRepoReleasesEvent?.({
             type: "data",
             data: {
-                releases: page1.rows,
+                releases,
                 latestTag,
+                ...(preferredTag !== undefined ? { preferredTag } : {}),
                 meta: {
                     owner,
                     repo,

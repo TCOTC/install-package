@@ -2,7 +2,7 @@
   "name": "install-package",
   "author": "Jeffrey Chen",
   "url": "https://github.com/TCOTC/install-package",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "minAppVersion": "3.7.0-beta.1",
   "backends": ["windows","linux","darwin"],
   "frontends": ["desktop", "desktop-window"],

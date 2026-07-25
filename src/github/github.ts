@@ -224,6 +224,11 @@ export interface ParsedPackageInfo {
     defaultBranch: string;
     /** 许可证展示文案，优先 `license.spdx_id`，否则 `license.name`；无许可证时为空串 */
     licenseDisplay: string;
+    /**
+     * 输入为集市包仓库的 `.../releases/tag/{tag}` 时解析出的 tag；
+     * 短格式、集市 Issue/PR、无该路径时为 null
+     */
+    urlTag: string | null;
 }
 
 /**
@@ -270,6 +275,29 @@ function licenseDisplayFromRepository(repoInfo: GitHubRepository): string {
 }
 
 /**
+ * 从 GitHub 仓库 URL 路径中解析 `/releases/tag/{tag}` 的 tag（支持 URL 编码；忽略末尾 `/`）。
+ * 非该形态时返回 null。
+ */
+export function releaseTagFromGitHubPath(path: string): string | null {
+    const match = path.match(/^\/releases\/tag\/(.+)$/i);
+    if (!match) {
+        return null;
+    }
+    let raw = match[1];
+    while (raw.endsWith("/")) {
+        raw = raw.slice(0, -1);
+    }
+    if (!raw) {
+        return null;
+    }
+    try {
+        return decodeURIComponent(raw);
+    } catch {
+        return raw;
+    }
+}
+
+/**
  * 从用户输入解析 GitHub owner/repo：先识别 GitHub URL（仅 `siyuan-note/bazaar` 下 Issue/PR 从标题解析目标仓库），再识别 `owner/repo` 简写；最后用 API 校验仓库存在并返回摘要展示
  *
  * @param signal 新一次解析前 abort 时可取消未完成的 GitHub API 请求
@@ -281,6 +309,8 @@ export async function parseOwnerRepo(
 ): Promise<ParsedPackageInfo | null> {
     let owner: string;
     let repo: string;
+    /** 仅集市包仓库 URL 上的 `/releases/tag/...`；集市 Issue/PR 与短格式为 null */
+    let urlTag: string | null = null;
     const githubUrlMatch = input.match(/^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)(\/[^?#]*)?/i); // GitHub 仓库 URL：`https://github.com/owner/repo` 及可选后续路径（不含 query/hash）
     if (githubUrlMatch) {
         owner = githubUrlMatch[1];
@@ -314,11 +344,16 @@ export async function parseOwnerRepo(
             repo = titleMatch[2];
             log.info(`extract from bazaar issue/PR title: ${owner}/${repo}`);
         } else {
-            // 从集市包仓库的 URL 中提取 owner/repo
+            // 从集市包仓库的 URL 中提取 owner/repo，以及可选的 Release tag
             if (repo.length >= 4 && repo.slice(-4).toLowerCase() === ".git") {
                 repo = repo.slice(0, -4);
             }
-            log.info(`extract from GitHub URL: ${owner}/${repo}`);
+            urlTag = releaseTagFromGitHubPath(githubUrlMatch[3] ?? "");
+            if (urlTag) {
+                log.info(`extract from GitHub URL: ${owner}/${repo}@${urlTag}`);
+            } else {
+                log.info(`extract from GitHub URL: ${owner}/${repo}`);
+            }
         }
     } else {
         // 从短格式中提取 owner/repo
@@ -362,6 +397,7 @@ export async function parseOwnerRepo(
         homepageUrl: normalizeRepositoryHomepage(repoInfo.homepage),
         defaultBranch,
         licenseDisplay: licenseDisplayFromRepository(repoInfo),
+        urlTag,
     };
 }
 

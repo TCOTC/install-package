@@ -89,7 +89,7 @@ export class InstallPanelVersion {
 
     /** Release 列表更新 */
     onReleasesChanged(options: InstallReleasesPayload): void {
-        const { releases, latestTag, meta } = options;
+        const { releases, latestTag, preferredTag, meta } = options;
 
         this.releasesFirstPagePending = false;
         this.releaseLoadMoreAbort?.abort();
@@ -101,7 +101,7 @@ export class InstallPanelVersion {
         this.releasesListOwner = meta ? meta.owner : null;
         this.releasesListRepo = meta ? meta.repo : null;
         this.releasesHasMore = meta ? meta.initialPageFull : false;
-        this.applyDefaultVersionIfEmpty(latestTag);
+        this.applyDefaultVersionIfEmpty(latestTag, preferredTag);
         this.syncVersionDisplay();
         this.renderVersionList();
     }
@@ -211,7 +211,19 @@ export class InstallPanelVersion {
         return out;
     }
 
-    private applyDefaultVersionIfEmpty(latestTag: string | null): void {
+    /**
+     * 写入默认版本：
+     * - `preferredTag !== undefined`：URL 指定了 tag，强制选中（校验失败则为 `null`，回退 latest）
+     * - 否则仅在 `data.version` 为空时用 `latestTag`
+     */
+    private applyDefaultVersionIfEmpty(
+        latestTag: string | null,
+        preferredTag?: string | null,
+    ): void {
+        if (preferredTag !== undefined) {
+            this.data.version = preferredTag || latestTag || "";
+            return;
+        }
         if (this.data.version !== "") {
             return;
         }

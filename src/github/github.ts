@@ -105,11 +105,15 @@ async function fetchGitHubJson<T>(
     url: string,
     log: Logger,
     errorLabel: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    options?: { quietStatuses?: readonly number[] }
 ): Promise<T | null> {
     try {
         const response = await fetch(url, gitHubRequestInit(signal));
         if (!response.ok) {
+            if (options?.quietStatuses?.includes(response.status)) {
+                return null;
+            }
             let error = response.statusText;
             if (response.status === 403) {
                 const quota = await fetchGitHubRateLimit(signal);
@@ -141,17 +145,47 @@ export async function getRepositoryInfo(
     return fetchGitHubJson<GitHubRepository>(url, log, i18n.githubGetRepositoryInfoFailed, signal);
 }
 
+/**
+ * 获取指定 tag 的 Release；`version` 为空时先请求 `/releases/latest`。
+ * 仅有预览版时该接口为 404；默认再回退为发布时间最新的已发布 Release。
+ */
 export async function getReleaseInfo(
     owner: string,
     repo: string,
     version: string,
     log: Logger,
-    signal: AbortSignal
+    signal: AbortSignal,
+    options?: { fallbackToNewestWhenNoLatest?: boolean }
 ): Promise<GitHubRelease | null> {
-    const url = version
-        ? `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(version)}`
-        : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
-    return fetchGitHubJson<GitHubRelease>(url, log, i18n.githubGetReleaseInfoFailed, signal);
+    if (version) {
+        const url = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(version)}`;
+        return fetchGitHubJson<GitHubRelease>(url, log, i18n.githubGetReleaseInfoFailed, signal);
+    }
+    const latestUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+    // 仅有预览版 / 尚无正式版时 GitHub 返回 404，属预期
+    const latest = await fetchGitHubJson<GitHubRelease>(
+        latestUrl,
+        log,
+        i18n.githubGetReleaseInfoFailed,
+        signal,
+        { quietStatuses: [404] }
+    );
+    if (latest || signal.aborted) {
+        return latest;
+    }
+    if (options?.fallbackToNewestWhenNoLatest === false) {
+        return null;
+    }
+    const page = await listReleasesPage(owner, repo, log, signal, 1, 1);
+    if (!page || page.rows.length === 0) {
+        return null;
+    }
+    return getReleaseInfo(owner, repo, page.rows[0].tag, log, signal);
+}
+
+/** 正式 latest 缺失时，从已按发布时间降序排列的列表取最新 tag；无则 null */
+export function fallbackLatestTagFromRows(rows: InstallReleaseRow[]): string | null {
+    return rows[0]?.tag ?? null;
 }
 
 /** 拉取单页已发布 Release（不含草稿）；`pageFull` 依据 API 返回的原始数组长度是否达到 `perPage` */

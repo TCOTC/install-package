@@ -1,5 +1,6 @@
 import { i18n } from "../infra/i18n";
 import {
+    fallbackLatestTagFromRows,
     getReleaseInfo,
     githubRawRootFileUrl,
     listReleasesPage,
@@ -325,16 +326,16 @@ export class RepoParser {
         urlTag: string | null,
     ): Promise<void> {
         this.hooks.onRepoReleasesEvent?.({ type: "fetchStart" });
-        // 始终拉 latest 以标记「（最新）」；URL 带了 tag 时并行校验该 Release（含 pre-release）
+        // 拉正式 latest 以标记「（最新）」；无正式版时由列表回退。URL 带了 tag 时并行校验该 Release（含预览版）
         const [latestRelease, page1, urlTagRelease] = await Promise.all([
-            getReleaseInfo(owner, repo, "", this.log, signal),
+            getReleaseInfo(owner, repo, "", this.log, signal, { fallbackToNewestWhenNoLatest: false }),
             listReleasesPage(owner, repo, this.log, signal, 1),
             urlTag ? getReleaseInfo(owner, repo, urlTag, this.log, signal) : Promise.resolve(null),
         ]);
         if (signal.aborted) {
             return;
         }
-        const latestTag = typeof latestRelease?.tag_name === "string" ? latestRelease.tag_name : null;
+        let latestTag = typeof latestRelease?.tag_name === "string" ? latestRelease.tag_name : null;
 
         let preferredTag: string | null | undefined;
         let preferredRow: InstallReleaseRow | null = null;
@@ -353,6 +354,9 @@ export class RepoParser {
         }
 
         if (page1 === null) {
+            if (!latestTag) {
+                latestTag = preferredRow ? preferredRow.tag : null;
+            }
             this.hooks.onRepoReleasesEvent?.({
                 type: "data",
                 data: {
@@ -367,6 +371,10 @@ export class RepoParser {
         const releases = preferredRow
             ? mergeInstallReleasePages(page1.rows, [preferredRow])
             : page1.rows;
+        // 无正式 latest（例如仅有预览版）时，自动选发布时间最新的版本；无任何版本则保持 null
+        if (!latestTag) {
+            latestTag = fallbackLatestTagFromRows(releases);
+        }
         this.hooks.onRepoReleasesEvent?.({
             type: "data",
             data: {

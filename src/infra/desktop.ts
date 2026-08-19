@@ -49,6 +49,6 @@ export async function openDirectory(path: string): Promise<void> {
     }
 }
 
-export function openDevTools(): void {
-    electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "openDevTools");
+export function toggleDevTools(): void {
+    electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "toggleDevTools");
 }

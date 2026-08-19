@@ -3,7 +3,7 @@ import { i18n } from "../infra/i18n";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import { message } from "../infra/message";
-import { electron, openDirectory, openDevTools } from "../infra/desktop";
+import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS, type Logger } from "./logger";
 import { InstallPanelUiStore, isRepoParseReadyForInstall, type InstallButtonState } from "./uiStore";
 import { InstallPanelVersion } from "./version";
@@ -93,7 +93,7 @@ function renderInstallPanel(root: HTMLElement): void {
             <div class="jcip-action__install jcip-action__install--action">${actionInstallCore}
             </div>
             <div class="jcip-action__tools">
-                <button data-type="open-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
+                <button data-type="toggle-devtools" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}">${i18n.openDevTools}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/plugins">${i18n.openPluginsDir}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/storage/petal">${i18n.openPetalDir}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="conf/appearance/themes">${i18n.openThemesDir}</button>
@@ -260,8 +260,8 @@ export class InstallPanel {
             }
             const button = target.closest("button[data-type]") as HTMLButtonElement | null;
             switch (button?.dataset.type) {
-                case "open-devtools":
-                    openDevTools();
+                case "toggle-devtools":
+                    toggleDevTools();
                     break;
                 case "open-directory":
                     await openDirectory(button.title);

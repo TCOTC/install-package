@@ -5,28 +5,47 @@
 import { Setting, type Plugin } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { message } from "../infra/message";
-import { decryptToken, deriveTokenVaultFileName, encryptToken } from "../infra/tokenCrypto";
+import { createTokenVault, seedFromSiyuanSystem } from "siyuan-token-vault";
+import type { TokenVault } from "siyuan-token-vault";
 
-/** 内存中的明文 Token，用于设置页展示与 API；不落盘 */
-let githubToken = "";
-/** 本地存储的密文 Token 文件路径，用于加密保存与读取 */
-let tokenStorageName = "";
+/**
+ * 模块级 Token Vault 单例（首次使用时按当前插件实例惰性初始化）
+ * 内存中的明文 Token 由 vault 维护（cachedToken），不单独落盘；插件关闭时 clear 即可
+ */
+let tokenVault: TokenVault | undefined;
+
+/**
+ * 获取（或惰性创建）Token Vault
+ * 密钥派生种子绑定当前工作空间与设备特征：换设备或换工作空间后 seed 变化，
+ * 旧密文无法解密（文件名亦随之变化，视为未保存），需在新环境重新配置 Token
+ */
+function getTokenVault(plugin: Plugin): TokenVault {
+    if (!tokenVault) {
+        const seed = seedFromSiyuanSystem(window.siyuan.config?.system);
+        tokenVault = createTokenVault({
+            seed,
+            dir: "secret",
+            storage: {
+                save: (name, content) => plugin.saveData(name, content),
+                load: async (name) => {
+                    const data = await plugin.loadData(name);
+                    // 思源 loadData 无文件时返回空串，归一为 null
+                    return typeof data === "string" && data.trim() ? data : null;
+                },
+                remove: (name) => plugin.removeData(name),
+            },
+        });
+    }
+    return tokenVault;
+}
 
 export function getGitHubToken(): string {
-    return githubToken;
+    return tokenVault?.cachedToken ?? "";
 }
 
-/** 插件关闭时清空内存中的 Token 与缓存路径 */
+/** 插件关闭时清空内存中的 Token（磁盘密文保留，下次加载自动恢复） */
 export function clearRuntimeSecretCache(): void {
-    githubToken = "";
-    tokenStorageName = "";
-}
-
-async function getTokenStorageName(): Promise<string> {
-    if (!tokenStorageName) {
-        tokenStorageName = await deriveTokenVaultFileName();
-    }
-    return `secret/${tokenStorageName}`;
+    tokenVault?.clear();
 }
 
 /**
@@ -63,33 +82,25 @@ export function createSetting(plugin: Plugin): Setting {
     const setting = new Setting({
         confirmCallback: async () => {
             const token = tokenInput.value.trim();
+            const vault = getTokenVault(plugin);
             // 删除 Token
             if (!token) {
                 try {
-                    await plugin.removeData(await getTokenStorageName());
+                    await vault.removeToken();
                 } catch {
                     message(i18n.githubTokenRemoveFailed);
                     return;
                 }
-                githubToken = "";
                 return;
             }
 
-            // 加密 Token 保存到磁盘
-            let enc = "";
+            // 加密 Token 保存到磁盘（加密与落盘任一失败统一提示）
             try {
-                enc = await encryptToken(token);
-            } catch {
-                message(i18n.githubTokenObfuscateFailed);
-                return;
-            }
-            try {
-                await plugin.saveData(await getTokenStorageName(), enc);
+                await vault.saveToken(token);
             } catch {
                 message(i18n.githubTokenSaveFailed);
                 return;
             }
-            githubToken = token;
         },
     });
 
@@ -103,7 +114,7 @@ export function createSetting(plugin: Plugin): Setting {
         title: i18n.githubTokenPasteTitle,
         direction: "row",
         createActionElement: () => {
-            tokenInput.value = githubToken;
+            tokenInput.value = getGitHubToken();
             return tokenInputWrapper;
         },
     });
@@ -113,20 +124,19 @@ export function createSetting(plugin: Plugin): Setting {
 
 /** 从磁盘恢复已保存的设置到运行时 */
 export async function loadSetting(plugin: Plugin): Promise<void> {
+    const vault = getTokenVault(plugin);
     try {
-        githubToken = "";
-        // 从磁盘加载 Token
-        const data: unknown = await plugin.loadData(await getTokenStorageName());
-        if (typeof data !== "string" || !data.trim()) {
+        // 磁盘上无密文（首次启用或换了设备/工作空间）时静默，不视为解密失败
+        if (!(await vault.hasStoredToken())) {
+            vault.clear();
             return;
         }
         // 解密 Token
-        const token = await decryptToken(data.trim());
+        const token = await vault.loadToken();
         if (token === null) {
             message(i18n.githubTokenDecryptFailed);
             return;
         }
-        githubToken = token;
     } catch {
         /* 首次启用或无历史数据时忽略 */
     }

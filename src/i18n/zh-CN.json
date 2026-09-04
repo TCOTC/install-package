@@ -100,7 +100,6 @@
   "githubTokenPasteTitle": "粘贴令牌 (Token)",
   "githubTokenPlaceholder": "ghp_…",
   "githubTokenDecryptFailed": "无法还原已保存的 Token，请重新配置 Token 后保存",
-  "githubTokenObfuscateFailed": "混淆保存失败，请确认已登录思源后再试",
   "githubTokenSaveFailed": "保存设置失败",
   "githubTokenRemoveFailed": "删除 Token 失败",
   "githubTokenExpiredTitle": "GitHub Token 过期或无效（HTTP 401）",

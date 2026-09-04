@@ -100,7 +100,6 @@
   "githubTokenPasteTitle": "Paste token",
   "githubTokenPlaceholder": "ghp_…",
   "githubTokenDecryptFailed": "Could not restore the saved token, please reconfigure the Token and save again",
-  "githubTokenObfuscateFailed": "Failed to obfuscate the token. Make sure you are signed in to SiYuan",
   "githubTokenSaveFailed": "Failed to save settings",
   "githubTokenRemoveFailed": "Failed to remove token",
   "githubTokenExpiredTitle": "GitHub Token expired or invalid (HTTP 401)",

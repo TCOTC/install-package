@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      siyuan-token-vault:
+        specifier: github:TCOTC/siyuan-token-vault#8b666168a554f3038b58f0aed9823dd74a5a185d
+        version: https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.3.3
@@ -1755,6 +1759,11 @@ packages:
   siyuan@https://codeload.github.com/siyuan-note/petal/tar.gz/d78520303ddafef6d30634668e3eb292001b9d3c:
     resolution: {tarball: https://codeload.github.com/siyuan-note/petal/tar.gz/d78520303ddafef6d30634668e3eb292001b9d3c}
     version: 1.1.9
+
+  siyuan-token-vault@https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d:
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d}
+    version: 0.1.1
+    engines: {node: '>=20'}
 
   slash@4.0.0:
     resolution: {integrity: sha512-3dOsAHXXUkQTpOYcoAxLIorMTp4gIQr5IW3iVb7A7lFIp0VHhnynm9izx6TssdrIcVIESAlVjtnO2K8bg+Coew==}
@@ -3692,6 +3701,8 @@ snapshots:
   shebang-regex@3.0.0: {}
 
   siyuan@https://codeload.github.com/siyuan-note/petal/tar.gz/d78520303ddafef6d30634668e3eb292001b9d3c: {}
+
+  siyuan-token-vault@https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d: {}
 
   slash@4.0.0: {}
 

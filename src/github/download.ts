@@ -10,7 +10,8 @@ export async function downloadPackage(
 ): Promise<{
     blob: Blob;
     fileName: string;
-    packageName: string;
+    /** 仅由下载 URL 推得的仓库名，仅用于日志与「与元数据包名是否一致」的提示；不参与安装路径计算 */
+    repoPackageName: string;
 } | null> {
     const signal = installAbort.signal;
     // 配置下载超时
@@ -57,15 +58,15 @@ export async function downloadPackage(
 
     log.info("File validation passed");
 
-    // 从 URL 解析包名（与 install 阶段解压目录名、元数据校验一致）
-    const packageName = extractPackageNameFromUrl(downloadUrl);
-    if (!packageName) {
+    // 从 URL 解析仓库名，仅用于日志与提示；安装目录名一律以元数据包名为准
+    const repoPackageName = extractPackageNameFromUrl(downloadUrl);
+    if (!repoPackageName) {
         log.warn(i18n.packageNameFromUrlFailed);
         return null;
     }
-    log.info(`Package name extracted from URL: ${packageName}`);
+    log.info(`Repository name extracted from URL: ${repoPackageName}`);
 
-    return { blob, fileName, packageName };
+    return { blob, fileName, repoPackageName };
 }
 
 /**

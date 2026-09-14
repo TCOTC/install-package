@@ -40,6 +40,13 @@ const METADATA_JSON_FILES = [
 ];
 
 /**
+ * 解压临时目录名：刻意与仓库名/元数据包名都不相关。
+ * 若直接把仓库名当解压目录名，遇到「仓库名与元数据包名仅差大小写」的包（如 Aptlantis-Assembly /
+ * aptlantis-assembly）时，在大小写不敏感的文件系统上目标目录会被判定为已存在而导致改名失败。
+ */
+const EXTRACT_STAGING_DIR = "pkg";
+
+/**
  * 根据已列举的目录项识别集市包类型（根目录须包含一个元数据 json）
  */
 function getPackageType(entries: ReadDirEntry[], log: Logger): string | null {
@@ -60,12 +67,13 @@ function getPackageType(entries: ReadDirEntry[], log: Logger): string | null {
 
 /**
  * 解析解压后的集市包根路径并列举其内容：若目录内仅有单个子文件夹，则视其为包根（与 GitHub Release 常见「多包一层」结构一致）；
- * 否则沿用当前路径。子文件夹名须与 `packageName` 一致以便 `globalCopyFiles` 安装目录名正确，不一致时先重命名。
+ * 否则沿用当前路径。
+ *
+ * 此处不做任何重命名 —— 目录名与仓库名无关，最终一律改名为元数据包名（见 `installPackage`）。
  * 最终路径与首次列举路径相同时复用第一次 readDir 结果，避免重复请求。
  */
 async function resolveExtractRoot(
     outerExtractPath: string,
-    packageName: string,
     log: Logger
 ): Promise<{ path: string; entries: ReadDirEntry[] } | null> {
     const outerEntries = await readDir(outerExtractPath, log);
@@ -73,32 +81,18 @@ async function resolveExtractRoot(
         return null;
     }
 
-    let finalPath = outerExtractPath;
-
     const only = outerEntries[0];
     if (outerEntries.length === 1 && only.isDir && typeof only.name === "string") {
         const innerPath = `${outerExtractPath}/${only.name}`;
-        if (only.name === packageName) {
-            log.info(`Detected a single top-level directory, using as marketplace package root: ${innerPath}`);
-            finalPath = innerPath;
-        } else {
-            const renamedPath = `${outerExtractPath}/${packageName}`;
-            log.warn(`The single top-level directory name does not match the package name. Renaming to match installation path: ${innerPath} -> ${renamedPath}`);
-            if (!(await renameFile(innerPath, renamedPath, log))) {
-                return null;
-            }
-            finalPath = renamedPath;
+        log.info(`Detected a single top-level directory, using as marketplace package root: ${innerPath}`);
+        const entries = await readDir(innerPath, log);
+        if (!entries) {
+            return null;
         }
+        return { path: innerPath, entries };
     }
 
-    const entries =
-        finalPath === outerExtractPath
-            ? outerEntries
-            : await readDir(finalPath, log);
-    if (!entries) {
-        return null;
-    }
-    return { path: finalPath, entries };
+    return { path: outerExtractPath, entries: outerEntries };
 }
 
 export async function getPackageName(extractPath: string, packageType: string, log: Logger): Promise<string | null> {
@@ -312,12 +306,12 @@ export async function setPackageEnabled(
 export async function installPackage(pack: {
     blob: Blob | null;
     fileName: string;
-    packageName: string;
+    repoPackageName: string;
 }, log: Logger): Promise<{
     packageType: string;
     packageName: string
 } | null> {
-    const { blob, fileName, packageName } = pack;
+    const { blob, fileName, repoPackageName } = pack;
     if (!blob) {
         log.warn(i18n.packageInstallFailed);
         return null;
@@ -350,7 +344,7 @@ export async function installPackage(pack: {
         return { packageType, packageName: pkgName };
     };
 
-    log.info(`Starting package installation: ${fileName}, name: ${packageName}`);
+    log.info(`Starting package installation: ${fileName}, repository name: ${repoPackageName}`);
 
     const tempFileName = `temp_${tempId}_${fileName}`;
     tempPath = `temp/export/${tempFileName}`;
@@ -365,14 +359,16 @@ export async function installPackage(pack: {
     // 内核已落盘，去掉渲染进程侧对整包 ZIP 的引用（含调用方 downloadResult.blob）
     pack.blob = null;
 
-    extractPath = `${extractRootDir}/${packageName}`;
+    // 解压目录使用与仓库名无关的中性名：仓库名可能与元数据包名仅差大小写（如 Aptlantis-Assembly /
+    // aptlantis-assembly），在大小写不敏感的文件系统上会与后面「改名为元数据包名」这一步自相冲突
+    extractPath = `${extractRootDir}/${EXTRACT_STAGING_DIR}`;
     log.info(`Extracting to final directory: ${extractPath}`);
     if (!(await unzipFile(tempPath, extractPath, log))) {
         return bail();
     }
     log.info(`Extraction completed: ${extractPath}`);
 
-    const extractRootResult = await resolveExtractRoot(extractPath, packageName, log);
+    const extractRootResult = await resolveExtractRoot(extractPath, log);
     if (extractRootResult === null) {
         return bail();
     }
@@ -391,14 +387,15 @@ export async function installPackage(pack: {
     if (!metadataPackageName) {
         return bail();
     }
-    log.info(`Package name from metadata: ${metadataPackageName}, repository name: ${packageName}`);
+    log.info(`Package name from metadata: ${metadataPackageName}, repository name: ${repoPackageName}`);
 
+    // 安装目录名一律以元数据包名为准，仓库名不参与任何路径计算
     const installPackageName = metadataPackageName;
 
-    if (metadataPackageName !== packageName) {
+    if (metadataPackageName !== repoPackageName) {
         log.warn(i18n.packageNameMismatch
             .replace("{metadataName}", metadataPackageName)
-            .replace("{repoName}", packageName),
+            .replace("{repoName}", repoPackageName),
         );
     }
 
@@ -412,13 +409,29 @@ export async function installPackage(pack: {
             return bail();
         }
         const renamedExtractPath = `${extractParent}/${installPackageName}`;
-        if (await pathExists(renamedExtractPath)) {
+        // 兜底：若压缩包内层目录名与元数据包名仅差大小写（如 aptlantis-assembly / Aptlantis-Assembly），
+        // 在大小写不敏感的文件系统（Windows / macOS）上目标会被判定为「已存在」，但其实是同一个目录，并非命名冲突
+        const caseOnlyRename = extractBasename.toLowerCase() === installPackageName.toLowerCase();
+        if (!caseOnlyRename && await pathExists(renamedExtractPath)) {
             log.warn(`Cannot rename extract directory: target already exists [${renamedExtractPath}]`);
             return bail();
         }
-        log.info(`Renaming extract directory to metadata package name: ${extractPath} -> ${renamedExtractPath}`);
-        if (!(await renameFile(extractPath, renamedExtractPath, log))) {
-            return bail();
+        if (caseOnlyRename) {
+            // 大小写不敏感的文件系统上直接改名到目标名不会真正改变大小写，且内核 renameFile 会因
+            // 「目标已存在」返回 409，因此先改到中间名再改到目标名
+            const stagingExtractPath = `${extractParent}/staging_${tempId}`;
+            log.info(`Renaming extract directory to metadata package name (case-only, via staging path): ${extractPath} -> ${stagingExtractPath} -> ${renamedExtractPath}`);
+            if (!(await renameFile(extractPath, stagingExtractPath, log))) {
+                return bail();
+            }
+            if (!(await renameFile(stagingExtractPath, renamedExtractPath, log))) {
+                return bail();
+            }
+        } else {
+            log.info(`Renaming extract directory to metadata package name: ${extractPath} -> ${renamedExtractPath}`);
+            if (!(await renameFile(extractPath, renamedExtractPath, log))) {
+                return bail();
+            }
         }
         extractPath = renamedExtractPath;
     }

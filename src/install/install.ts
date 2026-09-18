@@ -14,30 +14,35 @@ import {
 } from "../infra/kernelClient";
 import type { Logger } from "../ui/logger";
 
-export function getInstallPath(packageType: string): string {
-    switch (packageType) {
-        case "plugin":
-            return "data/plugins";
-        case "widget":
-            return "data/widgets";
-        case "template":
-            return "data/templates";
-        case "theme":
-            return "conf/appearance/themes";
-        case "icon":
-            return "conf/appearance/icons";
-        default:
-            throw new Error(`Unknown package type: ${packageType}`);
-    }
+/**
+ * 各类型集市包在工作空间内的安装目录
+ *
+ * 主题和图标自思源 v3.8.5 起存放在 data 目录，内核按整包读写并维护安装状态
+ */
+const INSTALL_PATHS = {
+    plugin: "data/plugins",
+    widget: "data/widgets",
+    template: "data/templates",
+    theme: "data/themes",
+    icon: "data/icons",
+} as const;
+
+export type PackageType = keyof typeof INSTALL_PATHS;
+
+/**
+ * 元数据文件名（`plugin.json`）转换为集市包类型（`plugin`）
+ *
+ * 包类型只能由 `INSTALL_PATHS` 的自有键推导出来，非元数据文件名返回 null；
+ * 用 `hasOwnProperty` 而非 `in`，避免 `constructor.json` 这类名字命中原型链上的属性
+ */
+function toPackageType(fileName: string): PackageType | null {
+    const packageType = fileName.endsWith(".json") ? fileName.slice(0, -5) : "";
+    return Object.prototype.hasOwnProperty.call(INSTALL_PATHS, packageType) ? packageType as PackageType : null;
 }
 
-const METADATA_JSON_FILES = [
-    "plugin.json",
-    "widget.json",
-    "template.json",
-    "theme.json",
-    "icon.json",
-];
+export function getInstallPath(packageType: PackageType): string {
+    return INSTALL_PATHS[packageType];
+}
 
 /**
  * 解压临时目录名：刻意与仓库名/元数据包名都不相关。
@@ -49,10 +54,11 @@ const EXTRACT_STAGING_DIR = "pkg";
 /**
  * 根据已列举的目录项识别集市包类型（根目录须包含一个元数据 json）
  */
-function getPackageType(entries: ReadDirEntry[], log: Logger): string | null {
+function getPackageType(entries: ReadDirEntry[], log: Logger): PackageType | null {
     const foundTypes = entries
-        .filter((item) => !item.isDir && typeof item.name === "string" && METADATA_JSON_FILES.includes(item.name))
-        .map((item) => item.name.slice(0, -5));
+        .filter((item) => !item.isDir && typeof item.name === "string")
+        .map((item) => toPackageType(item.name))
+        .filter((packageType): packageType is PackageType => packageType !== null);
 
     if (foundTypes.length === 0) {
         log.warn(i18n.noMetadataFiles);
@@ -95,7 +101,7 @@ async function resolveExtractRoot(
     return { path: outerExtractPath, entries: outerEntries };
 }
 
-export async function getPackageName(extractPath: string, packageType: string, log: Logger): Promise<string | null> {
+export async function getPackageName(extractPath: string, packageType: PackageType, log: Logger): Promise<string | null> {
     log.info(`Extracting package name from metadata: ${extractPath}, type: ${packageType}`);
 
     const metadataPath = `${extractPath}/${packageType}.json`;
@@ -183,7 +189,7 @@ function getSwitchAppearanceMode(modes: number[]): string {
 }
 
 export async function setPackageEnabled(
-    packageType: string,
+    packageType: PackageType,
     packageName: string,
     enableAfterInstall: boolean,
     log: Logger
@@ -285,7 +291,7 @@ export async function setPackageEnabled(
             } else {
                 // 禁用时重置为默认图标
                 if (wasCurrentIcon) {
-                    const resetIcon = await fetchSyncPost("/api/setting/setIcon", { icon: "material" });
+                    const resetIcon = await fetchSyncPost("/api/setting/setIcon", { icon: "litheness" });
                     if (resetIcon.code !== 0) {
                         log.warn(`Failed to reset icon to default: ${resetIcon.msg}`);
                         return;
@@ -308,7 +314,7 @@ export async function installPackage(pack: {
     fileName: string;
     repoPackageName: string;
 }, log: Logger): Promise<{
-    packageType: string;
+    packageType: PackageType;
     packageName: string
 } | null> {
     const { blob, fileName, repoPackageName } = pack;
@@ -339,7 +345,7 @@ export async function installPackage(pack: {
         return null;
     };
 
-    const succeed = async (packageType: string, pkgName: string) => {
+    const succeed = async (packageType: PackageType, pkgName: string) => {
         await runCleanup();
         return { packageType, packageName: pkgName };
     };

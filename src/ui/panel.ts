@@ -353,8 +353,8 @@ export class InstallPanel {
             for (const entry of entries) {
                 menu.addItem({
                     ...NO_MENU_ICON,
-                    // 仓库名与 tag 来自外部数据，转义后再拼进菜单项的 innerHTML
-                    label: escapeHtml(`${entry.owner}/${entry.repo} ${entry.version}`),
+                    // 形如 `owner/repo tag`；内容来自外部数据，转义后再拼进菜单项的 innerHTML
+                    label: escapeHtml(`${entry.owner}/${entry.repo} ${entry.tag}`),
                     click: () => {
                         this.applyInstallHistoryEntry(entry);
                     },
@@ -376,7 +376,7 @@ export class InstallPanel {
             // 按钮在菜单项内部，不阻止冒泡会连带触发「选中该历史」的回填
             event.stopPropagation();
             void (async (): Promise<void> => {
-                await removeInstallHistoryEntry(entry.owner, entry.repo, entry.version);
+                await removeInstallHistoryEntry(entry.owner, entry.repo, entry.tag);
                 this.reopenHistoryMenu(anchor, menu);
             })();
         });
@@ -401,14 +401,14 @@ export class InstallPanel {
         }, 0);
     }
 
-    /** 把历史记录中的仓库与版本填回表单，并重新解析该仓库 */
+    /** 把历史记录中的仓库与 tag 填回表单，并重新解析该仓库 */
     private applyInstallHistoryEntry(entry: InstallHistoryEntry): void {
         const url = installHistoryUrl(entry);
-        // 解析落定到该仓库时要保留刚填的版本，见 resolveVersionPin
+        // 解析落定到该仓库时要保留刚填的 tag，见 resolveVersionPin
         this.historyPickRepoKey = repoKeyFromOwnerRepo(entry.owner, entry.repo);
         this.elements.urlEl.value = url;
         this.data.url = url;
-        this.data.version = entry.version;
+        this.data.version = entry.tag;
         this.versionUI.syncDisplayFromData();
         void this.repoParser.refresh();
     }

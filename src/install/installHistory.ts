@@ -14,8 +14,8 @@ export interface InstallHistoryEntry {
     owner: string;
     /** 仓库名 */
     repo: string;
-    /** 安装时选中的 Git Tag */
-    version: string;
+    /** 安装时选中的 Git Tag（安装面板里「版本」控件的值就是 tag，不是包元数据里的版本号） */
+    tag: string;
 }
 
 /** 历史条数上限：超出后丢弃最旧的记录，避免无限增长 */
@@ -44,9 +44,9 @@ export function initInstallHistory(adapter: InstallHistoryStorage): void {
     loading = null;
 }
 
-/** 同一仓库同一版本的去重键；仓库名大小写无关 */
-function entryKey(owner: string, repo: string, version: string): string {
-    return `${owner}/${repo}@${version}`.toLowerCase();
+/** 同一仓库同一 tag 的去重键；仓库名大小写无关 */
+function entryKey(owner: string, repo: string, tag: string): string {
+    return `${owner}/${repo}@${tag}`.toLowerCase();
 }
 
 /** 单条记录的形态校验；字段缺失或为空白时按无效处理 */
@@ -55,12 +55,12 @@ function readInstallHistoryEntry(raw: unknown): InstallHistoryEntry | null {
         return null;
     }
     const record = raw as Record<string, unknown>;
-    const { owner, repo, version } = record;
-    if (typeof owner !== "string" || typeof repo !== "string" || typeof version !== "string") {
+    const { owner, repo, tag } = record;
+    if (typeof owner !== "string" || typeof repo !== "string" || typeof tag !== "string") {
         return null;
     }
-    const entry = { owner: owner.trim(), repo: repo.trim(), version: version.trim() };
-    return entry.owner !== "" && entry.repo !== "" && entry.version !== "" ? entry : null;
+    const entry = { owner: owner.trim(), repo: repo.trim(), tag: tag.trim() };
+    return entry.owner !== "" && entry.repo !== "" && entry.tag !== "" ? entry : null;
 }
 
 /**
@@ -105,8 +105,8 @@ export function mergeInstallHistoryEntry(
     entry: InstallHistoryEntry,
     limit: number = INSTALL_HISTORY_LIMIT,
 ): InstallHistoryEntry[] {
-    const key = entryKey(entry.owner, entry.repo, entry.version);
-    const rest = list.filter((item) => entryKey(item.owner, item.repo, item.version) !== key);
+    const key = entryKey(entry.owner, entry.repo, entry.tag);
+    const rest = list.filter((item) => entryKey(item.owner, item.repo, item.tag) !== key);
     return [entry, ...rest].slice(0, Math.max(0, limit));
 }
 
@@ -153,9 +153,9 @@ async function persistInstallHistory(next: InstallHistoryEntry[]): Promise<void>
  *
  * 记录写入失败只影响下次打开列表时的内容，不打断安装流程
  */
-export async function recordInstallHistory(owner: string, repo: string, version: string): Promise<void> {
+export async function recordInstallHistory(owner: string, repo: string, tag: string): Promise<void> {
     await ensureInstallHistoryLoaded();
-    await persistInstallHistory(mergeInstallHistoryEntry(entries, { owner, repo, version }));
+    await persistInstallHistory(mergeInstallHistoryEntry(entries, { owner, repo, tag }));
 }
 
 /**
@@ -163,10 +163,10 @@ export async function recordInstallHistory(owner: string, repo: string, version:
  *
  * 删掉最后一条时一并删除存储文件；记录不存在时什么也不做（不写盘、不删文件）
  */
-export async function removeInstallHistoryEntry(owner: string, repo: string, version: string): Promise<void> {
+export async function removeInstallHistoryEntry(owner: string, repo: string, tag: string): Promise<void> {
     await ensureInstallHistoryLoaded();
-    const key = entryKey(owner, repo, version);
-    const next = entries.filter((item) => entryKey(item.owner, item.repo, item.version) !== key);
+    const key = entryKey(owner, repo, tag);
+    const next = entries.filter((item) => entryKey(item.owner, item.repo, item.tag) !== key);
     if (next.length === entries.length) {
         return;
     }

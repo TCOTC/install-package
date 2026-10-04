@@ -236,7 +236,8 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
             .replace("{packageName}", installResult.packageName)
             .replace("{autoEnabled}", autoEnabledText);
         log.info(installSuccess);
-        // 只在这一刻记入历史：此前的任何失败都不算「装过」，写入失败不影响本次结果
+        // 只在这一刻记入历史：此前的任何失败都不算「装过」，写入失败不影响本次结果。
+        // `request.version` 的值一直就是 Git Tag（面板的版本控件以 tag 为值）
         void recordInstallHistory(request.owner, request.repo, request.version);
         return true;
     } catch (error) {

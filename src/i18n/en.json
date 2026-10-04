@@ -27,6 +27,7 @@
   "repoRootPreviewGroupAria": "Root preview images on the default branch",
   "repoRootPreviewIconCaption": "icon.png",
   "repoRootPreviewPreviewCaption": "preview.png",
+  "repoRootPreviewZoomIn": "View full size: {name}",
   "installProcessTitle": "Logs",
   "installProcessPlaceholder": "Relevant logs are shown while parsing and installing the package",
   "copyInstallLog": "Copy",

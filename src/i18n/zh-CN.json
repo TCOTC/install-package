@@ -27,6 +27,7 @@
   "repoRootPreviewGroupAria": "仓库默认分支根目录预览图",
   "repoRootPreviewIconCaption": "icon.png",
   "repoRootPreviewPreviewCaption": "preview.png",
+  "repoRootPreviewZoomIn": "查看大图：{name}",
   "installProcessTitle": "日志",
   "installProcessPlaceholder": "解析和安装集市包的过程中展示相关日志",
   "copyInstallLog": "复制",

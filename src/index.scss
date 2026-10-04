@@ -442,7 +442,8 @@ $jcip-repo-summary-avatar-size: 50px;
         gap: $spacing-s * 0.25;
     }
 
-    [data-jcip-preview-frame] {
+    // 缩略图框；`data-jcip-preview-frame` 是脚本查找用的钩子，样式走这个类
+    &__preview-frame {
         display: flex;
         flex: 1 1 auto;
         align-items: center;
@@ -454,6 +455,20 @@ $jcip-repo-summary-avatar-size: 50px;
         border-radius: var(--b3-border-radius);
         background-color: var(--b3-theme-surface);
         box-sizing: border-box;
+
+        // 缩略图加载成功后（`repoParser.ts` 的 RAW_PREVIEW_READY_CLASS）才提示可点击放大
+        &--ready {
+            cursor: zoom-in;
+
+            &:hover {
+                border-color: var(--b3-theme-primary);
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--b3-theme-primary);
+                outline-offset: 1px;
+            }
+        }
     }
 
     &__previews img[data-jcip-raw-img] {
@@ -465,6 +480,23 @@ $jcip-repo-summary-avatar-size: 50px;
     &__previews [data-jcip-raw-missing] {
         font-size: $font-size-s;
         color: var(--b3-theme-on-surface-light);
+    }
+}
+
+// 缩略图的放大预览对话框
+//
+// 复用思源 `b3-dialog__content` 的内边距，这里只补居中与尺寸上限：
+// 桌面端 `.b3-dialog__container` 只有 max-width: 88vw 而没有高度上限，图片不夹住会顶出视口
+.jcip-image-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img {
+        // 88vw 里再减去 `b3-dialog__content` 的左右内边距与容器边框
+        max-width: calc(88vw - 50px);
+        // 窗口很矮时 80vh 仍会顶出视口（还要留出内边距与标题栏），故再受「窗口高减去这些」约束
+        max-height: min(80vh, calc(100vh - 100px));
     }
 }
 

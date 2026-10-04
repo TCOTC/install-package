@@ -14,9 +14,30 @@ import { isSelfRepo } from "../install/selfPackage";
 import type { Logger } from "../infra/logger";
 import type { InstallPanelData } from "./panelData";
 import { REPO_SUMMARY_ATTRS } from "./repoSummaryDom";
+import { openImagePreview } from "./imagePreview";
 
 /** 简介 / 日期缺省时的占位 */
 const REPO_SUMMARY_DASH = "—";
+
+/** 缩略图加载成功后才允许点击放大；`src/index.scss` 用同一个类名给出可点样式 */
+const RAW_PREVIEW_READY_CLASS = "jcip-repo-summary__preview-frame--ready";
+
+/**
+ * 仓库默认分支根目录里的 icon.png / preview.png 缩略图
+ *
+ * 两个文件只有文件名与标题不同，模板集中在这里生成，避免两份交互属性各写一遍而失配。
+ * 缩略图加载失败时 `wireRawPreviewImages` 换成 `REPO_SUMMARY_DASH` 并保持不可交互
+ */
+function renderRawPreviewHtml(info: ParsedPackageInfo, fileName: string, caption: string): string {
+    const zoomLabel = escapeHtml(i18n.repoRootPreviewZoomIn.replace("{name}", caption));
+    return `<div class="jcip-repo-summary__preview">
+<span class="jcip__label">${escapeHtml(caption)}</span>
+<div class="jcip-repo-summary__preview-frame" data-jcip-preview-frame data-jcip-preview-caption="${escapeHtml(caption)}" role="button" tabindex="-1" aria-disabled="true" aria-label="${zoomLabel}">
+<img data-jcip-raw-img src="${escapeHtml(githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, fileName))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+<span class="fn__none" data-jcip-raw-missing>${REPO_SUMMARY_DASH}</span>
+</div>
+</div>`;
+}
 
 /** Release 列表与 `latestTag`（与 `RepoReleasesEvent` 中 `type: "data"` 的载荷一致） */
 export type InstallReleasesPayload = {
@@ -66,20 +87,8 @@ function renderResolvedRepoSummaryHtml(info: ParsedPackageInfo): string {
     const previewsBlock =
         info.defaultBranch.length > 0
             ? `<div class="jcip-repo-summary__previews" aria-label="${escapeHtml(i18n.repoRootPreviewGroupAria)}">
-<div class="jcip-repo-summary__preview">
-<span class="jcip__label">${escapeHtml(i18n.repoRootPreviewIconCaption)}</span>
-<div data-jcip-preview-frame>
-<img data-jcip-raw-img src="${escapeHtml(githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, "icon.png"))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
-<span class="fn__none" data-jcip-raw-missing>${REPO_SUMMARY_DASH}</span>
-</div>
-</div>
-<div class="jcip-repo-summary__preview">
-<span class="jcip__label">${escapeHtml(i18n.repoRootPreviewPreviewCaption)}</span>
-<div data-jcip-preview-frame>
-<img data-jcip-raw-img src="${escapeHtml(githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, "preview.png"))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
-<span class="fn__none" data-jcip-raw-missing>${REPO_SUMMARY_DASH}</span>
-</div>
-</div>
+${renderRawPreviewHtml(info, "icon.png", i18n.repoRootPreviewIconCaption)}
+${renderRawPreviewHtml(info, "preview.png", i18n.repoRootPreviewPreviewCaption)}
 </div>`
             : "";
     return `<div class="jcip-repo-summary__body">
@@ -153,28 +162,59 @@ export type RepoParserHooks = {
     onRepoReleasesEvent?: (event: RepoReleasesEvent) => void;
 };
 
+/**
+ * 缩略图加载成功后接入放大预览（点击或回车 / 空格）
+ *
+ * 加载失败（仓库根目录没有该文件）时保持不可交互：既是空图，也不该弹出对话框
+ */
 function wireRawPreviewImages(root: HTMLElement): void {
     for (const img of root.querySelectorAll<HTMLImageElement>("img[data-jcip-raw-img]")) {
-        const frame = img.closest("[data-jcip-preview-frame]");
-        const miss = frame?.querySelector("[data-jcip-raw-missing]");
-        if (!(miss instanceof HTMLElement)) {
+        const frame = img.closest<HTMLElement>("[data-jcip-preview-frame]");
+        const miss = frame?.querySelector<HTMLElement>("[data-jcip-raw-missing]");
+        if (!frame || !miss) {
             continue;
         }
-        img.addEventListener(
-            "error",
-            () => {
-                img.classList.add("fn__none");
-                miss.classList.remove("fn__none");
-            },
-            { once: true },
-        );
-        img.addEventListener(
-            "load",
-            () => {
-                miss.classList.add("fn__none");
-            },
-            { once: true },
-        );
+        const markMissing = () => {
+            img.classList.add("fn__none");
+            miss.classList.remove("fn__none");
+            frame.classList.remove(RAW_PREVIEW_READY_CLASS);
+            frame.setAttribute("aria-disabled", "true");
+            frame.tabIndex = -1;
+        };
+        const markReady = () => {
+            miss.classList.add("fn__none");
+            frame.classList.add(RAW_PREVIEW_READY_CLASS);
+            frame.setAttribute("aria-disabled", "false");
+            frame.tabIndex = 0;
+        };
+        // 命中浏览器缓存时 load / error 不会再触发，先按当前状态定一次
+        if (img.complete) {
+            if (img.naturalWidth > 0) {
+                markReady();
+            } else {
+                markMissing();
+            }
+        } else {
+            img.addEventListener("load", markReady, { once: true });
+            img.addEventListener("error", markMissing, { once: true });
+        }
+
+        const openPreview = () => {
+            if (img.naturalWidth === 0) {
+                // 图片还没加载完（或已失败）时不打开：`markMissing` 与 `tabIndex` 已挡住大多数入口
+                return;
+            }
+            openImagePreview(img.src, frame.getAttribute("data-jcip-preview-caption") ?? "");
+        };
+        frame.addEventListener("click", openPreview);
+        frame.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+                return;
+            }
+            // 空格会滚动页面，须拦下
+            event.preventDefault();
+            openPreview();
+        });
     }
 }
 

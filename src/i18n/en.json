@@ -99,6 +99,7 @@
   "openPackageFolder": "Open Package Folder",
   "openPluginStorageFolder": "Open Plugin Storage Folder",
   "switchLanguage": "Language",
+  "switchLanguageFailed": "Failed to switch interface language: ",
   "openDevTools": "Developer Tools",
   "openPluginSettings": "Plugin Settings",
   "openDirectoryFailed": "Failed to open directory: ",

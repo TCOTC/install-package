@@ -10,7 +10,7 @@ import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
 import { directoryExists } from "../infra/kernelClient";
-import { currentLocale, localeOptions, switchLocale } from "../settings/locale";
+import { currentInterfaceLang, interfaceLangOptions, switchInterfaceLang } from "../settings/interfaceLanguage";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
@@ -888,20 +888,21 @@ export class InstallPanel {
     }
 
     /**
-     * 「界面语言」菜单：切换后落盘并重载界面
+     * 「界面语言」菜单：切换思源笔记的界面语言
      *
-     * 只改内存里的文案不会影响已经建好的 DOM，重载界面才能让设置面板、页签标题一并跟着变；
+     * 用于快速检查集市包的 i18n：切的是整个思源界面，不只是本插件的文字；
+     * 提交后由思源自行重载界面（内核广播 `setAppearance`，前端检测到 `lang` 变化后重载），插件不做重载。
      * 调用方需先 `stopPropagation`，否则菜单会被思源的全局点击处理立即收起
      */
     private openLanguageMenu(button: HTMLButtonElement): void {
         const menu = new Menu("install-package-language");
-        const current = currentLocale();
-        for (const option of localeOptions()) {
+        const current = currentInterfaceLang();
+        for (const option of interfaceLangOptions()) {
             menu.addItem({
                 label: option.label,
                 checked: option.lang === current,
                 click: () => {
-                    void switchLocale(option.lang);
+                    void switchInterfaceLang(option.lang);
                 },
             });
         }

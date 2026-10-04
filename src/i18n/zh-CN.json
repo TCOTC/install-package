@@ -99,6 +99,7 @@
   "openPackageFolder": "打开集市包文件夹",
   "openPluginStorageFolder": "打开插件存储文件夹",
   "switchLanguage": "界面语言",
+  "switchLanguageFailed": "切换界面语言失败：",
   "openDevTools": "开发者工具",
   "openPluginSettings": "插件设置",
   "openDirectoryFailed": "打开目录失败：",

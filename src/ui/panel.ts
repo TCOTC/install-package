@@ -603,6 +603,10 @@ export class InstallPanel {
                     await openDirectory(button.title);
                     break;
                 case "switch-language":
+                    // 菜单是在本次点击的处理里新建的，必须阻止事件继续冒泡：
+                    // 思源在 window 上监听 click 并调 globalClickHideMenu（app/src/menus/menuClick.ts），
+                    // 点中的按钮不在菜单里，新建的菜单会被当成「点了菜单外面」立刻 remove
+                    event.stopPropagation();
                     this.openLanguageMenu(button);
                     break;
                 default:
@@ -847,7 +851,8 @@ export class InstallPanel {
     /**
      * 「界面语言」菜单：切换后落盘并重载界面
      *
-     * 只改内存里的文案不会影响已经建好的 DOM，重载界面才能让设置面板、页签标题一并跟着变
+     * 只改内存里的文案不会影响已经建好的 DOM，重载界面才能让设置面板、页签标题一并跟着变；
+     * 调用方需先 `stopPropagation`，否则菜单会被思源的全局点击处理立即收起
      */
     private openLanguageMenu(button: HTMLButtonElement): void {
         const menu = new Menu("install-package-language");

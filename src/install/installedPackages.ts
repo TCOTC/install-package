@@ -184,13 +184,20 @@ function parseInstalledPackage(
     };
 }
 
+/** 已安装集市包的读取结果；`null` 表示五类全部读取失败，调用方按「加载失败」处理 */
+export interface InstalledPackagesResult {
+    packages: InstalledPackage[];
+    /** 读取失败的类型（内核不可达或接口异常）；非空表示列表不完整，调用方应如实提示 */
+    failedTypes: KernelPackageType[];
+}
+
 /**
  * 读取全部已安装集市包
  *
- * 五类并发请求：单类失败只写一行日志并跳过，不影响其它类型；全部失败时返回 null，
- * 由调用方决定如何提示（检测类调用可静默降级）
+ * 五类并发请求：单类失败不影响其它类型，但失败的类型会记入 `failedTypes`，
+ * 使调用方能区分「确实一个包都没装」与「有几类没读到」；五类全失败时返回 `null`
  */
-export async function listInstalledPackages(log: Logger): Promise<InstalledPackage[] | null> {
+export async function listInstalledPackages(log: Logger): Promise<InstalledPackagesResult | null> {
     const responses = await Promise.all(KERNEL_PACKAGE_TYPES.map((kernelType) => {
         return fetchSyncPost(
             INSTALLED_PACKAGES_API[kernelType],
@@ -199,14 +206,14 @@ export async function listInstalledPackages(log: Logger): Promise<InstalledPacka
     }));
 
     const packages: InstalledPackage[] = [];
-    let failedTypes = 0;
+    const failedTypes: KernelPackageType[] = [];
     for (let i = 0; i < KERNEL_PACKAGE_TYPES.length; i++) {
         const kernelType = KERNEL_PACKAGE_TYPES[i];
         const response = responses[i];
         const type = PACKAGE_TYPE_BY_KERNEL_TYPE[kernelType];
         const rawPackages = (response.data as { packages?: unknown } | null)?.packages;
         if (response.code !== 0 || type === undefined || !Array.isArray(rawPackages)) {
-            failedTypes++;
+            failedTypes.push(kernelType);
             log.warn(i18n.installedLoadTypeFailed.replace("{type}", kernelPackageTypeLabel(kernelType)), response.msg);
             continue;
         }
@@ -216,5 +223,8 @@ export async function listInstalledPackages(log: Logger): Promise<InstalledPacka
             }
         }
     }
-    return failedTypes === KERNEL_PACKAGE_TYPES.length ? null : packages;
+    if (failedTypes.length === KERNEL_PACKAGE_TYPES.length) {
+        return null;
+    }
+    return { packages, failedTypes };
 }

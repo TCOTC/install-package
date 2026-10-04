@@ -56,6 +56,22 @@ export function emptyPackagesText(packages: InstalledPackage[], activeType: Kern
         : i18n.installedEmptyType.replace("{type}", kernelPackageTypeLabel(activeType));
 }
 
+/**
+ * 部分类型读取失败时的说明文案；无失败类型时返回空串
+ *
+ * 名用 `/` 连接：中文习惯的顿号与英文的逗号不同，而这一行不能靠硬编码分隔符区分语言，
+ * `/` 在两种语言下都无歧义
+ */
+export function partialFailedText(failedTypes: KernelPackageType[]): string {
+    if (failedTypes.length === 0) {
+        return "";
+    }
+    return i18n.installedLoadPartialFailed.replace(
+        "{types}",
+        failedTypes.map((kernelType) => kernelPackageTypeLabel(kernelType)).join("/"),
+    );
+}
+
 /** 状态行：空文本时隐藏，错误时加错误色修饰类；元素不存在时静默（列表尚未建好） */
 export function setStatusText(
     el: HTMLElement | undefined,

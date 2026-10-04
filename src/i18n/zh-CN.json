@@ -132,6 +132,7 @@
   "installedCheckAllProgress": "正在检查更新（{done}/{total}）",
   "installedLoading": "正在读取已安装的集市包...",
   "installedLoadFailed": "已安装集市包加载失败，点击「刷新」重试",
+  "installedLoadPartialFailed": "部分集市包未能列出（{types}），列表可能不完整",
   "installedLoadTypeFailed": "读取 {type} 集市包失败：",
   "installedEmpty": "当前工作空间没有已安装的集市包",
   "installedEmptyType": "没有已安装的{type}",

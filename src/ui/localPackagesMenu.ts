@@ -25,7 +25,7 @@ import {
     type KernelPackageType,
 } from "../install/installedPackages";
 import { CLOSE_ICON_ID, INFO_ICON_ID, SELECT_ICON_ID } from "./icons";
-import { emptyPackagesText, iconButton, pickDefaultType, rowKey, setStatusText } from "./installedPackageUi";
+import { emptyPackagesText, iconButton, partialFailedText, pickDefaultType, rowKey, setStatusText } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "../infra/logger";
 
 /** 给菜单的 `.b3-menu__items` 加的类：让工具栏与滚动区在里面分列（样式定义在 `index.scss`） */
@@ -60,6 +60,8 @@ export class LocalPackagesMenu {
     private statusEl?: HTMLParagraphElement;
     /** 已安装的集市包；null 表示还没读到 */
     private packages: InstalledPackage[] | null = null;
+    /** 上次读取失败的类型；非空时状态行要说明列表不完整 */
+    private failedTypes: KernelPackageType[] = [];
     /** 当前查看的包类型 */
     private activeType: KernelPackageType = "plugins";
     /** 主题、图标的外观切换进行中；它们会改写同一份外观配置并重刷列表，期间只接受一次操作 */
@@ -85,17 +87,18 @@ export class LocalPackagesMenu {
      * 调用方等返回 true 之后再展示菜单。返回 false 表示读取失败，此时不建任何 DOM
      */
     async start(): Promise<boolean> {
-        const packages = await listInstalledPackages(this.log);
-        if (this.destroyed || packages === null) {
+        const result = await listInstalledPackages(this.log);
+        if (this.destroyed || result === null) {
             return false;
         }
-        this.packages = packages;
+        this.packages = result.packages;
+        this.failedTypes = result.failedTypes;
         this.renderRoot();
         this.pickDefaultType();
         this.syncTabs();
         this.renderMaster();
         this.renderRows();
-        this.setStatus(this.emptyStatusText(), false);
+        this.setStatus(this.statusText(), this.failedTypes.length > 0);
         return true;
     }
 
@@ -144,16 +147,20 @@ export class LocalPackagesMenu {
      */
     private async reloadSilently(): Promise<void> {
         const seq = ++this.loadSeq;
-        const packages = await listInstalledPackages(this.log);
-        if (this.destroyed || seq !== this.loadSeq || packages === null || this.sameToggleState(packages)) {
+        const result = await listInstalledPackages(this.log);
+        if (this.destroyed || seq !== this.loadSeq || result === null) {
             return;
         }
-        this.packages = packages;
+        this.failedTypes = result.failedTypes;
+        if (this.sameToggleState(result.packages)) {
+            return;
+        }
+        this.packages = result.packages;
         this.pickDefaultType();
         this.syncTabs();
         this.renderMaster();
         this.renderRows();
-        this.setStatus(this.emptyStatusText(), false);
+        this.setStatus(this.statusText(), this.failedTypes.length > 0);
     }
 
     /**
@@ -181,6 +188,11 @@ export class LocalPackagesMenu {
 
     private emptyStatusText(): string {
         return emptyPackagesText(this.packages ?? [], this.activeType);
+    }
+
+    /** 状态行文案：部分类型读取失败时优先说明，否则是空列表提示 */
+    private statusText(): string {
+        return this.failedTypes.length > 0 ? partialFailedText(this.failedTypes) : this.emptyStatusText();
     }
 
     private setStatus(text: string, isError: boolean): void {
@@ -275,7 +287,7 @@ export class LocalPackagesMenu {
         this.renderRows();
         // 列表还没读到时不写状态行，否则会把「加载中」换成「没有已安装的包」
         if (this.packages !== null) {
-            this.setStatus(this.emptyStatusText(), false);
+            this.setStatus(this.statusText(), this.failedTypes.length > 0);
         }
     }
 

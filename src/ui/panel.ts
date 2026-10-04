@@ -605,16 +605,16 @@ export class InstallPanel {
             this.syncUninstallButton();
             return;
         }
-        const packages = await listInstalledPackages(this.log);
+        const result = await listInstalledPackages(this.log);
         if (seq !== this.uninstallDetectSeq) {
             return;
         }
-        if (packages === null) {
+        if (result === null) {
             this.uninstallTargets = null;
             this.syncUninstallButton();
             return;
         }
-        const matched = findInstalledByRepo(packages, repoKey);
+        const matched = findInstalledByRepo(result.packages, repoKey);
         const targets = matched.filter((pkg) => !this.isOwnPlugin(pkg));
         if (targets.length === 0 && matched.length > 0) {
             this.log.info(i18n.uninstallSelfExcluded);

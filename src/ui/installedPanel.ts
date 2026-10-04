@@ -24,6 +24,7 @@ import {
     emptyPackagesText,
     iconButton,
     isUsablePackage,
+    partialFailedText,
     pickDefaultType,
     rowKey,
     setStatusText,
@@ -159,20 +160,21 @@ export class InstalledPanel {
         this.syncTabs();
         this.renderCards();
         this.setStatus(i18n.installedLoading, false);
-        const packages = await listInstalledPackages(this.log);
+        const result = await listInstalledPackages(this.log);
         if (seq !== this.loadSeq || this.destroyed) {
             return;
         }
-        if (packages === null) {
+        if (result === null) {
             this.setStatus(i18n.installedLoadFailed, true);
             this.syncToolbar();
             return;
         }
-        this.packages = packages;
+        this.packages = result.packages;
         this.pickDefaultType();
         this.syncTabs();
         this.renderCards();
-        this.setStatus(this.emptyStatusText(), false);
+        const partialFailed = partialFailedText(result.failedTypes);
+        this.setStatus(partialFailed === "" ? this.emptyStatusText() : partialFailed, partialFailed !== "");
         this.syncToolbar();
     }
 

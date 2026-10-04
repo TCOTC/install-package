@@ -1,6 +1,7 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { safeExternalUrl } from "../infra/html";
+import type { Logger } from "../infra/logger";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
@@ -15,7 +16,7 @@ import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
 import { COPY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import { InstallProgressButton } from "./installProgressButton";
-import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS, type Logger } from "./logger";
+import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS } from "./logger";
 import {
     normalizeData,
     parseInstalled,

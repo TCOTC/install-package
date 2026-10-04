@@ -3,7 +3,7 @@
  */
 
 import { i18n } from "./i18n";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "./logger";
 
 export interface KernelApiResponse {
     code: number;

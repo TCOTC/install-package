@@ -20,7 +20,7 @@ import { safeExternalUrl } from "../infra/html";
 import { message } from "../infra/message";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
 import { setStatusText } from "./installedPackageUi";
-import { createConsoleLogger, type Logger } from "./logger";
+import { createConsoleLogger, type Logger } from "../infra/logger";
 import type { InstallPanelPreset } from "./panelData";
 
 /** 滚动到距底部该距离时自动加载下一页 */

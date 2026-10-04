@@ -11,7 +11,7 @@ import {
 } from "../github/github";
 import type { InstallReleaseRow } from "../github/github";
 import { isSelfRepo } from "../install/selfPackage";
-import type { Logger } from "./logger";
+import type { Logger } from "../infra/logger";
 import type { InstallPanelData } from "./panelData";
 
 /** 简介 / 日期缺省时的占位 */

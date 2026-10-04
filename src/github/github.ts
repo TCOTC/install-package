@@ -8,7 +8,7 @@ import type { operations } from "@octokit/openapi-types";
 import { i18n } from "../infra/i18n";
 import { getGitHubToken } from "../settings/setting";
 import { showGitHubAuthNotice } from "./githubNotice";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /**
  * 列表分页用的 `per_page`，全链路须一致（否则 `page` 与全局偏移错位）。

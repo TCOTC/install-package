@@ -4,7 +4,7 @@ import { downloadPackage, type DownloadProgressCallback } from "../github/downlo
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
 import { isSelfRepo, reportSelfInstallBlock } from "./selfPackage";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 export interface InstallRequest {
     owner: string;

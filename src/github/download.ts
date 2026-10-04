@@ -1,6 +1,6 @@
 import { i18n } from "../infra/i18n";
 import { extractPackageNameFromUrl } from "./github";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /** 下载进度回调：`loaded` 为已接收字节数，`total` 为 Release 资源声明的总字节数 */
 export type DownloadProgressCallback = (loaded: number, total: number) => void;

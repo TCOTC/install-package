@@ -10,7 +10,7 @@ import { i18n } from "../infra/i18n";
 import { packageLabelText } from "../infra/packageLabels";
 import { fetchSyncPost } from "../infra/kernelClient";
 import { PACKAGE_TYPE_BY_KERNEL_TYPE, type PackageType } from "./install";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /** 内核集市接口使用的包类型名（复数），顺序即页面分组顺序 */
 export const KERNEL_PACKAGE_TYPES = ["plugins", "themes", "icons", "widgets", "templates"] as const;

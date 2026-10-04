@@ -26,7 +26,7 @@ import {
 } from "../install/installedPackages";
 import { CLOSE_ICON_ID, INFO_ICON_ID, SELECT_ICON_ID } from "./icons";
 import { emptyPackagesText, iconButton, pickDefaultType, rowKey, setStatusText } from "./installedPackageUi";
-import { createConsoleLogger, type Logger } from "./logger";
+import { createConsoleLogger, type Logger } from "../infra/logger";
 
 /** 给菜单的 `.b3-menu__items` 加的类：让工具栏与滚动区在里面分列（样式定义在 `index.scss`） */
 const LIST_HOST_CLASS = "jcip-list-host";

@@ -8,7 +8,7 @@
 
 import { i18n } from "../infra/i18n";
 import { getFile, readDir } from "../infra/kernelClient";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /**
  * 允许安装自身的最低版本：整体重构之后的第一版

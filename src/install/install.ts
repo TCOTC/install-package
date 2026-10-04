@@ -12,7 +12,7 @@ import {
     zipFile,
     type KernelApiResponse,
 } from "../infra/kernelClient";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /**
  * 各类型集市包在工作空间内的安装目录

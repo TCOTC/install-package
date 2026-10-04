@@ -12,7 +12,7 @@ import { confirmDialog } from "../infra/dialog";
 import { fetchSyncPost } from "../infra/kernelClient";
 import type { PackageType } from "./install";
 import { kernelPackageTypeLabel, kernelTypeNeedsFrontend, type InstalledPackage } from "./installedPackages";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /** 各类型的卸载接口；是否需要 frontend 由 `kernelTypeNeedsFrontend` 判定 */
 const UNINSTALL_API: Record<PackageType, string> = {

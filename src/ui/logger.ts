@@ -1,24 +1,12 @@
-import { i18n } from "../infra/i18n";
-
-/** 安装日志：`log.info` 为普通行，`log.warn` 为告警行 */
-export type Logger = {
-    info: (...args: unknown[]) => void;
-    warn: (...args: unknown[]) => void;
-    /** 在日志区开一条可原地刷新的进度行；同一时刻最多一条，再次调用会复用它 */
-    progress: (text: string) => InstallLogProgress;
-};
-
 /**
- * 日志区进度行句柄。
+ * 安装面板日志区的渲染
  *
- * 进度行在日志中始终保持为最后一行；`finish` 后该行定稿为普通日志行（不再原地刷新），`discard` 则整行移除
+ * 日志端口（`Logger` / `InstallLogProgress`）与无日志区时的控制台实现见 `infra/logger.ts`，
+ * 这里只负责把日志行写进页面元素
  */
-export type InstallLogProgress = {
-    update: (text: string) => void;
-    /** 定稿为普通日志行；`warn` 为 true 时改用告警样式，用于以失败收尾的进度行 */
-    finish: (text: string, options?: { warn?: boolean }) => void;
-    discard: () => void;
-};
+
+import { i18n } from "../infra/i18n";
+import type { InstallLogProgress, Logger } from "../infra/logger";
 
 const INSTALL_LOG_PLACEHOLDER_CLASS = "jcip-show__text--placeholder";
 export const INSTALL_LOG_PROCESS_LINE_CLASS = "jcip-show__text--log";
@@ -40,22 +28,6 @@ function formatLogArg(arg: unknown): string {
         }
     }
     return String(arg);
-}
-
-/**
- * 没有日志区的页面用（如集市 PR 页）：把日志写到开发者工具的控制台，界面自行用状态行等提示
- */
-export function createConsoleLogger(): Logger {
-    return {
-        info: (...args: unknown[]): void => console.log(...args),
-        warn: (...args: unknown[]): void => console.warn(...args),
-        // 该类页面不展示进度行，返回空实现以满足接口
-        progress: () => ({
-            update: (): void => {},
-            finish: (): void => {},
-            discard: (): void => {},
-        }),
-    };
 }
 
 export function createInstallLogger(installLogElement: HTMLDivElement): { log: Logger; clear: () => void } {

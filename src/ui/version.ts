@@ -6,7 +6,7 @@ import { SELECT_ICON_ID } from "./icons";
 import { i18n } from "../infra/i18n";
 import { escapeHtml } from "../infra/html";
 import type { InstallReleaseRow } from "../github/github";
-import type { Logger } from "./logger";
+import type { Logger } from "../infra/logger";
 import type { InstallPanelData } from "./panelData";
 import type { InstallReleasesPayload } from "./repoParser";
 import { upDownHint } from "./upDownHint";

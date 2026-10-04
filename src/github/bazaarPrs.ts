@@ -11,7 +11,7 @@
 import type { operations } from "@octokit/openapi-types";
 import { i18n } from "../infra/i18n";
 import { fetchGitHubJson } from "./github";
-import type { Logger } from "../ui/logger";
+import type { Logger } from "../infra/logger";
 
 /** 集市仓库，PR 与检查评论都在这里 */
 export const BAZAAR_REPO_OWNER = "siyuan-note";

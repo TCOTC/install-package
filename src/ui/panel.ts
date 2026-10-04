@@ -8,7 +8,6 @@ import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from ".
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
 import { normalizeRepoKey } from "../infra/repoKey";
-import { currentInterfaceLang, interfaceLangOptions, switchInterfaceLang } from "../settings/interfaceLanguage";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
@@ -16,7 +15,9 @@ import { COPY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger } from "./logger";
 import { installLogCopyPayloadAtOpen } from "./installLogCopy";
+import { openInterfaceLanguageMenu } from "./languageMenu";
 import { PanelUninstallTargets, petalDirPath } from "./panelUninstall";
+import { persistFormToLayout, type PersistedForm } from "./panelPersistence";
 import {
     normalizeData,
     parseInstalled,
@@ -151,7 +152,8 @@ export class InstallPanel {
     private readonly versionUI: InstallPanelVersion;
     /** 中断安装按钮兼任下载进度条；两处复用同一份按钮，故整体操作 */
     private readonly abortProgress: InstallProgressButton;
-    private persistTimer: number | undefined;
+    /** 表单的防抖持久化；页签关闭时取消尚未落盘的一次写入 */
+    private readonly persistForm: PersistedForm<InstallPanelData>;
     /** 仅通过 `dispatch` 修改的解析/安装面板 UI 状态管理器 */
     private readonly uiStore: InstallPanelUiStore;
     /** 页签关闭时取消订阅 */
@@ -165,7 +167,8 @@ export class InstallPanel {
         this.custom = custom;
         // 入口带入的安装目标随页签数据一道送达；先取出再归一表单，避免它被写回页签数据
         const pendingPreset = takePendingInstallPreset(custom.data as Record<string, unknown>);
-        this.data = this.debounceSaveLayout(normalizeData(this.custom.data));
+        this.persistForm = persistFormToLayout(normalizeData(this.custom.data), () => saveLayout(() => {}));
+        this.data = this.persistForm.data;
         this.custom.data = this.data;
         if (pendingPreset !== null) {
             this.storePreset(pendingPreset);
@@ -465,7 +468,7 @@ export class InstallPanel {
                     // 思源在 window 上监听 click 并调 globalClickHideMenu（app/src/menus/menuClick.ts），
                     // 点中的按钮不在菜单里，新建的菜单会被当成「点了菜单外面」立刻 remove
                     event.stopPropagation();
-                    this.openLanguageMenu(button);
+                    openInterfaceLanguageMenu(button);
                     break;
                 default:
                     break;
@@ -581,30 +584,6 @@ export class InstallPanel {
         }
     }
 
-    /**
-     * 用 Proxy 包装表单：属性赋值且值变化时 400ms 防抖写入 layout。
-     * 假定仅通过类型化的 `InstallPanelData` 字段写入。
-     */
-    private debounceSaveLayout(plain: InstallPanelData): InstallPanelData {
-        return new Proxy(plain, {
-            set: (target, prop, value, receiver) => {
-                const prev = Reflect.get(target, prop, receiver);
-                const ok = Reflect.set(target, prop, value, receiver);
-                if (!ok) {
-                    return false;
-                }
-                if (prev !== value) {
-                    window.clearTimeout(this.persistTimer);
-                    this.persistTimer = window.setTimeout(() => {
-                        this.persistTimer = undefined;
-                        saveLayout(() => {});
-                    }, 400);
-                }
-                return true;
-            },
-        }) as InstallPanelData;
-    }
-
     /** Release：拉取开始，或列表 / `latestTag` 更新 */
     private applyRepoReleasesEvent(event: RepoReleasesEvent): void {
         if (event.type === "fetchStart") {
@@ -646,30 +625,6 @@ export class InstallPanel {
     private clearVersionFieldAndRefreshUi(): void {
         this.data.version = "";
         this.versionUI.syncDisplayFromData();
-    }
-
-    /**
-     * 「界面语言」菜单：切换思源笔记的界面语言
-     *
-     * 用于快速检查集市包的 i18n：切的是整个思源界面，不只是本插件的文字；
-     * 提交后由思源自行重载界面（内核广播 `setAppearance`，前端检测到 `lang` 变化后重载），插件不做重载。
-     * 调用方需先 `stopPropagation`，否则菜单会被思源的全局点击处理立即收起
-     */
-    private openLanguageMenu(button: HTMLButtonElement): void {
-        const menu = new Menu("install-package-language");
-        const current = currentInterfaceLang();
-        for (const option of interfaceLangOptions()) {
-            menu.addItem({
-                label: option.label,
-                checked: option.lang === current,
-                click: () => {
-                    void switchInterfaceLang(option.lang);
-                },
-            });
-        }
-        const rect = button.getBoundingClientRect();
-        // 菜单在按钮下方展开；下方空间不足时由思源的定位逻辑上移
-        menu.open({ x: rect.left, y: rect.bottom, isLeft: false });
     }
 
     /** 复制日志纯文本；`payload` 为右键菜单打开时已算好的内容（避免点击菜单时选区丢失） */
@@ -737,7 +692,7 @@ export class InstallPanel {
     /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
     destroy(): void {
         this.destroyed = true;
-        window.clearTimeout(this.persistTimer);
+        this.persistForm.cancel();
         this.uninstallTargets.destroy();
         this.versionUI.destroy();
         this.repoParser.destroy();

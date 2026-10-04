@@ -13,6 +13,7 @@
   "repoSummaryLicenseTitle": "License: ",
   "repoSummaryStarsTitle": "{count} stars",
   "repoSummaryReleasePublishedTitle": "Release published at ",
+  "repoSummaryContractMismatch": "Repository summary is missing expected elements; the picked version and publish time may not be shown",
   "repoSummaryHomepageLabel": "Website",
   "versionLabel": "Version (Git Tag) of the package",
   "enableAfterInstall": "Enable Bazaar package after install, otherwise disable it",

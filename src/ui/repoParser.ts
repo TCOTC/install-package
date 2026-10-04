@@ -13,6 +13,7 @@ import type { InstallReleaseRow } from "../github/github";
 import { isSelfRepo } from "../install/selfPackage";
 import type { Logger } from "../infra/logger";
 import type { InstallPanelData } from "./panelData";
+import { REPO_SUMMARY_ATTRS } from "./repoSummaryDom";
 
 /** 简介 / 日期缺省时的占位 */
 const REPO_SUMMARY_DASH = "—";
@@ -86,12 +87,12 @@ function renderResolvedRepoSummaryHtml(info: ParsedPackageInfo): string {
 ${avatarBlock}
 <div class="jcip-repo-summary__head-main">
 <div class="jcip-repo-summary__title">
-<a class="jcip-repo-summary__title-link" href="${ownerUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.owner)}</a><span aria-hidden="true">/</span><a class="jcip-repo-summary__title-link" href="${repoUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.repo)}</a><span class="jcip-repo-summary__picked fn__none" data-jcip-picked-version-wrap aria-hidden="true"><a class="jcip-repo-summary__title-link" data-jcip-picked-version-link target="_blank" rel="noopener noreferrer"></a></span>
+<a class="jcip-repo-summary__title-link" href="${ownerUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.owner)}</a><span aria-hidden="true">/</span><a class="jcip-repo-summary__title-link" href="${repoUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.repo)}</a><span class="jcip-repo-summary__picked fn__none" ${REPO_SUMMARY_ATTRS.pickedVersionWrap} aria-hidden="true"><a class="jcip-repo-summary__title-link" ${REPO_SUMMARY_ATTRS.pickedVersionLink} target="_blank" rel="noopener noreferrer"></a></span>
 </div>
 <div class="jcip-repo-summary__meta">
 ${licenseChip}
 <span class="jcip-repo-summary__chip" title="${starsTitle}"><span aria-hidden="true">★</span>${escapeHtml(String(info.stars))}</span>
-<span class="jcip-repo-summary__chip jcip-repo-summary__chip--release-time fn__none" data-jcip-release-published-chip title=""></span>
+<span class="jcip-repo-summary__chip jcip-repo-summary__chip--release-time fn__none" ${REPO_SUMMARY_ATTRS.releasePublishedChip} title=""></span>
 ${homepageChip}
 </div>
 </div>

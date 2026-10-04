@@ -13,6 +13,7 @@
   "repoSummaryLicenseTitle": "许可证：",
   "repoSummaryStarsTitle": "星标 {count}",
   "repoSummaryReleasePublishedTitle": "Release 发布于 ",
+  "repoSummaryContractMismatch": "仓库摘要缺少预期的元素，已选版本与发布时间可能不显示",
   "repoSummaryHomepageLabel": "主页",
   "versionLabel": "集市包的版本（Git Tag）",
   "enableAfterInstall": "安装后启用集市包，否则禁用集市包",

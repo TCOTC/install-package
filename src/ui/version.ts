@@ -5,6 +5,7 @@ import { isSelfInstallableVersion, MIN_SELF_INSTALL_VERSION, selfInstallVersionT
 import { SELECT_ICON_ID } from "./icons";
 import { i18n } from "../infra/i18n";
 import { escapeHtml } from "../infra/html";
+import { REPO_SUMMARY_ATTRS } from "./repoSummaryDom";
 import type { InstallReleaseRow } from "../github/github";
 import type { Logger } from "../infra/logger";
 import type { InstallPanelData } from "./panelData";
@@ -43,6 +44,8 @@ export class InstallPanelVersion {
      * 因此等 Release 列表到达后换成列表里真正存在的 tag；用户另行选版后该标记作废
      */
     private installedVersionAlias = "";
+    /** 是否已提示过摘要块缺少约定节点 */
+    private warnedRepoSummaryContract = false;
     private versionMenu: Menu | null = null;
     private versionMenuListEl: HTMLElement | null = null;
     private versionMenuSearchEl: HTMLInputElement | null = null;
@@ -212,10 +215,12 @@ export class InstallPanelVersion {
         if (!root.isConnected) {
             return;
         }
-        const chip = root.querySelector("[data-jcip-release-published-chip]");
-        const pickedWrap = root.querySelector("[data-jcip-picked-version-wrap]");
-        const pickedLink = root.querySelector("[data-jcip-picked-version-link]");
+        const chip = root.querySelector(`[${REPO_SUMMARY_ATTRS.releasePublishedChip}]`);
+        const pickedWrap = root.querySelector(`[${REPO_SUMMARY_ATTRS.pickedVersionWrap}]`);
+        const pickedLink = root.querySelector(`[${REPO_SUMMARY_ATTRS.pickedVersionLink}]`);
         if (!(chip instanceof HTMLElement) || !(pickedWrap instanceof HTMLElement) || !(pickedLink instanceof HTMLAnchorElement)) {
+            // 模板与这里的查找靠属性名对接（见 repoSummaryDom），对不上时只提示一次，避免静默失效
+            this.warnRepoSummaryContract();
             return;
         }
 
@@ -270,6 +275,15 @@ export class InstallPanelVersion {
             );
         }
         chip.innerHTML = parts.join("");
+    }
+
+    /** 摘要块缺少约定节点时写一行日志（只写一次）：模板与查找靠属性名对接，失配时不该静默 */
+    private warnRepoSummaryContract(): void {
+        if (this.warnedRepoSummaryContract) {
+            return;
+        }
+        this.warnedRepoSummaryContract = true;
+        this.log.warn(i18n.repoSummaryContractMismatch);
     }
 
     private formatTagRowLabel(tag: string, row: InstallReleaseRow): string {

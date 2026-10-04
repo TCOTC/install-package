@@ -24,10 +24,12 @@ export const INSTALL_HISTORY_LIMIT = 20;
 /** 历史记录在插件私有目录里的文件名 */
 export const INSTALL_HISTORY_STORAGE_NAME = "install-history";
 
-/** 历史记录的存储适配器；由插件入口注入（`plugin.loadData` / `plugin.saveData`） */
+/** 历史记录的存储适配器；由插件入口注入（`plugin.loadData` / `plugin.saveData` / `plugin.removeData`） */
 export interface InstallHistoryStorage {
     load(): Promise<unknown>;
     save(entries: readonly InstallHistoryEntry[]): Promise<unknown>;
+    /** 删除存储文件：记录清空时调用，不留下一个空文件 */
+    remove(): Promise<unknown>;
 }
 
 let storage: InstallHistoryStorage | null = null;
@@ -129,18 +131,55 @@ export function listInstallHistory(): readonly InstallHistoryEntry[] {
 }
 
 /**
- * 记下一条成功的安装
+ * 写入记录：没有记录时删除存储文件
  *
- * 记录写入失败只影响下次打开列表时的内容，不打断安装流程，因此不外抛
+ * 写入失败只影响下次打开列表时的内容，不打断调用流程，因此只吞掉异常
  */
-export async function recordInstallHistory(owner: string, repo: string, version: string): Promise<void> {
-    await ensureInstallHistoryLoaded();
-    entries = mergeInstallHistoryEntry(entries, { owner, repo, version });
+async function persistInstallHistory(next: InstallHistoryEntry[]): Promise<void> {
+    entries = next;
     try {
-        await storage?.save(entries);
+        if (next.length === 0) {
+            await storage?.remove();
+        } else {
+            await storage?.save(next);
+        }
     } catch {
         // 忽略写入失败
     }
+}
+
+/**
+ * 记下一条成功的安装
+ *
+ * 记录写入失败只影响下次打开列表时的内容，不打断安装流程
+ */
+export async function recordInstallHistory(owner: string, repo: string, version: string): Promise<void> {
+    await ensureInstallHistoryLoaded();
+    await persistInstallHistory(mergeInstallHistoryEntry(entries, { owner, repo, version }));
+}
+
+/**
+ * 删除一条历史记录
+ *
+ * 删掉最后一条时一并删除存储文件；记录不存在时什么也不做（不写盘、不删文件）
+ */
+export async function removeInstallHistoryEntry(owner: string, repo: string, version: string): Promise<void> {
+    await ensureInstallHistoryLoaded();
+    const key = entryKey(owner, repo, version);
+    const next = entries.filter((item) => entryKey(item.owner, item.repo, item.version) !== key);
+    if (next.length === entries.length) {
+        return;
+    }
+    await persistInstallHistory(next);
+}
+
+/** 清空全部历史记录并删除存储文件；本来就没有记录时什么也不做 */
+export async function clearInstallHistory(): Promise<void> {
+    await ensureInstallHistoryLoaded();
+    if (entries.length === 0) {
+        return;
+    }
+    await persistInstallHistory([]);
 }
 
 /** 由历史记录还原仓库 URL（用于填回 URL 输入框） */

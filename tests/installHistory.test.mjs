@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+    clearInstallHistory,
     ensureInstallHistoryLoaded,
     initInstallHistory,
     installHistoryUrl,
@@ -16,6 +17,7 @@ import {
     mergeInstallHistoryEntry,
     parseInstallHistory,
     recordInstallHistory,
+    removeInstallHistoryEntry,
 } from "../src/install/installHistory.ts";
 
 /** 把记录压成便于断言的字符串，顺带固定字段顺序 */
@@ -23,7 +25,7 @@ function compact(entries) {
     return entries.map((entry) => `${entry.owner}/${entry.repo}@${entry.version}`);
 }
 
-const NOOP_STORAGE = { load: async () => "", save: async () => undefined };
+const NOOP_STORAGE = { load: async () => "", save: async () => undefined, remove: async () => undefined };
 
 test("parseInstallHistory 兼容 JSON 文本与数组，并丢弃无效条目", () => {
     assert.deepEqual(parseInstallHistory(""), []);
@@ -85,11 +87,72 @@ test("记录历史：并入已载入的记录、去重置顶并落盘", async ()
         save: async (entries) => {
             saved.push(compact(entries));
         },
+        remove: NOOP_STORAGE.remove,
     });
     await recordInstallHistory("A", "B", "v1");
     await recordInstallHistory("c", "d", "v2");
     assert.deepEqual(compact(listInstallHistory()), ["c/d@v2", "A/B@v1"]);
     assert.deepEqual(saved, [["A/B@v1"], ["c/d@v2", "A/B@v1"]]);
+});
+
+const TWO_ENTRIES = JSON.stringify([
+    { owner: "a", repo: "b", version: "v1" },
+    { owner: "c", repo: "d", version: "v2" },
+]);
+
+/** 记录每次落盘与删文件，便于断言「什么时候才删掉配置文件」 */
+function trackingStorage(raw) {
+    const calls = [];
+    return {
+        calls,
+        storage: {
+            load: async () => raw,
+            save: async (entries) => {
+                calls.push(["save", compact(entries)]);
+            },
+            remove: async () => {
+                calls.push(["remove"]);
+            },
+        },
+    };
+}
+
+test("删除一条历史：大小写无关、只写盘不删文件", async () => {
+    const { calls, storage } = trackingStorage(TWO_ENTRIES);
+    initInstallHistory(storage);
+    await removeInstallHistoryEntry("A", "B", "v1");
+    assert.deepEqual(compact(listInstallHistory()), ["c/d@v2"]);
+    assert.deepEqual(calls, [["save", ["c/d@v2"]]]);
+});
+
+test("删掉最后一条历史时删除配置文件", async () => {
+    const { calls, storage } = trackingStorage(TWO_ENTRIES);
+    initInstallHistory(storage);
+    await removeInstallHistoryEntry("a", "b", "v1");
+    await removeInstallHistoryEntry("c", "d", "v2");
+    assert.deepEqual(compact(listInstallHistory()), []);
+    assert.deepEqual(calls, [["save", ["c/d@v2"]], ["remove"]]);
+});
+
+test("清空所有历史时删除配置文件", async () => {
+    const { calls, storage } = trackingStorage(TWO_ENTRIES);
+    initInstallHistory(storage);
+    await clearInstallHistory();
+    assert.deepEqual(compact(listInstallHistory()), []);
+    assert.deepEqual(calls, [["remove"]]);
+});
+
+test("记录不存在或本来为空时既不写盘也不删文件", async () => {
+    const { calls, storage } = trackingStorage(TWO_ENTRIES);
+    initInstallHistory(storage);
+    await removeInstallHistoryEntry("x", "y", "v9");
+    assert.deepEqual(compact(listInstallHistory()), ["a/b@v1", "c/d@v2"]);
+    assert.deepEqual(calls, []);
+
+    const empty = trackingStorage("");
+    initInstallHistory(empty.storage);
+    await clearInstallHistory();
+    assert.deepEqual(empty.calls, []);
 });
 
 test("落盘失败不打断安装流程", async () => {
@@ -98,9 +161,15 @@ test("落盘失败不打断安装流程", async () => {
         save: async () => {
             throw new Error("disk full");
         },
+        remove: async () => {
+            throw new Error("disk full");
+        },
     });
     await recordInstallHistory("a", "b", "v1");
     assert.deepEqual(compact(listInstallHistory()), ["a/b@v1"]);
+    // 删除失败也不外抛，内存状态照常清空
+    await removeInstallHistoryEntry("a", "b", "v1");
+    assert.deepEqual(compact(listInstallHistory()), []);
 });
 
 test("installHistoryUrl 由记录还原仓库 URL", () => {

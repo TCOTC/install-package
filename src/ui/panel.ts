@@ -1,10 +1,17 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
-import { safeExternalUrl } from "../infra/html";
+import { safeExternalUrl, escapeHtml } from "../infra/html";
 import type { Logger } from "../infra/logger";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
-import { ensureInstallHistoryLoaded, installHistoryUrl, listInstallHistory, type InstallHistoryEntry } from "../install/installHistory";
+import {
+    clearInstallHistory,
+    ensureInstallHistoryLoaded,
+    installHistoryUrl,
+    listInstallHistory,
+    removeInstallHistoryEntry,
+    type InstallHistoryEntry,
+} from "../install/installHistory";
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
@@ -12,7 +19,8 @@ import { normalizeRepoKey, repoKeyFromOwnerRepo } from "../infra/repoKey";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
-import { COPY_ICON_ID, HISTORY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
+import { CLOSE_ICON_ID, COPY_ICON_ID, HISTORY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
+import { iconButton } from "./installedPackageUi";
 import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger } from "./logger";
 import { installLogCopyPayloadAtOpen } from "./installLogCopy";
@@ -329,18 +337,68 @@ export class InstallPanel {
         if (entries.length === 0) {
             menu.addItem({ type: "readonly", ...NO_MENU_ICON, label: i18n.installHistoryEmpty });
         } else {
+            menu.addItem({
+                icon: TRASHCAN_ICON_ID,
+                label: i18n.installHistoryClear,
+                click: () => {
+                    void (async (): Promise<void> => {
+                        await clearInstallHistory();
+                        this.reopenHistoryMenu(anchor, menu);
+                    })();
+                    // 保持菜单展开：数据清理完后由 reopenHistoryMenu 按最新记录重建
+                    return true;
+                },
+            });
+            menu.addSeparator();
             for (const entry of entries) {
                 menu.addItem({
                     ...NO_MENU_ICON,
-                    label: `${entry.owner}/${entry.repo} ${entry.version}`,
+                    // 仓库名与 tag 来自外部数据，转义后再拼进菜单项的 innerHTML
+                    label: escapeHtml(`${entry.owner}/${entry.repo} ${entry.version}`),
                     click: () => {
                         this.applyInstallHistoryEntry(entry);
+                    },
+                    bind: (item) => {
+                        item.append(this.createHistoryRemoveButton(entry, anchor, menu));
                     },
                 });
             }
         }
         const rect = anchor.getBoundingClientRect();
         menu.open({ x: rect.left, y: rect.bottom, isLeft: false });
+    }
+
+    /** 历史行的「删除」按钮：只删这一条，不触发该行的回填 */
+    private createHistoryRemoveButton(entry: InstallHistoryEntry, anchor: HTMLElement, menu: Menu): HTMLButtonElement {
+        const button = iconButton(CLOSE_ICON_ID, i18n.installHistoryRemove, "remove-history");
+        button.classList.add("jcip-history-remove");
+        button.addEventListener("click", (event) => {
+            // 按钮在菜单项内部，不阻止冒泡会连带触发「选中该历史」的回填
+            event.stopPropagation();
+            void (async (): Promise<void> => {
+                await removeInstallHistoryEntry(entry.owner, entry.repo, entry.version);
+                this.reopenHistoryMenu(anchor, menu);
+            })();
+        });
+        return button;
+    }
+
+    /**
+     * 按最新记录重建菜单
+     *
+     * 推迟到下一个任务执行：在点击处理里同步摘掉被点的元素后，思源的全局点击处理会因为
+     * `target` 已脱离文档而把菜单当成「点在菜单外」收掉。
+     * 等待期间菜单若已被收起（用户点了别处）就不再重开，`removeCB` 会把 `historyMenu` 置空
+     */
+    private reopenHistoryMenu(anchor: HTMLElement, current: Menu): void {
+        window.setTimeout(() => {
+            if (this.destroyed || this.historyMenu !== current) {
+                return;
+            }
+            current.close();
+            this.historyMenu = null;
+            void this.openInstallHistoryMenu(anchor);
+        }, 0);
     }
 
     /** 把历史记录中的仓库与版本填回表单，并重新解析该仓库 */

@@ -8,6 +8,8 @@
   "urlLabel": "Bazaar PR URL or GitHub repository URL",
   "installHistoryButton": "Install history",
   "installHistoryEmpty": "No install history yet",
+  "installHistoryClear": "Clear all history",
+  "installHistoryRemove": "Remove this history entry",
   "repoInfoTip": "Auto-parse repository information after entering URL",
   "repoRefreshButton": "Re-validate",
   "repoInfoParsing": "Parsing repository information...",

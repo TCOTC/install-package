@@ -64,6 +64,7 @@ export default class InstallPackage extends Plugin {
         initInstallHistory({
             load: () => this.loadData(INSTALL_HISTORY_STORAGE_NAME),
             save: (entries) => this.saveData(INSTALL_HISTORY_STORAGE_NAME, entries),
+            remove: () => this.removeData(INSTALL_HISTORY_STORAGE_NAME),
         });
 
         // 图标定义集中在 src/ui/icons.ts（含从思源内置图标集复制的几个，避免思源改图标时影响本插件）

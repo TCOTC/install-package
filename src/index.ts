@@ -69,6 +69,8 @@ export default class InstallPackage extends Plugin {
     private listMenu?: Menu;
     /** 列表本体；菜单关闭时销毁 */
     private localPackagesMenu?: LocalPackagesMenu;
+    /** 顶栏按钮；命令面板或快捷键触发「本地集市包列表」时用它作为菜单定位锚点 */
+    private topBarElement?: HTMLElement;
 
     onload() {
         setMessagePrefix(this.displayName);
@@ -110,11 +112,15 @@ export default class InstallPackage extends Plugin {
             },
         });
 
-        const topBarElement = this.addTopBar({
+        this.topBarElement = this.addTopBar({
             icon: INSTALL_PACKAGE_ICON_ID,
             title: i18n.title,
             position: "right",
             callback: () => {
+                const anchor = this.topBarElement;
+                if (anchor === undefined) {
+                    return;
+                }
                 // 菜单项与 issue #41 的顺序一致
                 const menu = new Menu("install-package-entry", () => this.closeLocalPackagesMenu());
                 if (menu.isOpen) {
@@ -148,7 +154,7 @@ export default class InstallPackage extends Plugin {
                     label: i18n.localListTitle,
                     click: () => {
                         // 不阻止菜单关闭：数据到齐后会另开一个菜单展示列表
-                        this.openLocalPackagesMenu(topBarElement);
+                        this.openLocalPackagesMenu(anchor);
                     },
                 });
                 menu.addSeparator();
@@ -165,7 +171,7 @@ export default class InstallPackage extends Plugin {
                     click: openPluginSettings,
                 });
                 // 入口菜单按按钮原位弹出，不做贴边处理（贴边只给「本地集市包列表」用）
-                const rect = topBarMenuAnchor(topBarElement);
+                const rect = topBarMenuAnchor(anchor);
                 menu.open({
                     x: rect.right,
                     y: rect.bottom,
@@ -173,6 +179,9 @@ export default class InstallPackage extends Plugin {
                 });
             },
         });
+
+        // 入口菜单前 4 项同时注册为思源命令，可在「设置 - 快捷键」或命令面板中调用
+        this.registerEntryCommands();
 
         try {
             this.setting = createSetting(this);
@@ -239,6 +248,47 @@ export default class InstallPackage extends Plugin {
             customId: this.localTabCustomId,
             icon: LOCAL_PACKAGE_ICON_ID,
             title: i18n.installedTitle,
+        });
+    }
+
+    /**
+     * 把入口菜单的前 4 个功能项注册为思源命令
+     *
+     * 命令会出现在「设置 - 快捷键」与命令面板中；`hotkey` 为空串表示默认不占用任何快捷键，由用户自行绑定。
+     * langKey 直接复用入口菜单的 i18n 键，命令名称与菜单项保持一致
+     */
+    private registerEntryCommands(): void {
+        this.addCommand({
+            langKey: "title",
+            hotkey: "",
+            callback: () => {
+                this.openInstallTab();
+            },
+        });
+        this.addCommand({
+            langKey: "bazaarPrTitle",
+            hotkey: "",
+            callback: () => {
+                this.openBazaarPrTab();
+            },
+        });
+        this.addCommand({
+            langKey: "installedTitle",
+            hotkey: "",
+            callback: () => {
+                this.openLocalTab();
+            },
+        });
+        this.addCommand({
+            langKey: "localListTitle",
+            hotkey: "",
+            callback: () => {
+                // 「本地集市包列表」需要锚点，命令触发时用顶栏按钮，定位与点击入口一致
+                const anchor = this.topBarElement;
+                if (anchor !== undefined) {
+                    this.openLocalPackagesMenu(anchor);
+                }
+            },
         });
     }
 

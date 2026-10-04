@@ -11,6 +11,7 @@ import { packageLabelText } from "../infra/packageLabels";
 import { fetchSyncPost } from "../infra/kernelClient";
 import { normalizeRepoKey, repoKeyOf } from "../infra/repoKey";
 import { PACKAGE_TYPE_BY_KERNEL_TYPE, type PackageType } from "./install";
+import { sortPackagesByBazaarOrder } from "./packageSort";
 import type { Logger } from "../infra/logger";
 
 /** 内核集市接口使用的包类型名（复数），顺序即页面分组顺序 */
@@ -100,55 +101,14 @@ function bazaarSortValue(kernelType: KernelPackageType): string {
 /**
  * 按思源集市的排序配置排列某一类型的已安装包
  *
- * 排序规则与思源集市页的「已下载」列表一致：默认（0）沿用内核顺序；5、6 对插件以外的类型按默认处理。
+ * 排序规则见 `packageSort`，这里只负责读出该类型的排序配置并声明它是否支持「启用优先」。
  * 返回新数组，不改动传入的列表
  */
 export function sortInstalledPackages(kernelType: KernelPackageType, packages: InstalledPackage[]): InstalledPackage[] {
-    let sortValue = bazaarSortValue(kernelType);
-    if (kernelType !== "plugins" && (sortValue === "5" || sortValue === "6")) {
-        sortValue = "0";
-    }
-    if (sortValue === "0") {
-        return packages;
-    }
-    // 记录原下标，使“保持不变”成为后备比较结果（与思源的实现一致）
-    const indexed = packages.map((pkg, index) => ({ pkg, index }));
-    const byTime = (field: "installTime" | "updateTime", descending: boolean): InstalledPackage[] =>
-        indexed.sort((a, b) => {
-            const aTime = a.pkg[field];
-            const bTime = b.pkg[field];
-            // 没取到时间的排在后面
-            if (aTime < 1 && bTime < 1) {
-                return a.index - b.index;
-            }
-            if (aTime < 1) {
-                return 1;
-            }
-            if (bTime < 1) {
-                return -1;
-            }
-            return (descending ? bTime - aTime : aTime - bTime) || a.index - b.index;
-        }).map((entry) => entry.pkg);
-    switch (sortValue) {
-        case "1":
-            return byTime("installTime", true);
-        case "2":
-            return byTime("installTime", false);
-        case "3":
-            return byTime("updateTime", true);
-        case "4":
-            return byTime("updateTime", false);
-        case "5":
-        case "6":
-            return indexed.sort((a, b) => {
-                const aEnabled = a.pkg.enabled ? 1 : 0;
-                const bEnabled = b.pkg.enabled ? 1 : 0;
-                return ((sortValue === "5" ? bEnabled - aEnabled : aEnabled - bEnabled) || a.index - b.index);
-            }).map((entry) => entry.pkg);
-        default:
-            // 取值超出已知范围（如后续思源新增排序方式）时保持内核顺序
-            return packages;
-    }
+    return sortPackagesByBazaarOrder(bazaarSortValue(kernelType), packages, {
+        // 只有插件有启用状态
+        supportsEnabledSort: kernelType === "plugins",
+    });
 }
 
 function asString(value: unknown): string {

@@ -9,25 +9,47 @@ export interface KernelApiResponse {
     code: number;
     msg: string;
     data: unknown;
-    /** 请求未能到达内核（断网、连接被拒、响应不可解析等），用于与内核返回的业务错误区分 */
+    /**
+     * 请求未得到内核的应答包络（断网、连接被拒、响应不可解析、非内核包络的非 2xx 响应等），
+     * 用于与内核返回的业务错误区分，也决定本地安装是否值得重传
+     */
     transportFailed?: boolean;
 }
 
-/** 失败包络；`transportFailed` 仅在请求未到达内核时置位，供调用方决定是否重试 */
+/** 失败包络；`transportFailed` 为真表示请求未得到内核的应答包络，供调用方决定是否重试 */
 function kernelFailure(msg: string, transportFailed = false): KernelApiResponse {
     return transportFailed
         ? { code: -1, msg, data: null, transportFailed: true }
         : { code: -1, msg, data: null };
 }
 
-/** 非 2xx 响应：内容不是内核的返回包络，属传输失败 */
-function httpFailure(response: Response): KernelApiResponse {
-    return kernelFailure(`HTTP error: ${response.status} ${response.statusText}`);
-}
-
 /** 异常转文本，用于返回给调用方的 msg 与日志 */
 function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 非 2xx 响应
+ *
+ * 内核的接口一律以 HTTP 200 返回业务包络，因此非 2xx 通常意味着请求没走到内核（代理或网关的错误页、
+ * 内核尚未就绪、连接被中断）。这里先尝试把响应体按内核包络解析：能解析出非 0 的 `code` 时按业务失败
+ * 返回，否则置 `transportFailed`，让调用方按可重传处理
+ */
+async function httpFailure(response: Response): Promise<KernelApiResponse> {
+    const fallback = `HTTP error: ${response.status} ${response.statusText}`;
+    try {
+        const body = (await response.json()) as KernelApiResponse;
+        if (body !== null && typeof body === "object" && typeof body.code === "number" && body.code !== 0) {
+            return {
+                code: body.code,
+                msg: typeof body.msg === "string" && body.msg !== "" ? body.msg : fallback,
+                data: body.data ?? null,
+            };
+        }
+    } catch {
+        // 响应体不是内核的 JSON 包络（如代理返回的 HTML 错误页）
+    }
+    return kernelFailure(fallback, true);
 }
 
 export async function fetchSyncPost(url: string, data?: object): Promise<KernelApiResponse> {
@@ -40,11 +62,11 @@ export async function fetchSyncPost(url: string, data?: object): Promise<KernelA
             body: JSON.stringify(data ?? {}),
         });
         if (!response.ok) {
-            return httpFailure(response);
+            return await httpFailure(response);
         }
         return await response.json() as KernelApiResponse;
     } catch (error) {
-        return kernelFailure(errorText(error));
+        return kernelFailure(errorText(error), true);
     }
 }
 
@@ -79,11 +101,11 @@ export async function putFile(params: PutFileParams): Promise<KernelApiResponse>
             body: formData,
         });
         if (!response.ok) {
-            return httpFailure(response);
+            return await httpFailure(response);
         }
         return (await response.json()) as KernelApiResponse;
     } catch (error) {
-        return kernelFailure(errorText(error));
+        return kernelFailure(errorText(error), true);
     }
 }
 
@@ -169,14 +191,21 @@ export interface ReadDirEntry {
 }
 
 /**
- * 判断工作空间内的目录是否存在
+ * 目录是否存在
  *
- * 走 `/api/file/readDir`：内核在目录不存在时返回 404（`path does not exist`），路径越权为 403，
- * 内核不可达时为 -1，这些情况一律按「不存在」处理；目录不存在是正常结果，因此不写日志
+ * - `exists`：内核确认目录存在
+ * - `missing`：内核明确回答该目录不可用（不存在返回 404、路径越权返回 403），属正常结果，调用方可以缓存
+ * - `unknown`：请求没得到内核的应答（不可达等），状态未知，调用方不应据此判定「不存在」，也不应缓存
  */
-export async function directoryExists(path: string): Promise<boolean> {
+export type DirectoryPresence = "exists" | "missing" | "unknown";
+
+/** 询问工作空间内的目录是否存在（走 `/api/file/readDir`） */
+export async function directoryPresence(path: string): Promise<DirectoryPresence> {
     const response = await fetchSyncPost("/api/file/readDir", { path });
-    return response.code === 0;
+    if (response.code === 0) {
+        return "exists";
+    }
+    return response.transportFailed === true ? "unknown" : "missing";
 }
 
 /**
@@ -236,7 +265,7 @@ export async function installLocalBazaarPackage(blob: Blob, fileName: string, fr
             body: formData,
         });
         if (!response.ok) {
-            return httpFailure(response);
+            return await httpFailure(response);
         }
         return (await response.json()) as KernelApiResponse;
     } catch (error) {

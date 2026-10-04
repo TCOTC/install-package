@@ -9,7 +9,7 @@ import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } fro
 import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
-import { directoryExists } from "../infra/kernelClient";
+import { directoryPresence } from "../infra/kernelClient";
 import { currentInterfaceLang, interfaceLangOptions, switchInterfaceLang } from "../settings/interfaceLanguage";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
@@ -310,6 +310,8 @@ export class InstallPanel {
     private readonly uninstallCache = new Map<string, InstalledPackage[]>();
     /** 插件存储目录是否存在；目录由插件自己在运行时创建，故需问内核 */
     private readonly petalDirCache = new Map<string, boolean>();
+    /** 在途的目录检查：同一路径只发一次请求（状态未知时不写缓存，可能被反复问） */
+    private readonly petalDirPending = new Set<string>();
     /** 存储目录检查序号：新的一次检查或页签关闭后作废在途回调 */
     private petalDirCheckSeq = 0;
     /** 页签已关闭：异步回调不再改 DOM */
@@ -783,7 +785,9 @@ export class InstallPanel {
      * 插件的存储目录是否存在
      *
      * 目录由插件自己在运行时写入（安装集市包不会建它），所以要用内核接口确认；结果按路径缓存，
-     * 未知时先按「不存在」处理并触发一次检查，检查回来后重新投影操作键
+     * 未知时先按「不存在」处理并触发一次检查，检查回来后重新投影操作键。
+     * 内核不可达时状态未知，既不写缓存也不改界面，下一次投影会再问一遍，
+     * 避免把一次网络抖动记成「目录不存在」
      */
     private petalDirExists(target: InstalledPackage): boolean {
         const path = petalDirPath(target.name);
@@ -797,9 +801,17 @@ export class InstallPanel {
 
     /** 询问内核目录是否存在；只有最后一次检查能刷新界面，页签已关闭则丢弃结果 */
     private async detectPetalDir(path: string): Promise<void> {
+        if (this.petalDirPending.has(path)) {
+            return;
+        }
+        this.petalDirPending.add(path);
         const seq = ++this.petalDirCheckSeq;
-        const exists = await directoryExists(path);
-        this.petalDirCache.set(path, exists);
+        const presence = await directoryPresence(path);
+        this.petalDirPending.delete(path);
+        if (presence === "unknown") {
+            return;
+        }
+        this.petalDirCache.set(path, presence === "exists");
         if (this.destroyed || seq !== this.petalDirCheckSeq) {
             return;
         }

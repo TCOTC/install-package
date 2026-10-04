@@ -1,5 +1,5 @@
 import { Custom, Menu, saveLayout } from "siyuan";
-import { i18n } from "../infra/i18n";
+import { i18n, PLUGIN_LOCALES } from "../infra/i18n";
 import type { BazaarPullLabel } from "../github/bazaarPrs";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
@@ -7,6 +7,7 @@ import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from ".
 import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
 import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
+import { currentLocale, switchLocale } from "../settings/locale";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
@@ -239,6 +240,7 @@ function renderInstallPanel(root: HTMLElement): void {
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/icons">${i18n.openIconsDir}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/widgets">${i18n.openWidgetsDir}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/templates">${i18n.openTemplatesDir}</button>
+                <button data-type="switch-language" type="button" class="b3-button b3-button--outline">${i18n.switchLanguage}</button>
             </div>
         </div>
     </div>`;
@@ -584,6 +586,9 @@ export class InstallPanel {
                 case "open-directory":
                     await openDirectory(button.title);
                     break;
+                case "switch-language":
+                    this.openLanguageMenu(button);
+                    break;
                 default:
                     break;
             }
@@ -815,6 +820,28 @@ export class InstallPanel {
     private clearVersionFieldAndRefreshUi(): void {
         this.data.version = "";
         this.versionUI.syncDisplayFromData();
+    }
+
+    /**
+     * 「界面语言」菜单：切换后落盘并重载界面
+     *
+     * 只改内存里的文案不会影响已经建好的 DOM，重载界面才能让设置面板、页签标题一并跟着变
+     */
+    private openLanguageMenu(button: HTMLButtonElement): void {
+        const menu = new Menu("install-package-language");
+        const current = currentLocale();
+        for (const locale of PLUGIN_LOCALES) {
+            menu.addItem({
+                label: locale.label,
+                checked: locale.lang === current,
+                click: () => {
+                    void switchLocale(locale.lang);
+                },
+            });
+        }
+        const rect = button.getBoundingClientRect();
+        // 菜单在按钮下方展开；下方空间不足时由思源的定位逻辑上移
+        menu.open({ x: rect.left, y: rect.bottom, isLeft: false });
     }
 
     /** 复制日志纯文本；`payload` 为右键菜单打开时已算好的内容（避免点击菜单时选区丢失） */

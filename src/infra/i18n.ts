@@ -23,3 +23,20 @@ export let i18n!: PluginI18n;
 export function setI18n(messages: PluginI18n): void {
     i18n = messages;
 }
+
+// —— 内置语言包（供「界面语言」菜单切换，用于快速检查插件的 i18n）——
+
+/**
+ * 插件内置的语言包；`label` 用该语言自己的写法，不随当前语言翻译
+ *
+ * 新增语言文件后需要在此登记（并在 `src/i18n` 下提供对应 JSON），菜单与切换都以此为准
+ */
+export const PLUGIN_LOCALES: ReadonlyArray<{ lang: string; label: string; messages: PluginI18n }> = [
+    { lang: "zh-CN", label: "简体中文", messages: zhCN },
+    { lang: "en", label: "English", messages: enUS },
+];
+
+/** 取语言代码对应的文案；未登记的语言返回 undefined */
+export function localeMessages(lang: string): PluginI18n | undefined {
+    return PLUGIN_LOCALES.find((item) => item.lang === lang)?.messages;
+}

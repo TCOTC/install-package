@@ -3,6 +3,7 @@ import { Custom, getAllTabs, Menu, Plugin } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./infra/i18n";
 import { clearMessagePrefix, message, setMessagePrefix } from "./infra/message";
 import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/setting";
+import { applySavedLocale } from "./settings/locale";
 import { InstallPanel, setPendingInstallPreset, type InstallPanelPreset } from "./ui/panel";
 import { BazaarPrPanel } from "./ui/prPanel";
 import { InstalledPanel } from "./ui/installedPanel";
@@ -71,11 +72,19 @@ export default class InstallPackage extends Plugin {
     private localPackagesMenu?: LocalPackagesMenu;
     /** 顶栏按钮；命令面板或快捷键触发「本地集市包列表」时用它作为菜单定位锚点 */
     private topBarElement?: HTMLElement;
+    /** 插件是否已被卸载；载入保存的界面语言期间可能发生 */
+    private unloaded = false;
 
-    onload() {
+    async onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
         initSelfPackage(this.name);
+
+        // 跟随思源语言初始化后，再覆盖为上次在「界面语言」菜单里选定的语言（读取失败或超时则保持思源的语言）
+        await applySavedLocale(this);
+        if (this.unloaded) {
+            return;
+        }
 
         // 图标定义集中在 src/ui/icons.ts（含从思源内置图标集复制的几个，避免思源改图标时影响本插件）
         this.addIcons(INSTALL_PACKAGE_ICON_SYMBOLS);
@@ -342,6 +351,7 @@ export default class InstallPackage extends Plugin {
     }
 
     onunload() {
+        this.unloaded = true;
         abortAllActiveInstalls();
         destroyGitHubNotice();
         clearRuntimeSecretCache();

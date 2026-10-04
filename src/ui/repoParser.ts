@@ -12,7 +12,7 @@ import {
 import type { InstallReleaseRow } from "../github/github";
 import { isSelfRepo } from "../install/selfPackage";
 import type { Logger } from "./logger";
-import type { InstallPanelData } from "./panel";
+import type { InstallPanelData } from "./panelData";
 
 /** 简介 / 日期缺省时的占位 */
 const REPO_SUMMARY_DASH = "—";

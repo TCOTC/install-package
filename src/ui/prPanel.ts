@@ -21,7 +21,7 @@ import { message } from "../infra/message";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
 import { setStatusText } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "./logger";
-import type { InstallPanelPreset } from "./panel";
+import type { InstallPanelPreset } from "./panelData";
 
 /** 滚动到距底部该距离时自动加载下一页 */
 const LOAD_MORE_THRESHOLD_PX = 120;

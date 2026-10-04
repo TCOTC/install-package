@@ -28,7 +28,7 @@ import {
     setStatusText,
 } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "./logger";
-import type { InstallPanelPreset } from "./panel";
+import type { InstallPanelPreset } from "./panelData";
 
 /** 更新检查结果；`unknown` 为版本号无法比较（如版本写法不是语义化版本） */
 type PackageUpdateState =

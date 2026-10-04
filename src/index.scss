@@ -178,10 +178,15 @@ $jcip-pr-avatar-size: 32px;
     white-space: normal;
 }
 
-// 安装历史行尾的「删除」按钮：与思源菜单自带的 action 图标一样垂直居中，并与文案留出间距
+// 安装历史行尾的「删除」按钮
+//
+// 菜单项自带 8px 右内边距，按钮（`.block__icon`）另有 4px 内边距，直接排布会让图标离行右边缘 12px，
+// 而它上下只有 6px（行内居中 2px + 内边距 4px），右侧明显偏松。这里用等量的负外边距抵消，
+// 使按钮盒子离右边缘 2px、图标离右边缘 6px，与上下的 2px / 6px 一致
 .jcip-history-remove {
     align-self: center;
     margin-left: $spacing-s * 0.5;
+    margin-right: -6px;
     color: var(--b3-theme-on-surface-light);
 }
 

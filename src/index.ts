@@ -21,6 +21,7 @@ import { findCustomTabForReuse, focusCustomTab, openNewCustomTab, openOrFocusCus
 import { openMenuFlushSide, topBarMenuAnchor } from "./ui/menuPosition";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
 import { abortAllActiveInstalls } from "./install/installSession";
+import { initInstallHistory, INSTALL_HISTORY_STORAGE_NAME } from "./install/installHistory";
 import { initSelfPackage } from "./install/selfPackage";
 import { fetchSyncPost } from "./infra/kernelClient";
 import { normalizeRepoKey } from "./infra/repoKey";
@@ -59,6 +60,11 @@ export default class InstallPackage extends Plugin {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
         initSelfPackage(this.name);
+        // 安装历史存在插件私有目录里；面板只读内存镜像，实际读盘与落盘都由本模块自己管
+        initInstallHistory({
+            load: () => this.loadData(INSTALL_HISTORY_STORAGE_NAME),
+            save: (entries) => this.saveData(INSTALL_HISTORY_STORAGE_NAME, entries),
+        });
 
         // 图标定义集中在 src/ui/icons.ts（含从思源内置图标集复制的几个，避免思源改图标时影响本插件）
         this.addIcons(INSTALL_PACKAGE_ICON_SYMBOLS);

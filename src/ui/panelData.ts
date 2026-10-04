@@ -56,6 +56,32 @@ export function normalizeData(raw: unknown): InstallPanelData {
     return data as InstallPanelData;
 }
 
+/**
+ * 解析落定到某个仓库后，是否保留当前版本（以及更新后的历史记录标记）
+ *
+ * 有两种「版本与仓库配套而来」的来源，都不能按「用户上一次的选择」清掉：
+ * - 入口带入的目标（本地集市包形态）：URL 与版本栏都被隐藏，清了无法恢复
+ * - 刚从历史记录选定的：填回表单即会切换仓库，版本正是随这次切换带进来的
+ *
+ * 历史记录选定的标记命中后消费（返回的 `historyPickRepoKey` 为 null），
+ * 之后用户再改 URL 时会照常清空版本。
+ *
+ * 三个仓库键均须是归一后的形式（见 `infra/repoKey`），调用方负责归一
+ */
+export function resolveVersionPin(
+    parsedRepoKey: string,
+    presetRepoKey: string,
+    historyPickRepoKey: string | null,
+): { keep: boolean; historyPickRepoKey: string | null } {
+    if (presetRepoKey !== "" && parsedRepoKey === presetRepoKey) {
+        return { keep: true, historyPickRepoKey };
+    }
+    if (historyPickRepoKey === null || parsedRepoKey !== historyPickRepoKey) {
+        return { keep: false, historyPickRepoKey };
+    }
+    return { keep: true, historyPickRepoKey: null };
+}
+
 /** 来源 PR 的展示信息（由集市 PR 页带入） */
 export interface InstallPanelPull {
     number: number;

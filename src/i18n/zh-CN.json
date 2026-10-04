@@ -6,6 +6,8 @@
   "abortInstallButton": "中断安装",
   "installingPackage": "正在安装",
   "urlLabel": "集市 PR URL 或 GitHub 仓库 URL",
+  "installHistoryButton": "历史安装记录",
+  "installHistoryEmpty": "暂无历史安装记录",
   "repoInfoTip": "填入 URL 后自动解析仓库信息",
   "repoRefreshButton": "重新验证",
   "repoInfoParsing": "正在解析仓库信息...",

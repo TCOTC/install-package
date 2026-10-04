@@ -4,14 +4,15 @@ import { safeExternalUrl } from "../infra/html";
 import type { Logger } from "../infra/logger";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
+import { ensureInstallHistoryLoaded, installHistoryUrl, listInstallHistory, type InstallHistoryEntry } from "../install/installHistory";
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
-import { normalizeRepoKey } from "../infra/repoKey";
+import { normalizeRepoKey, repoKeyFromOwnerRepo } from "../infra/repoKey";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
-import { COPY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
+import { COPY_ICON_ID, HISTORY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger } from "./logger";
 import { installLogCopyPayloadAtOpen } from "./installLogCopy";
@@ -22,6 +23,7 @@ import {
     normalizeData,
     parseInstalled,
     parsePull,
+    resolveVersionPin,
     serializeInstalled,
     serializePull,
     takePendingInstallPreset,
@@ -57,7 +59,10 @@ function renderInstallPanel(root: HTMLElement): void {
         <div class="jcip-input">
             <section class="jcip__vflow jcip-input__field jcip-input__field--url">
                 <div class="jcip__label">${i18n.urlLabel}</div>
-                <input data-type="url" class="b3-text-field fn__block" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+                <div class="jcip-input__url">
+                    <input data-type="url" class="b3-text-field fn__block" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+                    <button data-type="install-history" type="button" class="block__icon block__icon--show ariaLabel" aria-label="${i18n.installHistoryButton}" data-position="north"><svg><use xlink:href="#${HISTORY_ICON_ID}"></use></svg></button>
+                </div>
             </section>
             <section class="jcip__vflow jcip-input__source">
                 <div class="jcip__label" data-type="source-label"></div>
@@ -123,6 +128,7 @@ function createSourceNote(text: string): HTMLSpanElement {
 interface InstallPanelElements {
     inputEl: HTMLDivElement;
     urlEl: HTMLInputElement;
+    historyButtonEl: HTMLButtonElement;
     versionEl: HTMLButtonElement;
     sourceLabelEl: HTMLDivElement;
     sourceTitleEl: HTMLAnchorElement;
@@ -160,6 +166,15 @@ export class InstallPanel {
     private unsubActiveInstall: (() => void) | undefined;
     /** 与当前仓库匹配的本地集市包（卸载与打开目录几个键的依据） */
     private readonly uninstallTargets: PanelUninstallTargets;
+    /**
+     * 刚从历史记录选定的仓库键（小写 owner/repo）
+     *
+     * 填回表单会切换仓库，而解析落定时会按「换了仓库」清空版本；
+     * 因此先把目标记在这里，落定到同一仓库时保留刚填的版本（命中即消费）
+     */
+    private historyPickRepoKey: string | null = null;
+    /** 历史记录菜单；页签关闭时收起 */
+    private historyMenu: Menu | null = null;
     /** 页签已关闭：异步回调不再改 DOM */
     private destroyed = false;
 
@@ -179,6 +194,7 @@ export class InstallPanel {
         this.elements = {
             inputEl: this.root.querySelector(".jcip-input") as HTMLDivElement,
             urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
+            historyButtonEl: this.root.querySelector("button[data-type='install-history']") as HTMLButtonElement,
             versionEl: this.root.querySelector("[data-type='version']") as HTMLButtonElement,
             sourceLabelEl: this.root.querySelector("[data-type='source-label']") as HTMLDivElement,
             sourceTitleEl: this.root.querySelector("a[data-type='source-title']") as HTMLAnchorElement,
@@ -293,9 +309,48 @@ export class InstallPanel {
         return this.data.presetPull !== "" ? "pull" : "full";
     }
 
-    /** 刚解析出的仓库是否为入口带入的那个包（两侧都小写比较） */
-    private isPresetRepo(parsedRepoKey: string): boolean {
-        return this.data.presetRepoKey !== "" && normalizeRepoKey(parsedRepoKey) === this.data.presetRepoKey;
+    /**
+     * 打开安装历史菜单；选中一项即把该仓库 URL 与版本填回表单
+     *
+     * 菜单在数据就绪之后才建，因此这里先读记录（空菜单本就无法弹出）；
+     * 菜单是在点击事件处理之外建的，调用方仍需 `stopPropagation`，避免思源的全局点击收起逻辑收掉当时正打开着的别的菜单
+     */
+    private async openInstallHistoryMenu(anchor: HTMLElement): Promise<void> {
+        await ensureInstallHistoryLoaded();
+        if (this.destroyed) {
+            return;
+        }
+        const menu = new Menu("install-package-history", () => {
+            this.historyMenu = null;
+        });
+        this.historyMenu = menu;
+        const entries = listInstallHistory();
+        if (entries.length === 0) {
+            menu.addItem({ type: "readonly", label: i18n.installHistoryEmpty });
+        } else {
+            for (const entry of entries) {
+                menu.addItem({
+                    label: `${entry.owner}/${entry.repo} ${entry.version}`,
+                    click: () => {
+                        this.applyInstallHistoryEntry(entry);
+                    },
+                });
+            }
+        }
+        const rect = anchor.getBoundingClientRect();
+        menu.open({ x: rect.left, y: rect.bottom, isLeft: false });
+    }
+
+    /** 把历史记录中的仓库与版本填回表单，并重新解析该仓库 */
+    private applyInstallHistoryEntry(entry: InstallHistoryEntry): void {
+        const url = installHistoryUrl(entry);
+        // 解析落定到该仓库时要保留刚填的版本，见 resolveVersionPin
+        this.historyPickRepoKey = repoKeyFromOwnerRepo(entry.owner, entry.repo);
+        this.elements.urlEl.value = url;
+        this.data.url = url;
+        this.data.version = entry.version;
+        this.versionUI.syncDisplayFromData();
+        void this.repoParser.refresh();
     }
 
     /**
@@ -350,8 +405,15 @@ export class InstallPanel {
         // 立即刷新一次，用于界面重载之后初始化页签
         void this.repoParser.refresh();
         this.elements.urlEl.addEventListener("input", () => {
+            // 用户手动改动 URL 之后，历史记录选定的版本不再适用
+            this.historyPickRepoKey = null;
             this.data.url = this.elements.urlEl.value.trim();
             void this.repoParser.refresh(400);
+        });
+        this.elements.historyButtonEl.addEventListener("click", (event) => {
+            // 新建的菜单不在被点的按钮里，必须阻止冒泡：否则思源在 window 上监听的点击收起逻辑（globalClickHideMenu）会收掉它
+            event.stopPropagation();
+            void this.openInstallHistoryMenu(this.elements.historyButtonEl);
         });
         for (const cb of this.elements.enableAfterInstallSwitchEls) {
             cb.addEventListener("change", () => {
@@ -608,8 +670,11 @@ export class InstallPanel {
         } else {
             const { clearVersion, state } = this.uiStore.dispatch({ type: "parse/settled", ownerRepo: event.data });
             this.data.repoKey = state.lastParsedRepoKey;
-            // 入口带入的版本与仓库是同一个来源，解析落定不能把它当作用户上一次选择的版本清掉（URL 与版本栏都被隐藏，清了就无法恢复）
-            if (clearVersion && !this.isPresetRepo(state.lastParsedRepoKey)) {
+            // 入口带入的版本与历史记录选定的版本都来自「与仓库配套的来源」，解析落定不能把它们当作用户上一次选择的版本清掉；
+            // 无论是否要清空版本都先做一次判定：历史记录选定的标记要在落定时消费掉
+            const pin = resolveVersionPin(normalizeRepoKey(state.lastParsedRepoKey), this.data.presetRepoKey, this.historyPickRepoKey);
+            this.historyPickRepoKey = pin.historyPickRepoKey;
+            if (clearVersion && !pin.keep) {
                 this.clearVersionFieldAndRefreshUi();
             }
         }
@@ -696,6 +761,8 @@ export class InstallPanel {
         this.uninstallTargets.destroy();
         this.versionUI.destroy();
         this.repoParser.destroy();
+        this.historyMenu?.close();
+        this.historyMenu = null;
         this.unsubActiveInstall?.();
         this.unsubActiveInstall = undefined;
     }

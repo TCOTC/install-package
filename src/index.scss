@@ -71,6 +71,19 @@ $jcip-pr-avatar-size: 32px;
         flex: 1 1 0;
     }
 
+    // URL 输入行：输入框与右侧的历史安装记录按钮同排
+    &__url {
+        display: flex;
+        align-items: center;
+        gap: $spacing-s * 0.5;
+        min-width: 0;
+
+        // 窄容器里输入框可收缩，避免把历史按钮挤出可视区
+        .b3-text-field {
+            min-width: 0;
+        }
+    }
+
     // 输入区内「重新验证」按钮列
     &__button {
         flex: 0 0 auto;

@@ -35,6 +35,8 @@ export const LIST_ICON_ID = "iconInstallPackageList";
 export const CLOSE_ICON_ID = "iconInstallPackageClose";
 /** 「打开本地详情页」（复制自内置 iconInfo，lucide info） */
 export const INFO_ICON_ID = "iconInstallPackageInfo";
+/** 安装页「历史安装记录」（复制自内置 iconHistory，lucide history） */
+export const HISTORY_ICON_ID = "iconInstallPackageHistory";
 
 /**
  * 图标定义
@@ -89,5 +91,8 @@ export const INSTALL_PACKAGE_ICON_SYMBOLS = `
 </symbol>
 <symbol id="${INFO_ICON_ID}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+</symbol>
+<symbol id="${HISTORY_ICON_ID}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>
 </symbol>
 `;

@@ -4,6 +4,7 @@ import { repoKeyFromOwnerRepo } from "../infra/repoKey";
 import { downloadPackage, type DownloadProgressCallback } from "../github/download";
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
+import { recordInstallHistory } from "./installHistory";
 import { isSelfRepo, reportSelfInstallBlock } from "./selfPackage";
 import type { Logger } from "../infra/logger";
 
@@ -235,6 +236,8 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
             .replace("{packageName}", installResult.packageName)
             .replace("{autoEnabled}", autoEnabledText);
         log.info(installSuccess);
+        // 只在这一刻记入历史：此前的任何失败都不算「装过」，写入失败不影响本次结果
+        void recordInstallHistory(request.owner, request.repo, request.version);
         return true;
     } catch (error) {
         log.warn(i18n.installationFailed, error);

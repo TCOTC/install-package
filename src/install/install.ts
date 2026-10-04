@@ -221,7 +221,6 @@ export async function setPackageEnabled(
     switch (packageType) {
         case "plugin": {
             const action = enabled ? "enable" : "disable";
-            log.info(`Attempting to ${action} plugin: ${packageName}`);
             const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
                 packageName: packageName,
                 enabled: enabled,
@@ -255,7 +254,6 @@ export async function setPackageEnabled(
                     appearanceMode, // 值为空字符串时不影响内核处理
                 });
                 if (response.code === 0) {
-                    log.info(`Theme ${packageName} applied successfully`);
                     return true;
                 }
                 log.warn(i18n.enablePackageFailed, response.msg);
@@ -283,7 +281,6 @@ export async function setPackageEnabled(
                     }
                 }
             }
-            log.info(`Theme ${packageName} installed (not switching)`);
             return true;
         }
         case "icon": {
@@ -313,11 +310,10 @@ export async function setPackageEnabled(
                     }
                 }
             }
-            log.info(`Icon ${packageName} installed (not switching)`);
             return true;
         }
         default: {
-            log.info(`${packageType} ${packageName} installed`);
+            // 挂件与模板没有启用状态，内核会在安装时落盘，这里无需诰诉用户“安装成功”
             return true;
         }
     }
@@ -403,7 +399,6 @@ async function installWithCurrentMinAppVersion(pack: {
         log.warn(i18n.installationFailed, error);
         return { ok: false, msg: "" };
     } finally {
-        log.info("Cleaning up temporary files");
         for (const path of [tempPath, extractRootDir, repackedPath]) {
             await removeFile(path, log);
         }
@@ -428,8 +423,6 @@ export async function installPackage(pack: {
         log.warn(i18n.packageInstallFailed);
         return null;
     }
-
-    log.info(`Starting package installation: ${fileName}, repository name: ${repoPackageName}`);
 
     let result = await uploadLocalPackage(pack.blob, fileName, log);
     let loweredMinAppVersion = false;
@@ -457,6 +450,5 @@ export async function installPackage(pack: {
             .replace("{repoName}", repoPackageName),
         );
     }
-    log.info(`Package installed successfully: ${packageName}`);
     return { packageType, packageName };
 }

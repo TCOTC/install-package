@@ -146,15 +146,13 @@ export async function getFileBlob(path: string, log: Logger): Promise<Blob | nul
     }
 }
 
-/** 删除文件或目录 */
+/** 删除文件或目录；成功时静默（调用方多为临时文件清理），只在失败时记一行 */
 export async function removeFile(path: string, log: Logger): Promise<boolean> {
-    log.info(`Removing file: [${path}]`);
     const response = await fetchSyncPost("/api/file/removeFile", { path });
     if (response.code !== 0) {
         log.warn(`Failed to remove [${path}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
-    log.info("Removed successfully");
     return true;
 }
 
@@ -178,8 +176,6 @@ export async function readDir(path: string, log: Logger): Promise<ReadDirEntry[]
 }
 
 export async function unzipFile(zipPath: string, extractPath: string, log: Logger): Promise<boolean> {
-    log.info(`Unzipping file: [${zipPath}] -> [${extractPath}]`);
-
     const response = await fetchSyncPost("/api/archive/unzip", {
         zipPath: zipPath,
         path: extractPath,
@@ -189,7 +185,6 @@ export async function unzipFile(zipPath: string, extractPath: string, log: Logge
         return false;
     }
 
-    log.info("Unzipped successfully");
     return true;
 }
 
@@ -201,7 +196,7 @@ export async function zipFile(path: string, zipPath: string, log: Logger): Promi
         log.warn(`Failed to zip [${path}] -> [${zipPath}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
-    log.info("Zipped successfully");
+
     return true;
 }
 

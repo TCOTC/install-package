@@ -96,6 +96,8 @@
   "openTemplatesDir": "Templates Directory",
   "openThemesDir": "Themes Directory",
   "openIconsDir": "Icons Directory",
+  "openPackageFolder": "Open Package Folder",
+  "openPluginStorageFolder": "Open Plugin Storage Folder",
   "openDevTools": "Developer Tools",
   "openPluginSettings": "Plugin Settings",
   "openDirectoryFailed": "Failed to open directory: ",

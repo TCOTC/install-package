@@ -6,6 +6,7 @@ import { abortInstall, subscribeActiveInstallChange, runInstall } from "../insta
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
 import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
 import { uninstallInstalledPackages } from "../install/uninstall";
+import { getInstallPath } from "../install/install";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
@@ -170,6 +171,11 @@ function renderInstallPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
     // 中断安装按钮的内层结构（标签层与百分比层）由 InstallProgressButton 填充
     const abortInstallButton = "<button data-type=\"abort-install\" type=\"button\" class=\"b3-button jcip-abort fn__none\"></button>";
+    // 打开文件夹依赖 Electron，浏览器与移动端不渲染这两个键
+    const openFolderButtons = electron
+        ? `<button data-type="open-package-dir" type="button" class="b3-button b3-button--outline fn__none">${i18n.openPackageFolder}</button>
+                <button data-type="open-petal-dir" type="button" class="b3-button b3-button--outline fn__none">${i18n.openPluginStorageFolder}</button>`
+        : "";
     const actionInstallCore = `
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
                 ${abortInstallButton}
@@ -177,7 +183,8 @@ function renderInstallPanel(root: HTMLElement): void {
                     <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
                 </label>
-                <button data-type="uninstall" type="button" class="b3-button b3-button--outline fn__none">${i18n.uninstallLocalPackageButton}</button>`;
+                <button data-type="uninstall" type="button" class="b3-button b3-button--outline fn__none">${i18n.uninstallLocalPackageButton}</button>
+                ${openFolderButtons}`;
     root.innerHTML = `
     <div class="jcip-panel">
         <div class="jcip-input">
@@ -258,6 +265,10 @@ interface InstallPanelElements {
     installEls: NodeListOf<HTMLButtonElement>;
     abortEls: NodeListOf<HTMLButtonElement>;
     uninstallEls: NodeListOf<HTMLButtonElement>;
+    /** 非 Electron 环境中为空列表（按钮不渲染） */
+    openPackageDirEls: NodeListOf<HTMLButtonElement>;
+    /** 非 Electron 环境中为空列表（按钮不渲染） */
+    openPetalDirEls: NodeListOf<HTMLButtonElement>;
     installLogEl: HTMLDivElement;
 }
 
@@ -312,6 +323,8 @@ export class InstallPanel {
             installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
             abortEls: this.root.querySelectorAll("button[data-type='abort-install']") as NodeListOf<HTMLButtonElement>,
             uninstallEls: this.root.querySelectorAll("button[data-type='uninstall']") as NodeListOf<HTMLButtonElement>,
+            openPackageDirEls: this.root.querySelectorAll("button[data-type='open-package-dir']") as NodeListOf<HTMLButtonElement>,
+            openPetalDirEls: this.root.querySelectorAll("button[data-type='open-petal-dir']") as NodeListOf<HTMLButtonElement>,
             installLogEl: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
         };
         const logger = createInstallLogger(this.elements.installLogEl);
@@ -513,6 +526,23 @@ export class InstallPanel {
                 void this.uninstallMatchedPackages();
             });
         }
+        // 打开文件夹针对匹配到的第一个包；同一仓库匹配到多个包时由用户按需再次打开
+        for (const btn of this.elements.openPackageDirEls) {
+            btn.addEventListener("click", () => {
+                const target = this.uninstallTargets?.[0];
+                if (target !== undefined) {
+                    void openDirectory(`${getInstallPath(target.type)}/${target.name}`);
+                }
+            });
+        }
+        for (const btn of this.elements.openPetalDirEls) {
+            btn.addEventListener("click", () => {
+                const target = this.uninstallTargets?.[0];
+                if (target?.type === "plugin") {
+                    void openDirectory(`data/storage/petal/${target.name}`);
+                }
+            });
+        }
 
         this.elements.installLogEl.addEventListener("contextmenu", (event) => {
             event.preventDefault();
@@ -679,11 +709,30 @@ export class InstallPanel {
         this.syncUninstallButton();
     }
 
-    /** 有可卸载目标时显示「卸载」键 */
+    /**
+     * 有匹配到的本地集市包时显示针对该包的操作键
+     *
+     * 同一仓库可能匹配到多个包（实测存在），「打开文件夹」只针对第一个；
+     * 存储目录只有插件才有，因此那一个键仅当目标为插件时显示
+     */
     private syncUninstallButton(): void {
-        const visible = (this.uninstallTargets?.length ?? 0) > 0;
+        const target = this.uninstallTargets?.[0];
+        const visible = target !== undefined;
         for (const btn of this.elements.uninstallEls) {
             btn.classList.toggle("fn__none", !visible);
+        }
+        for (const btn of this.elements.openPackageDirEls) {
+            btn.classList.toggle("fn__none", !visible);
+            if (target !== undefined) {
+                btn.title = `${getInstallPath(target.type)}/${target.name}`;
+            }
+        }
+        const storageVisible = target?.type === "plugin";
+        for (const btn of this.elements.openPetalDirEls) {
+            btn.classList.toggle("fn__none", !storageVisible);
+            if (storageVisible) {
+                btn.title = `data/storage/petal/${target.name}`;
+            }
         }
     }
 

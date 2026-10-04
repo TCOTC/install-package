@@ -27,13 +27,15 @@ export function setI18n(messages: PluginI18n): void {
 // —— 内置语言包（供「界面语言」菜单切换，用于快速检查插件的 i18n）——
 
 /**
- * 插件内置的语言包；`label` 用该语言自己的写法，不随当前语言翻译
+ * 插件内置的语言包
  *
- * 新增语言文件后需要在此登记（并在 `src/i18n` 下提供对应 JSON），菜单与切换都以此为准
+ * 这里只登记「插件有哪些语言包」；菜单里具体列哪些语言、叫什么名字，取自思源下发的
+ * `window.siyuan.config.langs`（与「设置 - 外观 - 界面 - 语言」同一份数据），因此新增语言包
+ * 只需要在 `src/i18n` 下放 JSON 并在此登记，菜单会自动多出一项
  */
-export const PLUGIN_LOCALES: ReadonlyArray<{ lang: string; label: string; messages: PluginI18n }> = [
-    { lang: "zh-CN", label: "简体中文", messages: zhCN },
-    { lang: "en", label: "English", messages: enUS },
+export const PLUGIN_LOCALES: ReadonlyArray<{ lang: string; messages: PluginI18n }> = [
+    { lang: "zh-CN", messages: zhCN },
+    { lang: "en", messages: enUS },
 ];
 
 /** 取语言代码对应的文案；未登记的语言返回 undefined */

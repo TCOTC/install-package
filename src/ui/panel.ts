@@ -1,5 +1,5 @@
 import { Custom, Menu, saveLayout } from "siyuan";
-import { i18n, PLUGIN_LOCALES } from "../infra/i18n";
+import { i18n } from "../infra/i18n";
 import { safeExternalUrl } from "../infra/html";
 import type { BazaarPullLabel } from "../github/bazaarPrs";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
@@ -10,7 +10,7 @@ import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
 import { directoryExists } from "../infra/kernelClient";
-import { currentLocale, switchLocale } from "../settings/locale";
+import { currentLocale, localeOptions, switchLocale } from "../settings/locale";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
@@ -896,12 +896,12 @@ export class InstallPanel {
     private openLanguageMenu(button: HTMLButtonElement): void {
         const menu = new Menu("install-package-language");
         const current = currentLocale();
-        for (const locale of PLUGIN_LOCALES) {
+        for (const option of localeOptions()) {
             menu.addItem({
-                label: locale.label,
-                checked: locale.lang === current,
+                label: option.label,
+                checked: option.lang === current,
                 click: () => {
-                    void switchLocale(locale.lang);
+                    void switchLocale(option.lang);
                 },
             });
         }

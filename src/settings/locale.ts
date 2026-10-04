@@ -10,6 +10,12 @@ import type { Plugin } from "siyuan";
 import { localeMessages, setI18n } from "../infra/i18n";
 import { fetchSyncPost } from "../infra/kernelClient";
 
+/** 「界面语言」菜单的一项 */
+export interface LocaleOption {
+    lang: string;
+    label: string;
+}
+
 /** 插件私有目录下的文件名 */
 const STORAGE_NAME = "interface-lang";
 
@@ -42,6 +48,27 @@ export function currentLocale(): string {
         return activeLocale;
     }
     return matchLocale(window.siyuan.config?.lang ?? "");
+}
+
+/**
+ * 「界面语言」菜单的选项
+ *
+ * 语言清单与名称取自思源下发的 `config.langs`（与「设置 - 外观 - 界面 - 语言」同一份数据），
+ * 但只保留插件确实内置了语言包的项：列出选不了的语言只会让用户困惑。
+ * 同一语言可能对应思源列表里的多项（如 `en` 与 `en-US`），按插件语言代码去重
+ */
+export function localeOptions(): LocaleOption[] {
+    const options: LocaleOption[] = [];
+    const seen = new Set<string>();
+    for (const item of window.siyuan.config?.langs ?? []) {
+        const lang = matchLocale(item.name);
+        if (lang === "" || seen.has(lang)) {
+            continue;
+        }
+        seen.add(lang);
+        options.push({ lang, label: item.label || item.name });
+    }
+    return options;
 }
 
 /** 载入并应用已保存的语言；未保存过或读取失败时保持思源的语言 */

@@ -19,6 +19,14 @@ import {
 } from "../install/installedPackages";
 import { uninstallInstalledPackages } from "../install/uninstall";
 import { BAZAAR_ICON_ID, REFRESH_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
+import {
+    emptyPackagesText,
+    iconButton,
+    isUsablePackage,
+    pickDefaultType,
+    rowKey,
+    setStatusText,
+} from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "./logger";
 import type { InstallPanelPreset } from "./panel";
 
@@ -35,23 +43,6 @@ type PackageUpdateState =
  * 并发是为了不让包多的用户干等；上限压得低一些，避免把 GitHub 接口的速率限制一次性打满
  */
 const CHECK_ALL_CONCURRENCY = 4;
-
-/** 行标识：内核类型 + 包名（不同目录下的同名包互不影响） */
-function rowKey(pkg: InstalledPackage): string {
-    return `${pkg.kernelType}/${pkg.name}`;
-}
-
-/** 卡片右下角的图标按钮；文案放在 aria-label 里，由思源的 `.ariaLabel` 提示显示 */
-function iconButton(icon: string, label: string, action: string): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "block__icon block__icon--show ariaLabel";
-    button.dataset.action = action;
-    button.setAttribute("aria-label", label);
-    button.setAttribute("data-position", "north");
-    button.innerHTML = `<svg><use xlink:href="#${icon}"></use></svg>`;
-    return button;
-}
 
 function renderInstalledPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
@@ -186,26 +177,12 @@ export class InstalledPanel {
 
     /** 当前类型一个包都没有而其它类型有时，自动切到第一个有内容的类型，避免打开页就见到空列表 */
     private pickDefaultType(): void {
-        if (this.packages.some((pkg) => pkg.kernelType === this.activeType)) {
-            return;
-        }
-        const first = KERNEL_PACKAGE_TYPES.find((kernelType) =>
-            this.packages.some((pkg) => pkg.kernelType === kernelType)
-        );
-        if (first !== undefined) {
-            this.activeType = first;
-        }
+        this.activeType = pickDefaultType(this.packages, this.activeType);
     }
 
     /** 空列表提示：整个工作空间没有已安装包，或该类型下没有 */
     private emptyStatusText(): string {
-        if (this.packages.length === 0) {
-            return i18n.installedEmpty;
-        }
-        const count = this.packages.filter((pkg) => pkg.kernelType === this.activeType).length;
-        return count === 0
-            ? i18n.installedEmptyType.replace("{type}", kernelPackageTypeLabel(this.activeType))
-            : "";
+        return emptyPackagesText(this.packages, this.activeType);
     }
 
     private onTabsClick(event: Event): void {
@@ -224,14 +201,12 @@ export class InstalledPanel {
     }
 
     private setStatus(text: string, isError: boolean): void {
-        this.statusEl.textContent = text;
-        this.statusEl.classList.toggle("fn__none", text === "");
-        this.statusEl.classList.toggle("jcip-local__status--error", isError);
+        setStatusText(this.statusEl, text, isError, "jcip-local__status--error");
     }
 
     /** 可检查更新的行：有仓库来源且本地包正常 */
     private checkablePackages(): InstalledPackage[] {
-        return this.packages.filter((pkg) => pkg.repoKey !== "" && pkg.invalidReason === "");
+        return this.packages.filter(isUsablePackage);
     }
 
     /** 检查进行中时该键改作「中断检查」；没有可检查项时禁用 */
@@ -558,7 +533,7 @@ export class InstalledPanel {
     private renderCard(pkg: InstalledPackage): HTMLElement {
         const key = rowKey(pkg);
         const isOwn = pkg.type === "plugin" && pkg.name === this.pluginName;
-        const usable = pkg.repoKey !== "" && pkg.invalidReason === "";
+        const usable = isUsablePackage(pkg);
         const card = document.createElement("div");
         card.className = "jcip-local__card";
         card.dataset.key = key;

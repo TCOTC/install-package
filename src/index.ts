@@ -17,7 +17,7 @@ import {
     SETTINGS_ICON_ID,
 } from "./ui/icons";
 import { findCustomTabForReuse, focusCustomTab, openNewCustomTab, openOrFocusCustomTab } from "./ui/tabs";
-import { openMenuFlushSide } from "./ui/menuPosition";
+import { openMenuFlushSide, topBarMenuAnchor } from "./ui/menuPosition";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
 import { abortAllActiveInstalls } from "./install/installSession";
 import { initSelfPackage } from "./install/selfPackage";
@@ -40,25 +40,6 @@ function destroyTabPanel(custom: Custom): void {
         panel.destroy();
         tabPanels.delete(custom);
     }
-}
-
-/**
- * 入口菜单的定位锚点
- *
- * 顶栏按钮过多时会被收进「更多」，此时按钮自身没有尺寸，改用「更多」或插件按钮定位
- */
-function topBarMenuAnchor(button: HTMLElement): DOMRect {
-    const own = button.getBoundingClientRect();
-    if (own.width > 0) {
-        return own;
-    }
-    for (const selector of ["#barMore", "#barPlugins"]) {
-        const rect = document.querySelector(selector)?.getBoundingClientRect();
-        if (rect !== undefined && rect.width > 0) {
-            return rect;
-        }
-    }
-    return own;
 }
 
 export default class InstallPackage extends Plugin {

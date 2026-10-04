@@ -569,7 +569,7 @@ export class InstallPanel {
             btn.addEventListener("click", () => {
                 const target = this.uninstallTargets?.[0];
                 if (target?.type === "plugin") {
-                    void openDirectory(`data/storage/petal/${target.name}`);
+                    void openDirectory(petalDirPath(target.name));
                 }
             });
         }

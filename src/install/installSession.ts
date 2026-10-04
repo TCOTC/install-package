@@ -1,5 +1,5 @@
 import { i18n } from "../infra/i18n";
-import { Dialog } from "siyuan";
+import { confirmDialog } from "../infra/dialog";
 import { downloadPackage, type DownloadProgressCallback } from "../github/download";
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
@@ -28,24 +28,28 @@ type ActiveInstallEntry = { controller: AbortController; version: string };
 
 const activeInstallByRepo = new Map<string, ActiveInstallEntry>();
 
+/**
+ * 安装锁的键：`owner/repo` 小写形式。仓库地址大小写并不统一，全局锁必须按小写键比较
+ */
+function installLockKey(owner: string, repo: string): string {
+    return `${owner}/${repo}`.toLowerCase();
+}
+
 /** 该 owner / repo 是否正在安装且进行中版本与参数一致（跨面板共用 `activeInstallByRepo`） */
 export function isSameTargetInstalling(owner: string, repo: string, version: string): boolean {
-    const key = `${owner}/${repo}`.toLowerCase();
-    const entry = activeInstallByRepo.get(key);
+    const entry = activeInstallByRepo.get(installLockKey(owner, repo));
     return entry !== undefined && entry.version === version;
 }
 
 /** 该仓库是否有一条进行中的安装（与版本无关，同仓互斥） */
 export function isRepoInstalling(owner: string, repo: string): boolean {
-    const key = `${owner}/${repo}`.toLowerCase();
     // 存在时说明有进行中的安装，还没执行到 finally
-    return activeInstallByRepo.has(key);
+    return activeInstallByRepo.has(installLockKey(owner, repo));
 }
 
 /** 中止指定仓库的进行中安装 */
 export function abortInstall(owner: string, repo: string): void {
-    const key = `${owner}/${repo}`.toLowerCase();
-    activeInstallByRepo.get(key)?.controller.abort();
+    activeInstallByRepo.get(installLockKey(owner, repo))?.controller.abort();
 }
 
 const installUiLockListeners = new Set<() => void>();
@@ -89,7 +93,7 @@ function confirmSelfInstall(version: string, log: Logger): boolean {
  * @returns `true` 成功（需提示）、`false` 失败（需提示）、`null` 中性（取消 / 被中止等，不提示）
  */
 export async function runInstall(request: InstallRequest, log: Logger, options?: RunInstallOptions): Promise<boolean | null> {
-    const repoLockKey = `${request.owner}/${request.repo}`.toLowerCase();
+    const repoLockKey = installLockKey(request.owner, request.repo);
     const installAbort = new AbortController();
     const signal = installAbort.signal;
     try {
@@ -249,36 +253,16 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
 }
 
 function confirmLargeDownload(fileName: string, sizeBytes: number, thresholdBytes: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        let result = false;
-        const confirmDialog = new Dialog({
-            title: i18n.largePackageConfirmTitle,
-            width: window.siyuan.mobile ? "92vw" : "480px",
-            content:
-                `<div class="b3-dialog__content">
-                    <div data-type="msg" class="b3-label__text">
+    return confirmDialog({
+        title: i18n.largePackageConfirmTitle,
+        content:
+            `<div data-type="msg" class="b3-label__text">
                     ${i18n.largePackageConfirmContent
                         .replace("{fileName}", fileName)
                         .replace("{fileSize}", formatFileSize(sizeBytes))
                         .replace("{thresholdBytes}", formatFileSize(thresholdBytes))
                     }
-                    </div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-            destroyCallback: () => {
-                resolve(result);
-            },
-        });
-        confirmDialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
-            confirmDialog.destroy();
-        });
-        confirmDialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            result = true;
-            confirmDialog.destroy();
-        });
+                    </div>`,
     });
 }
 

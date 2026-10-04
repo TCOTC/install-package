@@ -184,20 +184,15 @@ export class InstallPanelVersion {
     }
 
     syncVersionDisplay(): void {
-        if (!this.data.version) {
+        const tag = this.data.version;
+        if (!tag) {
             this.versionEl.textContent = "";
             this.syncRepoSummaryReleaseExtras();
             return;
         }
-        let out = this.data.version;
-        if (this.latestReleaseTag !== null && this.data.version === this.latestReleaseTag) {
-            out += i18n.versionTagSuffixLatest;
-        }
-        const row = this.releaseRows.find((r) => r.tag === this.data.version);
-        if (row?.prerelease) {
-            out += i18n.versionTagSuffixPrerelease;
-        }
-        this.versionEl.textContent = out;
+        // 「（最新）」「（预发布）」后缀与摘要里的已选版本链接共用同一份拼接
+        const row = this.releaseRows.find((r) => r.tag === tag);
+        this.versionEl.textContent = this.formatTagRowLabel(tag, row ?? { tag, publishedAt: "", prerelease: false });
         this.syncRepoSummaryReleaseExtras();
     }
 

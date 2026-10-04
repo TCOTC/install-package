@@ -5,9 +5,10 @@
  * 内核卸载后会刷新外观配置并把不再存在的主题、图标切回内置默认值。
  */
 
-import { Dialog, getFrontend } from "siyuan";
+import { getFrontend } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { escapeHtml } from "../infra/html";
+import { confirmDialog } from "../infra/dialog";
 import { fetchSyncPost } from "../infra/kernelClient";
 import type { PackageType } from "./install";
 import { kernelPackageTypeLabel, type InstalledPackage } from "./installedPackages";
@@ -61,31 +62,9 @@ function confirmUninstallPackages(targets: InstalledPackage[]): Promise<boolean>
         body = `<div class="b3-label__text">${i18n.uninstallConfirmContent}</div>
                     <ul class="jcip-uninstall-list">${items}</ul>`;
     }
-    return new Promise((resolve) => {
-        let result = false;
-        const dialog = new Dialog({
-            title: i18n.uninstallConfirmTitle,
-            width: window.siyuan.mobile ? "92vw" : "480px",
-            content:
-                `<div class="b3-dialog__content">
-                    ${body}
-                    ${inUseHint}
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-            destroyCallback: () => {
-                resolve(result);
-            },
-        });
-        dialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
-            dialog.destroy();
-        });
-        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            result = true;
-            dialog.destroy();
-        });
+    return confirmDialog({
+        title: i18n.uninstallConfirmTitle,
+        content: body + inUseHint,
     });
 }
 

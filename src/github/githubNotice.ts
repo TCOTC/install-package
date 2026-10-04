@@ -1,5 +1,6 @@
 import { Dialog } from "siyuan";
 import { i18n } from "../infra/i18n";
+import { confirmDialog } from "../infra/dialog";
 import { getGitHubToken } from "../settings/setting";
 
 /** GitHub 相关通知对话框单例 */
@@ -19,6 +20,29 @@ export function destroyGitHubNotice(): void {
     }
 }
 
+/**
+ * 提示类对话框：登记为单例，点「确认」后打开插件设置
+ *
+ * 令牌失效只给「确定」（唯一有意义的下步操作就是去设置里重填），限流则另有「取消」
+ */
+function showAuthNotice(title: string, content: string, width: string, showCancel: boolean): void {
+    // 让触发请求的输入框失焦，避免对话框与它的原生提示叠加
+    (document.activeElement as HTMLElement | null)?.blur();
+    void confirmDialog({
+        title,
+        width,
+        content: `<div class="b3-label__text">${content}</div>`,
+        showCancel,
+        onCreated: (dialog) => {
+            sharedGitHubNoticeDialog = dialog;
+        },
+        onClosed: () => {
+            sharedGitHubNoticeDialog = null;
+        },
+        onConfirm: () => openPluginSettingsHandler?.(),
+    });
+}
+
 export function showGitHubAuthNotice(status: number): void {
     if (sharedGitHubNoticeDialog) {
         return;
@@ -26,54 +50,22 @@ export function showGitHubAuthNotice(status: number): void {
 
     // Token 无效或过期
     if (status === 401) {
-        (document.activeElement as HTMLElement | null)?.blur();
-        const dialog = new Dialog({
-            title: i18n.githubTokenExpiredTitle,
-            width: window.siyuan.mobile ? "92vw" : "480px",
-            content:
-                `<div class="b3-dialog__content">
-                    <div class="b3-label__text">${i18n.githubTokenExpiredContent}</div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-            destroyCallback: () => {
-                sharedGitHubNoticeDialog = null;
-            },
-        });
-        sharedGitHubNoticeDialog = dialog;
-        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            dialog.destroy();
-            openPluginSettingsHandler?.();
-        });
+        showAuthNotice(
+            i18n.githubTokenExpiredTitle,
+            i18n.githubTokenExpiredContent,
+            window.siyuan.mobile ? "92vw" : "480px",
+            false,
+        );
         return;
     }
 
-    // 接口限流
+    // 接口限流：没有 Token 时提示去设置里填写，以便提高限额
     if (status === 403 && !getGitHubToken()) {
-        (document.activeElement as HTMLElement | null)?.blur();
-        const dialog = new Dialog({
-            title: i18n.githubRateLimitDialogTitle,
-            width: window.siyuan.mobile ? "92vw" : "520px",
-            content:
-                `<div class="b3-dialog__content">
-                    <div class="b3-label__text">${i18n.githubRateLimitDialogContent}</div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-type="cancel" class="b3-button b3-button--cancel">${i18n.cancel}</button><div class="fn__space"></div>
-                    <button data-type="confirm" class="b3-button b3-button--text">${i18n.confirm}</button>
-                </div>`,
-            destroyCallback: () => {
-                sharedGitHubNoticeDialog = null;
-            },
-        });
-        sharedGitHubNoticeDialog = dialog;
-        dialog.element.querySelector("button[data-type='cancel']")?.addEventListener("click", () => {
-            dialog.destroy();
-        });
-        dialog.element.querySelector("button[data-type='confirm']")?.addEventListener("click", () => {
-            dialog.destroy();
-            openPluginSettingsHandler?.();
-        });
+        showAuthNotice(
+            i18n.githubRateLimitDialogTitle,
+            i18n.githubRateLimitDialogContent,
+            window.siyuan.mobile ? "92vw" : "520px",
+            true,
+        );
     }
 }

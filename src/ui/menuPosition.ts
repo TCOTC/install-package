@@ -19,7 +19,7 @@ const DOCK_BORDER = 1;
  *
  * 顶栏按钮过多时会被收进「更多」，此时按钮自身没有尺寸，改用「更多」或插件按钮定位
  */
-function topBarMenuAnchor(button: HTMLElement): DOMRect {
+export function topBarMenuAnchor(button: HTMLElement): DOMRect {
     const own = button.getBoundingClientRect();
     if (own.width > 0) {
         return own;

@@ -25,6 +25,7 @@ import {
     type KernelPackageType,
 } from "../install/installedPackages";
 import { CLOSE_ICON_ID, INFO_ICON_ID, SELECT_ICON_ID } from "./icons";
+import { emptyPackagesText, iconButton, pickDefaultType, rowKey, setStatusText } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "./logger";
 
 /** 给菜单的 `.b3-menu__items` 加的类：让工具栏与滚动区在里面分列（样式定义在 `index.scss`） */
@@ -32,23 +33,6 @@ const LIST_HOST_CLASS = "jcip-list-host";
 
 /** SVG 的 XLink 命名空间：动态替换 `<use>` 的引用时需要按该命名空间写回 */
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
-
-/** 行标识：内核类型 + 包名，不同目录下的同名包互不影响 */
-function rowKey(pkg: InstalledPackage): string {
-    return `${pkg.kernelType}/${pkg.name}`;
-}
-
-/** 行尾与总开关的图标按钮；文案放在 aria-label 里，由思源的 `.ariaLabel` 提示显示 */
-function iconButton(icon: string, label: string, action: string): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "block__icon block__icon--show ariaLabel";
-    button.dataset.action = action;
-    button.setAttribute("aria-label", label);
-    button.setAttribute("data-position", "north");
-    button.innerHTML = `<svg><use xlink:href="#${icon}"></use></svg>`;
-    return button;
-}
 
 /**
  * 控件是否不可用
@@ -192,31 +176,15 @@ export class LocalPackagesMenu {
 
     /** 当前类型一个包都没有而其它类型有时，自动切到第一个有内容的类型，避免打开就见到空列表 */
     private pickDefaultType(): void {
-        if (this.packagesOf(this.activeType).length > 0) {
-            return;
-        }
-        const first = KERNEL_PACKAGE_TYPES.find((kernelType) => this.packagesOf(kernelType).length > 0);
-        if (first !== undefined) {
-            this.activeType = first;
-        }
+        this.activeType = pickDefaultType(this.packages ?? [], this.activeType);
     }
 
     private emptyStatusText(): string {
-        if ((this.packages ?? []).length === 0) {
-            return i18n.installedEmpty;
-        }
-        return this.packagesOf(this.activeType).length > 0
-            ? ""
-            : i18n.installedEmptyType.replace("{type}", kernelPackageTypeLabel(this.activeType));
+        return emptyPackagesText(this.packages ?? [], this.activeType);
     }
 
     private setStatus(text: string, isError: boolean): void {
-        if (this.statusEl === undefined) {
-            return;
-        }
-        this.statusEl.textContent = text;
-        this.statusEl.classList.toggle("fn__none", text === "");
-        this.statusEl.classList.toggle("jcip-list__status--error", isError);
+        setStatusText(this.statusEl, text, isError, "jcip-list__status--error");
     }
 
     /** 当前类型的包，按思源集市「已下载」列表的排序配置排列 */

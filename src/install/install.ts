@@ -112,6 +112,16 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+/** 外观类集市包的启用与禁用需要读取前端配置；取不到时记一行并返回 null */
+function requireSiyuanConfig(log: Logger): NonNullable<typeof window.siyuan.config> | null {
+    const config = window.siyuan.config;
+    if (!config) {
+        log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
+        return null;
+    }
+    return config;
+}
+
 /**
  * 把 ZIP 交给内核安装
  *
@@ -235,9 +245,8 @@ export async function setPackageEnabled(
         }
         case "theme": {
             // 安装已由内核完成，内核会重载主题列表并推送外观刷新，此处只需按需切换为当前主题
-            const config = window.siyuan.config;
+            const config = requireSiyuanConfig(log);
             if (!config) {
-                log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
                 return false;
             }
             const appearance = config.appearance;
@@ -285,9 +294,8 @@ export async function setPackageEnabled(
         }
         case "icon": {
             // 安装已由内核完成，内核会重载图标列表并推送外观刷新，此处只需按需切换为当前图标
-            const config = window.siyuan.config;
+            const config = requireSiyuanConfig(log);
             if (!config) {
-                log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
                 return false;
             }
             const wasCurrentIcon = config.appearance.icon === packageName;

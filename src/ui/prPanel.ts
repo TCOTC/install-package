@@ -19,6 +19,7 @@ import { i18n } from "../infra/i18n";
 import { safeExternalUrl } from "../infra/html";
 import { message } from "../infra/message";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
+import { setStatusText } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "./logger";
 import type { InstallPanelPreset } from "./panel";
 
@@ -185,9 +186,7 @@ export class BazaarPrPanel {
     }
 
     private setStatus(text: string, isError: boolean): void {
-        this.statusEl.textContent = text;
-        this.statusEl.classList.toggle("fn__none", text === "");
-        this.statusEl.classList.toggle("jcip-pr__status--error", isError);
+        setStatusText(this.statusEl, text, isError, "jcip-pr__status--error");
     }
     private onListClick(event: Event): void {
         const target = event.target instanceof Element ? event.target.closest("button[data-type='install']") : null;

@@ -1,6 +1,6 @@
 import { i18n } from "../infra/i18n";
 import { Dialog } from "siyuan";
-import { downloadPackage } from "../github/download";
+import { downloadPackage, type DownloadProgressCallback } from "../github/download";
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
 import type { Logger } from "../ui/logger";
@@ -10,6 +10,13 @@ export interface InstallRequest {
     repo: string;
     version: string;
     enableAfterInstall: boolean;
+}
+
+export interface RunInstallOptions {
+    /** 下载阶段的进度回调（已接收字节 / 总字节）；本地安装阶段不再触发 */
+    onDownloadProgress?: DownloadProgressCallback;
+    /** 下载结束、即将进入本地安装阶段时触发（本地安装由内核接口完成，拿不到字节级进度） */
+    onDownloadComplete?: () => void;
 }
 
 /**
@@ -68,7 +75,7 @@ export function abortAllActiveInstalls(): void {
  * 执行一次安装请求（下载 release 包并安装）。
  * @returns `true` 成功（需提示）、`false` 失败（需提示）、`null` 中性（取消 / 被中止等，不提示）
  */
-export async function runInstall(request: InstallRequest, log: Logger): Promise<boolean | null> {
+export async function runInstall(request: InstallRequest, log: Logger, options?: RunInstallOptions): Promise<boolean | null> {
     const repoLockKey = `${request.owner}/${request.repo}`.toLowerCase();
     const installAbort = new AbortController();
     const signal = installAbort.signal;
@@ -108,22 +115,87 @@ export async function runInstall(request: InstallRequest, log: Logger): Promise<
             }
         }
 
-        log.info(
+        // 下载进度以「原地刷新的进度行」呈现，初始文本即原有的下载提示
+        const downloadProgress = log.progress(
             i18n.downloading
                 .replace("{fileName}", packageZip.name)
                 .replace("{fileSize}", formatFileSize(packageZip.size)),
         );
-        const downloadResult = await downloadPackage(packageZip.browser_download_url, packageZip.name, log, installAbort);
+        let lastProgressAt = 0;
+        let lastProgressPercent = -1;
+        const downloadResult = await downloadPackage(
+            packageZip.browser_download_url,
+            packageZip.name,
+            log,
+            installAbort,
+            {
+                totalBytes: packageZip.size,
+                onProgress: (loaded, total) => {
+                    const percent = total > 0 ? Math.min(loaded / total, 1) : 0;
+                    const now = Date.now();
+                    // 节流：百分比未变化时不刷新；有变化时也限制在 100ms 一次，100% 始终即时上报
+                    if (percent < 1 && (percent === lastProgressPercent || now - lastProgressAt < 100)) {
+                        return;
+                    }
+                    lastProgressAt = now;
+                    lastProgressPercent = percent;
+                    downloadProgress.update(
+                        i18n.downloadProgress
+                            .replace("{fileName}", packageZip.name)
+                            .replace("{loaded}", formatFileSize(loaded))
+                            .replace("{total}", formatFileSize(total))
+                            .replace("{percent}", String(Math.floor(percent * 100))),
+                    );
+                    options?.onDownloadProgress?.(loaded, total);
+                },
+            },
+        );
+        if (!downloadResult.ok) {
+            switch (downloadResult.reason) {
+                case "aborted":
+                    // 用户主动中断属中性结果，不提示
+                    downloadProgress.discard();
+                    return null;
+                case "network":
+                    // 失败原因就地写在进度行上，避免再追一条内容重复的告警；
+                    // 网络类失败与「文件不是 ZIP」是两回事，分别给出对应提示
+                    downloadProgress.finish(
+                        downloadResult.status !== undefined
+                            ? i18n.downloadHttpFailed.replace("{status}", String(downloadResult.status))
+                            : downloadResult.loadedBytes > 0
+                                ? i18n.downloadInterruptedAt
+                                    .replace("{loaded}", formatFileSize(downloadResult.loadedBytes))
+                                    .replace("{total}", formatFileSize(downloadResult.totalBytes))
+                                : i18n.downloadInterrupted,
+                        { warn: true },
+                    );
+                    return false;
+                case "unrecognized":
+                    // 已取回完整响应，但下载地址不是可识别的仓库地址
+                    downloadProgress.finish(i18n.packageNameFromUrlFailed, { warn: true });
+                    return false;
+                default:
+                    // 已拿到完整响应，但内容不是有效 ZIP
+                    downloadProgress.finish(i18n.fileValidationFailed, { warn: true });
+                    return false;
+            }
+        }
+
+        // 下载已完成，此处的中止说明用户在最后一刻点了「中断安装」，后续内核安装不再受理
         if (signal.aborted) {
+            downloadProgress.discard();
             return null;
         }
-        if (!downloadResult) {
-            return false;
-        }
+        downloadProgress.finish(
+            i18n.downloadComplete
+                .replace("{fileName}", packageZip.name)
+                .replace("{fileSize}", formatFileSize(downloadResult.blob.size)),
+        );
+        options?.onDownloadComplete?.();
 
         const installResult = await installPackage(downloadResult, log);
         if (!installResult) {
-            log.warn(i18n.packageInstallFailed);
+            // 失败原因已由 installPackage 分类打印，此处不再重复输出
             return false;
         }
 

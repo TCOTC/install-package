@@ -46,9 +46,14 @@ export function normalizeData(raw: unknown): InstallPanelData {
 
 function renderInstallPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
+    // 百分比放在标签内部的绝对定位层里：它不参与排版，标签文本始终居中在原本的位置，不随百分比位数变化而移动
+    // 标签文案另用一层包裹，便于按阶段改写而不会连带清掉百分比层
+    const abortInstallButton = "<button data-type=\"abort-install\" type=\"button\" class=\"b3-button jcip-abort fn__none\">"
+        + `<span class="jcip-abort__label"><span class="jcip-abort__text">${i18n.abortInstallButton}</span><span class="jcip-abort__percent"></span></span>`
+        + "</button>";
     const actionInstallCore = `
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
-                <button data-type="abort-install" type="button" class="b3-button fn__none">${i18n.abortInstallButton}</button>
+                ${abortInstallButton}
                 <label class="jcip-action__enable">
                     <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
@@ -275,21 +280,83 @@ export class InstallPanel {
         });
     }
 
-    private setInstallAbortButtonVisibility(installing: boolean): void {
+    /**
+     * 安装区三态投影。
+     *
+     * 安装期间隐藏安装按钮（同 issue #18），由「中断安装」按钮兼任进度指示；
+     * 该按钮的可点性由两个进度渲染方法各自决定：下载阶段可中断，本地安装阶段不可中断
+     */
+    private applyInstallButtonState(phase: InstallButtonState): void {
+        const installDisabled = phase !== "canInstall";
+        const installing = phase === "installing";
         for (const b of this.elements.installEls) {
+            b.disabled = installDisabled;
             b.classList.toggle("fn__none", installing);
         }
         for (const b of this.elements.abortEls) {
             b.classList.toggle("fn__none", !installing);
+            if (!installing) {
+                this.resetAbortProgress(b);
+            }
         }
     }
 
-    private applyInstallButtonState(phase: InstallButtonState): void {
-        const installDisabled = phase !== "canInstall";
-        for (const b of this.elements.installEls) {
-            b.disabled = installDisabled;
+    /** 清除中断安装按钮上的进度外观，回到可点的普通按钮（安装结束后调用） */
+    private resetAbortProgress(button: HTMLButtonElement): void {
+        button.disabled = false;
+        button.classList.remove("jcip-abort--download", "jcip-abort--indeterminate");
+        button.style.removeProperty("--jcip-abort-progress");
+        this.setAbortPercentText("");
+        this.setAbortLabelText(i18n.abortInstallButton);
+    }
+
+    /** 只改写标签文案层；标签宽度变化不会带动右侧百分比层 */
+    private setAbortLabelText(text: string): void {
+        for (const b of this.elements.abortEls) {
+            const textEl = b.querySelector(".jcip-abort__text");
+            if (textEl !== null) {
+                textEl.textContent = text;
+            }
         }
-        this.setInstallAbortButtonVisibility(phase === "installing");
+    }
+
+    /** 只改写标签右侧的百分比层；标签文本不变，因此标签位置固定 */
+    private setAbortPercentText(text: string): void {
+        for (const b of this.elements.abortEls) {
+            const percentEl = b.querySelector(".jcip-abort__percent") as HTMLElement | null;
+            if (percentEl !== null) {
+                percentEl.textContent = text;
+            }
+        }
+    }
+
+    /** 下载阶段：按钮保持可点，写入进度填充与标签右侧百分比（0 到 1） */
+    private renderInstallProgress(ratio: number): void {
+        const percent = Math.floor(Math.max(0, Math.min(ratio, 1)) * 100);
+        for (const b of this.elements.abortEls) {
+            b.disabled = false;
+            b.classList.remove("jcip-abort--indeterminate");
+            b.classList.add("jcip-abort--download");
+            b.style.setProperty("--jcip-abort-progress", `${percent}%`);
+        }
+        this.setAbortPercentText(`${percent}%`);
+        this.setAbortLabelText(i18n.abortInstallButton);
+    }
+
+    /**
+     * 本地安装阶段：上传与安装由内核同步完成，客户端 abort 不会真的停下它，
+     * 因此置为不可点并把文案改为「正在安装」，避免按钮给出停不下来的假承诺；
+     * 字节进度不可得，改用滚动的斜条纹表示进行中
+     */
+    private renderInstallIndeterminate(): void {
+        for (const b of this.elements.abortEls) {
+            b.disabled = true;
+            b.classList.remove("jcip-abort--download");
+            b.classList.add("jcip-abort--indeterminate");
+            b.style.removeProperty("--jcip-abort-progress");
+        }
+        this.setAbortPercentText("");
+        this.setAbortLabelText(i18n.installingPackage);
     }
 
     /** 安装区三态由 `uiStore.syncInstallButtonState` / `resolveInstallButtonState` 统一推导 */
@@ -407,6 +474,14 @@ export class InstallPanel {
                     repo: ownerRepo.repo,
                 },
                 this.log,
+                {
+                    onDownloadProgress: (loaded, total) => {
+                        this.renderInstallProgress(total > 0 ? loaded / total : 0);
+                    },
+                    onDownloadComplete: () => {
+                        this.renderInstallIndeterminate();
+                    },
+                },
             );
             if (result === true) {
                 const text = i18n.installDone.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);

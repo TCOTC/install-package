@@ -9,6 +9,8 @@ export interface KernelApiResponse {
     code: number;
     msg: string;
     data: unknown;
+    /** 请求未能到达内核（断网、连接被拒、响应不可解析等），用于与内核返回的业务错误区分 */
+    transportFailed?: boolean;
 }
 
 export async function fetchSyncPost(url: string, data?: object): Promise<KernelApiResponse> {
@@ -231,10 +233,12 @@ export async function installLocalBazaarPackage(blob: Blob, fileName: string, fr
         }
         return (await response.json()) as KernelApiResponse;
     } catch (error) {
+        // 断网、连接被拒、响应不可解析都走这里：内核并未处理该请求，与内核返回的失败原因不同
         return {
             code: -1,
             msg: error instanceof Error ? error.message : String(error),
             data: null,
+            transportFailed: true,
         };
     }
 }

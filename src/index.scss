@@ -148,6 +148,12 @@ $scrollbar-width: 10px;
             font-family: var(--b3-font-family-code);
         }
 
+        // 日志进度行：原地刷新，等宽数字避免宽度抖动，主题色区分「进行中」
+        &--log-progress {
+            font-variant-numeric: tabular-nums;
+            color: var(--b3-theme-primary);
+        }
+
         // 日志告警行
         &--log-warn {
             line-height: 1.6;
@@ -397,6 +403,74 @@ $jcip-repo-summary-avatar-size: 50px;
         justify-content: flex-end;
         gap: $spacing-s;
         box-sizing: border-box;
+    }
+}
+
+// 中断安装按钮兼任下载进度条
+//
+// 安装期间它是唯一可见且可点击的按钮。进度以半透明 on-primary 叠在按钮自身主色底上，
+// 而不是换成透明进度条：这样按钮文案始终保持 on-primary 对比度，也不会与被禁用按钮的变暗叠加
+.jcip-abort {
+    // 本地安装阶段按钮不可点：取消共享按钮在被禁用时的变暗
+    // `b3-button:disabled` 的 opacity: .38 会把进度条纹一起压暗到看不清，而这里的禁用态是状态提示而非失效操作，
+    // 因此只取消变暗（保留 not-allowed 光标与不可点行为）
+    &:disabled {
+        opacity: 1;
+    }
+
+    // 百分比锚定在标签右侧：绝对定位不参与排版，标签保持原本的居中位置，不随百分比位数变化移动
+    &__label {
+        position: relative;
+    }
+
+    &__percent {
+        position: absolute;
+        left: 100%;
+        margin-left: 8px;
+        white-space: nowrap;
+        // 等宽数字，避免位数变化时百分比自身的宽度跳动
+        font-variant-numeric: tabular-nums;
+    }
+
+    // 下载中：填充宽度由 --jcip-abort-progress 驱动
+    // 用 background-size 而非渐变硬边缘定位，0% 时完全不绘制，避免左边缘残留 1px 抗锯齿痕迹
+    &--download {
+        background-image: linear-gradient(
+            color-mix(in srgb, var(--b3-theme-on-primary) 30%, transparent),
+            color-mix(in srgb, var(--b3-theme-on-primary) 30%, transparent)
+        );
+        background-repeat: no-repeat;
+        background-size: var(--jcip-abort-progress, 0%) 100%;
+    }
+
+    // 已下载完、本地安装中：字节进度不可得，用滚动的斜条纹表示「进行中」
+    &--indeterminate {
+        background-image: linear-gradient(
+            -45deg,
+            color-mix(in srgb, var(--b3-theme-on-primary) 30%, transparent) 25%,
+            transparent 25% 50%,
+            color-mix(in srgb, var(--b3-theme-on-primary) 30%, transparent) 50% 75%,
+            transparent 75%
+        );
+        background-size: 16px 16px;
+        animation: jcip-abort-stripe 600ms linear infinite;
+    }
+}
+
+// 条纹位移量与 background-size 的宽度一致，循环时首尾相接
+@keyframes jcip-abort-stripe {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: 16px 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .jcip-abort--indeterminate {
+        animation: none;
     }
 }
 

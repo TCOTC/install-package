@@ -67,7 +67,16 @@ interface LocalInstallFailure {
 
 type LocalInstallResult =
     | { ok: true; data: LocalInstallData }
-    | { ok: false; msg: string; failure?: LocalInstallFailure };
+    | { ok: false; msg: string; failure?: LocalInstallFailure; transportFailed?: boolean };
+
+/**
+ * 内核安装接口的传输失败重试间隔
+ *
+ * 包已下载完成、Blob 就在内存里，此时因网络或代理瞬时故障失败时，重传的代价远低于让用户重下整个包；
+ * 因此只对「请求未到达内核」的情况重试，内核返回的业务错误（不兼容、已存在等）重试也没有意义。
+ * 间隔逐次拉长是为了给「恢复网络或切回代理」留出时间，合计约 10 秒
+ */
+const INSTALL_RETRY_DELAYS_MS = [1000, 3000, 6000];
 
 /**
  * 解析内核本地安装接口的返回
@@ -88,6 +97,7 @@ function parseLocalInstallResponse(response: KernelApiResponse): LocalInstallRes
     return {
         ok: false,
         msg: response.msg,
+        transportFailed: response.transportFailed === true,
         failure: {
             reason: typeof data.reason === "string" ? data.reason : "",
             packageType: PACKAGE_TYPE_BY_KERNEL_TYPE[kernelType],
@@ -97,9 +107,29 @@ function parseLocalInstallResponse(response: KernelApiResponse): LocalInstallRes
     };
 }
 
-/** 把 ZIP 交给内核安装 */
-async function uploadLocalPackage(blob: Blob, fileName: string): Promise<LocalInstallResult> {
-    return parseLocalInstallResponse(await installLocalBazaarPackage(blob, fileName, getFrontend()));
+/** 等待指定毫秒，用于重试之间的退避 */
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/**
+ * 把 ZIP 交给内核安装
+ *
+ * 仅对「请求未到达内核」的传输失败按固定间隔重试，其余失败直接返回
+ */
+async function uploadLocalPackage(blob: Blob, fileName: string, log: Logger): Promise<LocalInstallResult> {
+    for (let attempt = 0; ; attempt++) {
+        const response = await installLocalBazaarPackage(blob, fileName, getFrontend());
+        const result = parseLocalInstallResponse(response);
+        if (result.ok || response.transportFailed !== true || attempt >= INSTALL_RETRY_DELAYS_MS.length) {
+            return result;
+        }
+        log.warn(i18n.installRetrying
+            .replace("{attempt}", String(attempt + 1))
+            .replace("{total}", String(INSTALL_RETRY_DELAYS_MS.length)),
+        );
+        await delay(INSTALL_RETRY_DELAYS_MS[attempt]);
+    }
 }
 
 /**
@@ -362,7 +392,7 @@ async function installWithCurrentMinAppVersion(pack: {
         if (!repacked) {
             return { ok: false, msg: "" };
         }
-        return await uploadLocalPackage(repacked, fileName);
+        return await uploadLocalPackage(repacked, fileName, log);
     } catch (error) {
         log.warn(i18n.installationFailed, error);
         return { ok: false, msg: "" };
@@ -393,17 +423,20 @@ export async function installPackage(pack: {
         return null;
     }
 
-    log.info(`Starting package installation: ${fileName}, repository name: ${repoPackageName}, data size: ${pack.blob.size} bytes`);
+    log.info(`Starting package installation: ${fileName}, repository name: ${repoPackageName}`);
 
-    let result = await uploadLocalPackage(pack.blob, fileName);
+    let result = await uploadLocalPackage(pack.blob, fileName, log);
     let loweredMinAppVersion = false;
     if (!result.ok && result.failure?.reason === "package-incompatible" && result.failure.minAppVersion !== "") {
         result = await installWithCurrentMinAppVersion(pack, result.failure, log);
         loweredMinAppVersion = true;
     }
     if (!result.ok) {
-        // 改写 minAppVersion 后仍被拒绝，说明是包声明的前端或后端与当前环境不兼容
-        if (loweredMinAppVersion && result.failure?.reason === "package-incompatible") {
+        // 传输失败与内核拒绝是两类问题，分别给出对应提示
+        if (result.transportFailed) {
+            log.warn(i18n.kernelConnectFailed);
+        } else if (loweredMinAppVersion && result.failure?.reason === "package-incompatible") {
+            // 改写 minAppVersion 后仍被拒绝，说明是包声明的前端或后端与当前环境不兼容
             log.warn(i18n.packageIncompatible, result.msg);
         } else {
             log.warn(i18n.installRequestFailed, result.msg);

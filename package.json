@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "lint": "eslint . --fix --cache",
-    "lint:check": "eslint . --cache",
+    "lint:check": "eslint . --cache --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.mjs\"",
     "dev": "webpack --mode development",

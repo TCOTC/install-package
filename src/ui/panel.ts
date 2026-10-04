@@ -5,11 +5,8 @@ import type { Logger } from "../infra/logger";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
-import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
-import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
-import { directoryPresence } from "../infra/kernelClient";
 import { normalizeRepoKey } from "../infra/repoKey";
 import { currentInterfaceLang, interfaceLangOptions, switchInterfaceLang } from "../settings/interfaceLanguage";
 import { message } from "../infra/message";
@@ -19,6 +16,7 @@ import { COPY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger } from "./logger";
 import { installLogCopyPayloadAtOpen } from "./installLogCopy";
+import { PanelUninstallTargets, petalDirPath } from "./panelUninstall";
 import {
     normalizeData,
     parseInstalled,
@@ -134,11 +132,6 @@ function createSourceNote(text: string): HTMLSpanElement {
     return el;
 }
 
-/** 插件的存储目录（插件通过 `saveData` 等接口写入的私有目录） */
-function petalDirPath(name: string): string {
-    return `data/storage/petal/${name}`;
-}
-
 interface InstallPanelElements {
     inputEl: HTMLDivElement;
     urlEl: HTMLInputElement;
@@ -176,26 +169,13 @@ export class InstallPanel {
     private readonly uiStore: InstallPanelUiStore;
     /** 页签关闭时取消订阅 */
     private unsubActiveInstall: (() => void) | undefined;
-    /** 插件自身包名：卸载目标里必须把插件自身剔除 */
-    private readonly pluginName: string;
-    /** 与当前 URL 仓库相同的本地集市包；为空表示当前没有可卸载的目标 */
-    private uninstallTargets: InstalledPackage[] | null = null;
-    /** 检测序号：URL 变化或页签关闭后作废在途回调 */
-    private uninstallDetectSeq = 0;
-    /** 仓库键到检测结果的缓存，安装或卸载成功后失效 */
-    private readonly uninstallCache = new Map<string, InstalledPackage[]>();
-    /** 插件存储目录是否存在；目录由插件自己在运行时创建，故需问内核 */
-    private readonly petalDirCache = new Map<string, boolean>();
-    /** 在途的目录检查：同一路径只发一次请求（状态未知时不写缓存，可能被反复问） */
-    private readonly petalDirPending = new Set<string>();
-    /** 存储目录检查序号：新的一次检查或页签关闭后作废在途回调 */
-    private petalDirCheckSeq = 0;
+    /** 与当前仓库匹配的本地集市包（卸载与打开目录几个键的依据） */
+    private readonly uninstallTargets: PanelUninstallTargets;
     /** 页签已关闭：异步回调不再改 DOM */
     private destroyed = false;
 
     constructor(custom: Custom, pluginName: string) {
         this.custom = custom;
-        this.pluginName = pluginName;
         this.data = this.debounceSaveLayout(normalizeData(this.custom.data));
         this.custom.data = this.data;
         // 由别的页签带过来的目标：URL 直接采用
@@ -247,6 +227,7 @@ export class InstallPanel {
             onRepoParseEvent: this.applyRepoParseEvent.bind(this),
             onRepoReleasesEvent: this.applyRepoReleasesEvent.bind(this),
         });
+        this.uninstallTargets = new PanelUninstallTargets(pluginName, this.log, () => this.syncUninstallButton());
         this.unsubActiveInstall = subscribeActiveInstallChange(() => this.syncInstallButtonDisabled());
 
         this.init();
@@ -423,12 +404,12 @@ export class InstallPanel {
         }
         for (const btn of this.elements.uninstallEls) {
             btn.addEventListener("click", () => {
-                void this.uninstallMatchedPackages();
+                void this.uninstallTargets.uninstall();
             });
         }
         for (const btn of this.elements.openDetailEls) {
             btn.addEventListener("click", () => {
-                const target = this.uninstallTargets?.[0];
+                const target = this.uninstallTargets.first;
                 if (target !== undefined) {
                     openPackageDetailPage(target);
                 }
@@ -437,7 +418,7 @@ export class InstallPanel {
         // 打开文件夹针对匹配到的第一个包；同一仓库匹配到多个包时由用户按需再次打开
         for (const btn of this.elements.openPackageDirEls) {
             btn.addEventListener("click", () => {
-                const target = this.uninstallTargets?.[0];
+                const target = this.uninstallTargets.first;
                 if (target !== undefined) {
                     void openDirectory(`${getInstallPath(target.type)}/${target.name}`);
                 }
@@ -445,7 +426,7 @@ export class InstallPanel {
         }
         for (const btn of this.elements.openPetalDirEls) {
             btn.addEventListener("click", () => {
-                const target = this.uninstallTargets?.[0];
+                const target = this.uninstallTargets.first;
                 if (target?.type === "plugin") {
                     void openDirectory(petalDirPath(target.name));
                 }
@@ -580,50 +561,6 @@ export class InstallPanel {
         abortInstall(ownerRepo.owner, ownerRepo.repo);
     }
 
-    /** 目标是否为插件自身（按包名）；自身不能卸载 */
-    private isOwnPlugin(pkg: InstalledPackage): boolean {
-        return pkg.type === "plugin" && pkg.name === this.pluginName;
-    }
-
-    /**
-     * 按当前 URL 的仓库检测本地同仓库的集市包，决定「卸载」键的显隐
-     *
-     * 同一仓库可能对应多个包（实测有插件与主题元数据里写着同一个仓库地址），因此结果是个列表；
-     * 检测失败时静默降级（隐藏键），不阻塞安装；只命中插件自身时也会剔光，因此不显示
-     */
-    private async refreshUninstallTargets(): Promise<void> {
-        const seq = ++this.uninstallDetectSeq;
-        const repoKey = normalizeRepoKey(this.data.repoKey);
-        if (repoKey === "") {
-            this.uninstallTargets = null;
-            this.syncUninstallButton();
-            return;
-        }
-        const cached = this.uninstallCache.get(repoKey);
-        if (cached !== undefined) {
-            this.uninstallTargets = cached;
-            this.syncUninstallButton();
-            return;
-        }
-        const result = await listInstalledPackages(this.log);
-        if (seq !== this.uninstallDetectSeq) {
-            return;
-        }
-        if (result === null) {
-            this.uninstallTargets = null;
-            this.syncUninstallButton();
-            return;
-        }
-        const matched = findInstalledByRepo(result.packages, repoKey);
-        const targets = matched.filter((pkg) => !this.isOwnPlugin(pkg));
-        if (targets.length === 0 && matched.length > 0) {
-            this.log.info(i18n.uninstallSelfExcluded);
-        }
-        this.uninstallCache.set(repoKey, targets);
-        this.uninstallTargets = targets;
-        this.syncUninstallButton();
-    }
-
     /**
      * 有匹配到的本地集市包时显示针对该包的操作键
      *
@@ -631,7 +568,7 @@ export class InstallPanel {
      * 存储目录只有插件才有，而且由插件自己在运行时创建，需内核确认存在后才显示入口
      */
     private syncUninstallButton(): void {
-        const target = this.uninstallTargets?.[0];
+        const target = this.uninstallTargets.first;
         const visible = target !== undefined;
         for (const btn of this.elements.uninstallEls) {
             btn.classList.toggle("fn__none", !visible);
@@ -648,64 +585,13 @@ export class InstallPanel {
                 btn.title = `${getInstallPath(target.type)}/${target.name}`;
             }
         }
-        const storageVisible = target !== undefined && target.type === "plugin" && this.petalDirExists(target);
+        const storageVisible = this.uninstallTargets.hasPetalDir();
         for (const btn of this.elements.openPetalDirEls) {
             btn.classList.toggle("fn__none", !storageVisible);
             if (target !== undefined && target.type === "plugin") {
                 btn.title = petalDirPath(target.name);
             }
         }
-    }
-
-    /**
-     * 插件的存储目录是否存在
-     *
-     * 目录由插件自己在运行时写入（安装集市包不会建它），所以要用内核接口确认；结果按路径缓存，
-     * 未知时先按「不存在」处理并触发一次检查，检查回来后重新投影操作键。
-     * 内核不可达时状态未知，既不写缓存也不改界面，下一次投影会再问一遍，
-     * 避免把一次网络抖动记成「目录不存在」
-     */
-    private petalDirExists(target: InstalledPackage): boolean {
-        const path = petalDirPath(target.name);
-        const cached = this.petalDirCache.get(path);
-        if (cached !== undefined) {
-            return cached;
-        }
-        void this.detectPetalDir(path);
-        return false;
-    }
-
-    /** 询问内核目录是否存在；只有最后一次检查能刷新界面，页签已关闭则丢弃结果 */
-    private async detectPetalDir(path: string): Promise<void> {
-        if (this.petalDirPending.has(path)) {
-            return;
-        }
-        this.petalDirPending.add(path);
-        const seq = ++this.petalDirCheckSeq;
-        const presence = await directoryPresence(path);
-        this.petalDirPending.delete(path);
-        if (presence === "unknown") {
-            return;
-        }
-        this.petalDirCache.set(path, presence === "exists");
-        if (this.destroyed || seq !== this.petalDirCheckSeq) {
-            return;
-        }
-        this.syncUninstallButton();
-    }
-
-    /** 确认后卸载与当前仓库匹配的全部本地集市包，然后重新检测 */
-    private async uninstallMatchedPackages(): Promise<void> {
-        // 检测结果可能已过期，执行前再剔一次插件自身
-        const targets = (this.uninstallTargets ?? []).filter((pkg) => !this.isOwnPlugin(pkg));
-        if (targets.length === 0) {
-            return;
-        }
-        const allOk = await uninstallInstalledPackages(targets, this.log);
-        if (allOk) {
-            this.uninstallCache.clear();
-        }
-        await this.refreshUninstallTargets();
     }
 
     /**
@@ -766,7 +652,7 @@ export class InstallPanel {
         this.versionUI.setRepoParseReady(installReady);
         this.syncInstallButtonDisabled();
         if (event.type === "settled") {
-            void this.refreshUninstallTargets();
+            this.uninstallTargets.setRepoKey(this.data.repoKey);
         }
     }
 
@@ -846,11 +732,8 @@ export class InstallPanel {
                 const text = i18n.installDone.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
                 this.log.info(text);
                 message(text, true);
-                // 刚装上的包开始参与匹配，重新检测一次
-                this.uninstallCache.clear();
-                // 插件可能已被内核启用并运行，存储目录的存在性要重新问一次
-                this.petalDirCache.clear();
-                void this.refreshUninstallTargets();
+                // 刚装上的包开始参与匹配，存储目录的存在性也可能变了，重新检测一次
+                this.uninstallTargets.invalidateAfterInstall();
             } else if (result === false) {
                 const text = i18n.installFailed.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
                 this.log.warn(text);
@@ -867,9 +750,8 @@ export class InstallPanel {
     /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
     destroy(): void {
         this.destroyed = true;
-        this.petalDirCheckSeq++;
         window.clearTimeout(this.persistTimer);
-        this.uninstallDetectSeq++;
+        this.uninstallTargets.destroy();
         this.versionUI.destroy();
         this.repoParser.destroy();
         this.unsubActiveInstall?.();

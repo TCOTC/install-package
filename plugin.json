@@ -8,12 +8,12 @@
   "frontends": ["desktop", "desktop-window"],
   "disabledInPublish": true,
   "displayName": {
-    "default": "Install Marketplace Package",
-    "zh-CN": "安装集市包"
+    "default": "Marketplace Package Manager",
+    "zh-CN": "集市包管理器"
   },
   "description": {
-    "default": "Install marketplace packages via GitHub links — faster than the official marketplace!",
-    "zh-CN": "使用 GitHub 链接安装集市包，比官方集市更快一步！"
+    "default": "Install any version from GitHub links — faster, and no marketplace wait. Marketplace PRs work too, covering plugins, themes, icons, widgets and templates; list local packages to toggle or batch-check updates, and view repo summaries, releases and install history.",
+    "zh-CN": "不等集市上架，用 GitHub 链接装任意版本集市包，比官方集市更快一步。也支持从集市 PR 直接安装；涵盖插件、主题、图标、挂件、模板五类包，能集中列出本地包一键启停、批量查更新，还可查看仓库摘要、Release 信息与安装历史。"
   },
   "readme": {
     "default": "README.md",

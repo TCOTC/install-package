@@ -104,7 +104,7 @@ export default class InstallPackage extends Plugin {
 
         this.topBarElement = this.addTopBar({
             icon: INSTALL_PACKAGE_ICON_ID,
-            title: i18n.title,
+            title: this.displayName,
             position: "right",
             callback: () => {
                 const anchor = this.topBarElement;

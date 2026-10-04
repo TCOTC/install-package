@@ -15,6 +15,7 @@ import { i18n } from "../infra/i18n";
 import { fetchSyncPost } from "../infra/kernelClient";
 import { message } from "../infra/message";
 import { setPackageEnabled } from "../install/install";
+import { openPackageDetailPage } from "../install/packageDetail";
 import {
     KERNEL_PACKAGE_TYPES,
     kernelPackageTypeLabel,
@@ -277,14 +278,10 @@ export class LocalPackagesMenu {
     }
 
     /**
-     * 打开思源集市里该包的本地详情页
-     *
-     * 走 `siyuan://bazaar/<类型>/<包名>/readme-installed`：思源重写了 `window.open`，
-     * 在内置窗口里直接交给 `processSiYuanUri` 处理（不会另起进程）；打开后收起菜单，
-     * 因为详情页会盖在菜单上面
+     * 打开恩源集市里该包的本地详情页，然后收起菜单（详情页会盖在菜单上面）
      */
     private openDetailPage(pkg: InstalledPackage): void {
-        window.open(`siyuan://bazaar/${pkg.kernelType}/${encodeURIComponent(pkg.name)}/readme-installed`);
+        openPackageDetailPage(pkg);
         this.closeMenu();
     }
     /** 只有两个开关需要监听：插件行与插件总开关；各自的处理函数会先禁用自己，不会重复触发 */
@@ -589,7 +586,7 @@ export class LocalPackagesMenu {
         space.className = "fn__flex-1";
 
         const control = this.renderRowControl(pkg);
-        row.append(label, space, iconButton(INFO_ICON_ID, i18n.localListOpenDetail, "detail"));
+        row.append(label, space, iconButton(INFO_ICON_ID, i18n.openPackageDetail, "detail"));
         if (control !== null) {
             row.append(control);
         }

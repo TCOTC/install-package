@@ -189,5 +189,5 @@
   "localListEnableAllPlugins": "启用全部插件",
   "localListResetTheme": "恢复默认主题",
   "localListResetIcon": "恢复默认图标",
-  "localListOpenDetail": "打开集市详情页"
+  "openPackageDetail": "打开集市详情页"
 }

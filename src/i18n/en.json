@@ -189,5 +189,5 @@
   "localListEnableAllPlugins": "Enable All Plugins",
   "localListResetTheme": "Restore Default Theme",
   "localListResetIcon": "Restore Default Icon",
-  "localListOpenDetail": "Open Marketplace Details"
+  "openPackageDetail": "Open Marketplace Details"
 }

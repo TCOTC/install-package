@@ -7,6 +7,7 @@ import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from ".
 import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
 import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
+import { openPackageDetailPage } from "../install/packageDetail";
 import { currentLocale, switchLocale } from "../settings/locale";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
@@ -185,6 +186,7 @@ function renderInstallPanel(root: HTMLElement): void {
                     <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
                 </label>
                 <button data-type="uninstall" type="button" class="b3-button b3-button--outline fn__none">${i18n.uninstallLocalPackageButton}</button>
+                <button data-type="open-detail" type="button" class="b3-button b3-button--outline fn__none">${i18n.openPackageDetail}</button>
                 ${openFolderButtons}`;
     root.innerHTML = `
     <div class="jcip-panel">
@@ -267,6 +269,7 @@ interface InstallPanelElements {
     installEls: NodeListOf<HTMLButtonElement>;
     abortEls: NodeListOf<HTMLButtonElement>;
     uninstallEls: NodeListOf<HTMLButtonElement>;
+    openDetailEls: NodeListOf<HTMLButtonElement>;
     /** 非 Electron 环境中为空列表（按钮不渲染） */
     openPackageDirEls: NodeListOf<HTMLButtonElement>;
     /** 非 Electron 环境中为空列表（按钮不渲染） */
@@ -325,6 +328,7 @@ export class InstallPanel {
             installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
             abortEls: this.root.querySelectorAll("button[data-type='abort-install']") as NodeListOf<HTMLButtonElement>,
             uninstallEls: this.root.querySelectorAll("button[data-type='uninstall']") as NodeListOf<HTMLButtonElement>,
+            openDetailEls: this.root.querySelectorAll("button[data-type='open-detail']") as NodeListOf<HTMLButtonElement>,
             openPackageDirEls: this.root.querySelectorAll("button[data-type='open-package-dir']") as NodeListOf<HTMLButtonElement>,
             openPetalDirEls: this.root.querySelectorAll("button[data-type='open-petal-dir']") as NodeListOf<HTMLButtonElement>,
             installLogEl: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
@@ -528,6 +532,14 @@ export class InstallPanel {
                 void this.uninstallMatchedPackages();
             });
         }
+        for (const btn of this.elements.openDetailEls) {
+            btn.addEventListener("click", () => {
+                const target = this.uninstallTargets?.[0];
+                if (target !== undefined) {
+                    openPackageDetailPage(target);
+                }
+            });
+        }
         // 打开文件夹针对匹配到的第一个包；同一仓库匹配到多个包时由用户按需再次打开
         for (const btn of this.elements.openPackageDirEls) {
             btn.addEventListener("click", () => {
@@ -725,6 +737,12 @@ export class InstallPanel {
         const visible = target !== undefined;
         for (const btn of this.elements.uninstallEls) {
             btn.classList.toggle("fn__none", !visible);
+        }
+        for (const btn of this.elements.openDetailEls) {
+            btn.classList.toggle("fn__none", !visible);
+            if (target !== undefined) {
+                btn.title = target.displayName;
+            }
         }
         for (const btn of this.elements.openPackageDirEls) {
             btn.classList.toggle("fn__none", !visible);

@@ -14,6 +14,7 @@ import {
     KERNEL_PACKAGE_TYPES,
     kernelPackageTypeLabel,
     listInstalledPackages,
+    sortInstalledPackages,
     type InstalledPackage,
     type KernelPackageType,
 } from "../install/installedPackages";
@@ -472,12 +473,13 @@ export class InstalledPanel {
         }
     }
 
-    /** 只渲染当前类型的卡片 */
+    /** 只渲染当前类型的卡片，顺序与「本地集市包列表」一致：跟随思源集市「已下载」的排序配置 */
     private renderCards(): void {
         this.rowUpdateEls.clear();
         this.rowCheckEls.clear();
         const fragment = document.createDocumentFragment();
-        for (const pkg of this.packages.filter((item) => item.kernelType === this.activeType)) {
+        const ofType = this.packages.filter((item) => item.kernelType === this.activeType);
+        for (const pkg of sortInstalledPackages(this.activeType, ofType)) {
             fragment.append(this.renderCard(pkg));
         }
         this.cardsEl.replaceChildren(fragment);

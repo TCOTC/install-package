@@ -8,6 +8,7 @@
 
 import { i18n } from "../infra/i18n";
 import { getFile, readDir } from "../infra/kernelClient";
+import { normalizeRepoKey, repoKeyFromOwnerRepo } from "../infra/repoKey";
 import type { Logger } from "../infra/logger";
 
 /**
@@ -50,18 +51,13 @@ export function initSelfPackage(pluginName: string): void {
     lastReportedBlockReason = "";
 }
 
-/** 归一化为 owner/repo 小写形式的仓库键 */
-function normalizeRepoKey(owner: string, repo: string): string {
-    return `${owner}/${repo}`.toLowerCase();
-}
-
 /** 从 plugin.json 的 url 解析仓库键，兼容 https 与 ssh 两种地址写法 */
 function repoKeyFromPluginUrl(url: string): string {
     const match = url.match(/github\.com[/:]([^/]+)\/([^/#?]+)/i);
     if (!match) {
         return "";
     }
-    return normalizeRepoKey(match[1], match[2].replace(/\.git$/i, ""));
+    return repoKeyFromOwnerRepo(match[1], match[2].replace(/\.git$/i, ""));
 }
 
 /** 读取插件安装目录的文件列表与元数据；任一步失败都按「未知仓库、非开发环境」处理 */
@@ -110,13 +106,13 @@ export function getSelfPackageInfo(log: Logger): Promise<SelfPackageInfo> {
  */
 export function isSelfRepoKeySync(ownerRepoKey: string): boolean {
     const repoKey = selfInfo?.repoKey ?? "";
-    return repoKey !== "" && ownerRepoKey.toLowerCase() === repoKey;
+    return repoKey !== "" && normalizeRepoKey(ownerRepoKey) === repoKey;
 }
 
 /** 判断目标仓库是否为插件自身仓库 */
 export async function isSelfRepo(owner: string, repo: string, log: Logger): Promise<boolean> {
     const { repoKey } = await getSelfPackageInfo(log);
-    return repoKey !== "" && repoKey === normalizeRepoKey(owner, repo);
+    return repoKey !== "" && repoKey === repoKeyFromOwnerRepo(owner, repo);
 }
 
 /** 按已载入信息同步判断开发环境；尚未载入时返回 false */

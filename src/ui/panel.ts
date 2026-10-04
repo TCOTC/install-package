@@ -10,6 +10,7 @@ import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
 import { directoryPresence } from "../infra/kernelClient";
+import { normalizeRepoKey } from "../infra/repoKey";
 import { currentInterfaceLang, interfaceLangOptions, switchInterfaceLang } from "../settings/interfaceLanguage";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
@@ -281,7 +282,7 @@ export class InstallPanel {
     private storePreset(preset: InstallPanelPreset): void {
         this.data.url = preset.url;
         this.data.version = preset.installed?.version ?? "";
-        this.data.presetRepoKey = preset.repoKey.trim().toLowerCase();
+        this.data.presetRepoKey = normalizeRepoKey(preset.repoKey);
         this.data.presetPull = serializePull(preset.pull);
         this.data.presetInstalled = serializeInstalled(preset.installed);
         // 本地集市包来源：按该包当前的启用状态决定「安装后启用」的初始值，避免装完把原本启用的包停掉
@@ -322,7 +323,7 @@ export class InstallPanel {
 
     /** 刚解析出的仓库是否为入口带入的那个包（两侧都小写比较） */
     private isPresetRepo(parsedRepoKey: string): boolean {
-        return this.data.presetRepoKey !== "" && parsedRepoKey.toLowerCase() === this.data.presetRepoKey;
+        return this.data.presetRepoKey !== "" && normalizeRepoKey(parsedRepoKey) === this.data.presetRepoKey;
     }
 
     /**
@@ -591,7 +592,7 @@ export class InstallPanel {
      */
     private async refreshUninstallTargets(): Promise<void> {
         const seq = ++this.uninstallDetectSeq;
-        const repoKey = this.data.repoKey.trim().toLowerCase();
+        const repoKey = normalizeRepoKey(this.data.repoKey);
         if (repoKey === "") {
             this.uninstallTargets = null;
             this.syncUninstallButton();

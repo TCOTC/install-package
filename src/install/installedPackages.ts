@@ -9,6 +9,7 @@ import { Constants, getFrontend } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { packageLabelText } from "../infra/packageLabels";
 import { fetchSyncPost } from "../infra/kernelClient";
+import { normalizeRepoKey, repoKeyOf } from "../infra/repoKey";
 import { PACKAGE_TYPE_BY_KERNEL_TYPE, type PackageType } from "./install";
 import type { Logger } from "../infra/logger";
 
@@ -69,35 +70,9 @@ export interface InstalledPackage {
     disallowInstall: boolean;
 }
 
-/**
- * 把仓库地址规范化为小写 `owner/repo`
- *
- * 用 `URL` 解析而非正则，query、`#`、尾随 `/`、冗余斜杠一并交给它；`.git` 后缀手动去掉。
- * 外部数据可能非法（实测有包的 url 只有 owner），取不到仓库名时返回 null
- */
-export function repoKeyOf(repoURL: string): string | null {
-    let url: URL;
-    try {
-        url = new URL(repoURL);
-    } catch {
-        return null;
-    }
-    if (url.hostname.toLowerCase() !== "github.com") {
-        return null;
-    }
-    // 空段一并滤掉，尾随斜杠与冗余斜杠都能得到同一结果
-    const parts = url.pathname.split("/").filter((part) => part !== "");
-    if (parts.length < 2) {
-        return null;
-    }
-    const owner = parts[0].toLowerCase();
-    const repo = parts[1].replace(/\.git$/i, "").toLowerCase();
-    return owner !== "" && repo !== "" ? `${owner}/${repo}` : null;
-}
-
-/** 按仓库键筛选已安装包；`repoKey` 须为小写形式，结果可能有多项（实测一个仓库对应多个包） */
+/** 按仓库键筛选已安装包；`repoKey` 大小写不限，结果可能有多项（实测一个仓库对应多个包） */
 export function findInstalledByRepo(packages: InstalledPackage[], repoKey: string): InstalledPackage[] {
-    const key = repoKey.trim().toLowerCase();
+    const key = normalizeRepoKey(repoKey);
     return key === "" ? [] : packages.filter((pkg) => pkg.repoKey === key);
 }
 

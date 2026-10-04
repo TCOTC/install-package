@@ -23,6 +23,7 @@ import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/gith
 import { abortAllActiveInstalls } from "./install/installSession";
 import { initSelfPackage } from "./install/selfPackage";
 import { fetchSyncPost } from "./infra/kernelClient";
+import { normalizeRepoKey } from "./infra/repoKey";
 
 /** 与 addTab 的 type 一致，openTab 的 custom.id 为 plugin.name + INSTALL_TAB_TYPE */
 export const INSTALL_TAB_TYPE = "install_package_panel";
@@ -190,7 +191,7 @@ export default class InstallPackage extends Plugin {
             this.createInstallTab();
             return;
         }
-        const repoKey = preset.repoKey.trim().toLowerCase();
+        const repoKey = normalizeRepoKey(preset.repoKey);
         const reusable = findCustomTabForReuse(this.installTabCustomId, (tab) => {
             const panel = tabPanels.get(tab.model as Custom);
             // 完整表单的键为空串，永远不会等于这里的 repoKey，因此不会被复用

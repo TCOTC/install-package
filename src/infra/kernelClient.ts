@@ -118,6 +118,32 @@ export async function getFile(path: string): Promise<GetFileResult> {
     }
 }
 
+/** `/api/file/getFile`：200 为文件正文（按二进制读取为 Blob），202 为 JSON 异常体（含 code / msg） */
+export async function getFileBlob(path: string, log: Logger): Promise<Blob | null> {
+    try {
+        const response = await fetch("/api/file/getFile", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ path }),
+        });
+        if (response.status === 200) {
+            return await response.blob();
+        }
+        if (response.status === 202) {
+            const body = (await response.json()) as KernelApiResponse;
+            log.warn(`Failed to read [${path}]: code=[${body.code}], msg=[${body.msg}]`);
+            return null;
+        }
+        log.warn(`Failed to read [${path}]: HTTP ${response.status} ${response.statusText}`);
+        return null;
+    } catch (error) {
+        log.warn(`Failed to read [${path}]:`, error);
+        return null;
+    }
+}
+
 /** 删除文件或目录 */
 export async function removeFile(path: string, log: Logger): Promise<boolean> {
     log.info(`Removing file: [${path}]`);
@@ -127,16 +153,6 @@ export async function removeFile(path: string, log: Logger): Promise<boolean> {
         return false;
     }
     log.info("Removed successfully");
-    return true;
-}
-
-/** 重命名文件或目录，`path` / `newPath` 均为工作空间下的路径 */
-export async function renameFile(path: string, newPath: string, log: Logger): Promise<boolean> {
-    const response = await fetchSyncPost("/api/file/renameFile", { path, newPath });
-    if (response.code !== 0) {
-        log.warn(`${i18n.renameFileFailed} [${path}] -> [${newPath}] code=[${response.code}], msg=[${response.msg}]`);
-        return false;
-    }
     return true;
 }
 
@@ -159,11 +175,6 @@ export async function readDir(path: string, log: Logger): Promise<ReadDirEntry[]
     return response.data as ReadDirEntry[];
 }
 
-export async function pathExists(path: string): Promise<boolean> {
-    const response = await fetchSyncPost("/api/file/readDir", { path });
-    return response.code === 0 && Array.isArray(response.data);
-}
-
 export async function unzipFile(zipPath: string, extractPath: string, log: Logger): Promise<boolean> {
     log.info(`Unzipping file: [${zipPath}] -> [${extractPath}]`);
 
@@ -180,27 +191,50 @@ export async function unzipFile(zipPath: string, extractPath: string, log: Logge
     return true;
 }
 
-// TODO 直接改成用 /api/file/renameFile 实现移动文件夹（等 PR 过了）（还需要先判断对应位置是否已经存在文件或文件夹，要先 removeFile 才能 renameFile）
-/**
- * 工作空间内复制文件或目录
- * 
- * @param sourcePath 复制源。相对于工作空间的路径
- * @param targetPath 复制目标。相对于工作空间的路径
- * @param log 日志记录器
- * @returns 是否成功
- */
-export async function workspaceCopyFiles(sourcePath: string, targetPath: string, log: Logger): Promise<boolean> {
-    log.info(`Copying file: [${sourcePath}] -> [${targetPath}]`);
-    const response = await fetchSyncPost("/api/file/workspaceCopyFiles", {
-        srcs: [sourcePath],
-        destDir: targetPath,
-    });
-
+/** `/api/archive/zip`：把工作空间内的目录打包为 ZIP */
+export async function zipFile(path: string, zipPath: string, log: Logger): Promise<boolean> {
+    log.info(`Zipping: [${path}] -> [${zipPath}]`);
+    const response = await fetchSyncPost("/api/archive/zip", { path, zipPath });
     if (response.code !== 0) {
-        log.warn(`Failed to copy [${sourcePath}] -> [${targetPath}]: code=[${response.code}], msg=[${response.msg}]`);
+        log.warn(`Failed to zip [${path}] -> [${zipPath}]: code=[${response.code}], msg=[${response.msg}]`);
         return false;
     }
-
-    log.info("Copied successfully");
+    log.info("Zipped successfully");
     return true;
+}
+
+/**
+ * `/api/bazaar/installLocalBazaarPackage`：上传 ZIP 交由内核安装集市包
+ *
+ * 内核负责校验兼容性、整目录替换与缓存清理，并在安装完成后向所有前端推送集市变更，
+ * 因此由内核落盘的集市包会在主窗口与设置窗口同步刷新
+ *
+ * `overwrite` 固定为 true：目标目录已存在且非空时直接覆盖，不覆盖则由内核返回 `package-exists`
+ */
+export async function installLocalBazaarPackage(blob: Blob, fileName: string, frontend: string): Promise<KernelApiResponse> {
+    const formData = new FormData();
+    formData.append("file", blob, fileName);
+    formData.append("frontend", frontend);
+    formData.append("overwrite", "true");
+
+    try {
+        const response = await fetch("/api/bazaar/installLocalBazaarPackage", {
+            method: "POST",
+            body: formData,
+        });
+        if (!response.ok) {
+            return {
+                code: -1,
+                msg: `HTTP error: ${response.status} ${response.statusText}`,
+                data: null,
+            };
+        }
+        return (await response.json()) as KernelApiResponse;
+    } catch (error) {
+        return {
+            code: -1,
+            msg: error instanceof Error ? error.message : String(error),
+            data: null,
+        };
+    }
 }

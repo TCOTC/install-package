@@ -164,6 +164,17 @@ export interface ReadDirEntry {
 }
 
 /**
+ * 判断工作空间内的目录是否存在
+ *
+ * 走 `/api/file/readDir`：内核在目录不存在时返回 404（`path does not exist`），路径越权为 403，
+ * 内核不可达时为 -1，这些情况一律按「不存在」处理；目录不存在是正常结果，因此不写日志
+ */
+export async function directoryExists(path: string): Promise<boolean> {
+    const response = await fetchSyncPost("/api/file/readDir", { path });
+    return response.code === 0;
+}
+
+/**
  * 读取目录；失败时写日志并返回 null
  */
 export async function readDir(path: string, log: Logger): Promise<ReadDirEntry[] | null> {

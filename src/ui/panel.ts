@@ -9,6 +9,7 @@ import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } fro
 import { uninstallInstalledPackages } from "../install/uninstall";
 import { getInstallPath } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
+import { directoryExists } from "../infra/kernelClient";
 import { currentLocale, switchLocale } from "../settings/locale";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
@@ -257,6 +258,11 @@ function createSourceNote(text: string): HTMLSpanElement {
     return el;
 }
 
+/** 插件的存储目录（插件通过 `saveData` 等接口写入的私有目录） */
+function petalDirPath(name: string): string {
+    return `data/storage/petal/${name}`;
+}
+
 interface InstallPanelElements {
     inputEl: HTMLDivElement;
     urlEl: HTMLInputElement;
@@ -302,6 +308,12 @@ export class InstallPanel {
     private uninstallDetectSeq = 0;
     /** 仓库键到检测结果的缓存，安装或卸载成功后失效 */
     private readonly uninstallCache = new Map<string, InstalledPackage[]>();
+    /** 插件存储目录是否存在；目录由插件自己在运行时创建，故需问内核 */
+    private readonly petalDirCache = new Map<string, boolean>();
+    /** 存储目录检查序号：新的一次检查或页签关闭后作废在途回调 */
+    private petalDirCheckSeq = 0;
+    /** 页签已关闭：异步回调不再改 DOM */
+    private destroyed = false;
 
     constructor(custom: Custom, pluginName: string) {
         this.custom = custom;
@@ -738,7 +750,7 @@ export class InstallPanel {
      * 有匹配到的本地集市包时显示针对该包的操作键
      *
      * 同一仓库可能匹配到多个包（实测存在），「打开文件夹」只针对第一个；
-     * 存储目录只有插件才有，因此那一个键仅当目标为插件时显示
+     * 存储目录只有插件才有，而且由插件自己在运行时创建，需内核确认存在后才显示入口
      */
     private syncUninstallButton(): void {
         const target = this.uninstallTargets?.[0];
@@ -758,13 +770,40 @@ export class InstallPanel {
                 btn.title = `${getInstallPath(target.type)}/${target.name}`;
             }
         }
-        const storageVisible = target?.type === "plugin";
+        const storageVisible = target !== undefined && target.type === "plugin" && this.petalDirExists(target);
         for (const btn of this.elements.openPetalDirEls) {
             btn.classList.toggle("fn__none", !storageVisible);
-            if (storageVisible) {
-                btn.title = `data/storage/petal/${target.name}`;
+            if (target !== undefined && target.type === "plugin") {
+                btn.title = petalDirPath(target.name);
             }
         }
+    }
+
+    /**
+     * 插件的存储目录是否存在
+     *
+     * 目录由插件自己在运行时写入（安装集市包不会建它），所以要用内核接口确认；结果按路径缓存，
+     * 未知时先按「不存在」处理并触发一次检查，检查回来后重新投影操作键
+     */
+    private petalDirExists(target: InstalledPackage): boolean {
+        const path = petalDirPath(target.name);
+        const cached = this.petalDirCache.get(path);
+        if (cached !== undefined) {
+            return cached;
+        }
+        void this.detectPetalDir(path);
+        return false;
+    }
+
+    /** 询问内核目录是否存在；只有最后一次检查能刷新界面，页签已关闭则丢弃结果 */
+    private async detectPetalDir(path: string): Promise<void> {
+        const seq = ++this.petalDirCheckSeq;
+        const exists = await directoryExists(path);
+        this.petalDirCache.set(path, exists);
+        if (this.destroyed || seq !== this.petalDirCheckSeq) {
+            return;
+        }
+        this.syncUninstallButton();
     }
 
     /** 确认后卸载与当前仓库匹配的全部本地集市包，然后重新检测 */
@@ -920,6 +959,8 @@ export class InstallPanel {
                 message(text, true);
                 // 刚装上的包开始参与匹配，重新检测一次
                 this.uninstallCache.clear();
+                // 插件可能已被内核启用并运行，存储目录的存在性要重新问一次
+                this.petalDirCache.clear();
                 void this.refreshUninstallTargets();
             } else if (result === false) {
                 const text = i18n.installFailed.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
@@ -936,6 +977,8 @@ export class InstallPanel {
 
     /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
     destroy(): void {
+        this.destroyed = true;
+        this.petalDirCheckSeq++;
         window.clearTimeout(this.persistTimer);
         this.uninstallDetectSeq++;
         this.versionUI.destroy();

@@ -35,7 +35,7 @@
     "mini-css-extract-plugin": "2.3.0",
     "sass": "^1.105.1",
     "sass-loader": "^12.6.0",
-    "siyuan": "github:siyuan-note/petal#v1.2.9",
+    "siyuan": "1.2.9",
     "tslib": "2.4.0",
     "typescript": "6.0.2",
     "webpack": "^5.111.1",
@@ -44,6 +44,6 @@
     "zip-webpack-plugin": "^4.0.3"
   },
   "dependencies": {
-    "siyuan-token-vault": "github:TCOTC/siyuan-token-vault#8b666168a554f3038b58f0aed9823dd74a5a185d"
+    "siyuan-token-vault": "git+https://github.com/TCOTC/siyuan-token-vault.git#8b666168a554f3038b58f0aed9823dd74a5a185d"
   }
 }

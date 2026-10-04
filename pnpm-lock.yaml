@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       siyuan-token-vault:
-        specifier: github:TCOTC/siyuan-token-vault#8b666168a554f3038b58f0aed9823dd74a5a185d
-        version: git+ssh://git@github.com/TCOTC/siyuan-token-vault.git#8b666168a554f3038b58f0aed9823dd74a5a185d
+        specifier: git+https://github.com/TCOTC/siyuan-token-vault.git#8b666168a554f3038b58f0aed9823dd74a5a185d
+        version: https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.3.7
@@ -58,8 +58,8 @@ importers:
         specifier: ^12.6.0
         version: 12.6.0(sass@1.105.1)(webpack@5.111.1)
       siyuan:
-        specifier: github:siyuan-note/petal#v1.2.9
-        version: git+ssh://git@github.com/siyuan-note/petal.git#48d6cf1d015ccb04470e9174b504d92db6ee20b9
+        specifier: 1.2.9
+        version: 1.2.9
       tslib:
         specifier: 2.4.0
         version: 2.4.0
@@ -2010,14 +2010,13 @@ packages:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
 
-  siyuan-token-vault@git+ssh://git@github.com/TCOTC/siyuan-token-vault.git#8b666168a554f3038b58f0aed9823dd74a5a185d:
-    resolution: {commit: 8b666168a554f3038b58f0aed9823dd74a5a185d, repo: git@github.com:TCOTC/siyuan-token-vault.git, type: git}
+  siyuan-token-vault@https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d:
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d}
     version: 0.1.1
     engines: {node: '>=20'}
 
-  siyuan@git+ssh://git@github.com/siyuan-note/petal.git#48d6cf1d015ccb04470e9174b504d92db6ee20b9:
-    resolution: {commit: 48d6cf1d015ccb04470e9174b504d92db6ee20b9, repo: git@github.com:siyuan-note/petal.git, type: git}
-    version: 1.2.9
+  siyuan@1.2.9:
+    resolution: {integrity: sha512-2bZTzTZocnOxPqY4liGtY2ZDhnhkYgySrlVLCCKWHjmGZ4kJYru0T1hFz5Hro0bz7cvecIEAx7XRV4plIvW1jQ==}
 
   slash@4.0.0:
     resolution: {integrity: sha512-3dOsAHXXUkQTpOYcoAxLIorMTp4gIQr5IW3iVb7A7lFIp0VHhnynm9izx6TssdrIcVIESAlVjtnO2K8bg+Coew==}
@@ -4178,9 +4177,9 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
-  siyuan-token-vault@git+ssh://git@github.com/TCOTC/siyuan-token-vault.git#8b666168a554f3038b58f0aed9823dd74a5a185d: {}
+  siyuan-token-vault@https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d: {}
 
-  siyuan@git+ssh://git@github.com/siyuan-note/petal.git#48d6cf1d015ccb04470e9174b504d92db6ee20b9:
+  siyuan@1.2.9:
     dependencies:
       '@dop251/types-goja_nodejs-buffer': 0.0.0-20260918183711-b481721df8a2
       '@dop251/types-goja_nodejs-global': 0.0.0-20260918183711-b481721df8a2

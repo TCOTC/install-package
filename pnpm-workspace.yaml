@@ -1,3 +1,5 @@
 allowBuilds:
+  # sass 的可选依赖，只服务于 `sass --watch`；本项目只用 sass-loader，无需其构建脚本
+  '@parcel/watcher': false
   electron: false
   esbuild: true

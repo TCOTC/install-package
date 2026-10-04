@@ -49,7 +49,7 @@ function renderBazaarPrPanel(root: HTMLElement): void {
     </div>`;
 }
 
-/** 一行的标签胶囊：色点取自标签自身颜色，两种主题下都能看清 */
+/** 「集市 PR」页签：列出 bazaar 仓库的 PR，带 CI 通过标签的行可一键安装 */
 export class BazaarPrPanel {
     private readonly root: HTMLElement;
     private readonly log: Logger;

@@ -9,6 +9,7 @@ import {
     type ParsedPackageInfo,
 } from "../github/github";
 import type { InstallReleaseRow } from "../github/github";
+import { isSelfRepo } from "../install/selfPackage";
 import type { Logger } from "./logger";
 import type { InstallPanelData } from "./panel";
 
@@ -31,6 +32,8 @@ export type InstallReleasesPayload = {
         repo: string;
         /** 该页 API 原始条数达到 `per_page`，可能还有下一页 */
         initialPageFull: boolean;
+        /** 目标仓库是否为插件自身仓库：自我安装需要按最低版本过滤 Release 列表 */
+        selfRepo: boolean;
     };
 };
 
@@ -327,10 +330,12 @@ export class RepoParser {
     ): Promise<void> {
         this.hooks.onRepoReleasesEvent?.({ type: "fetchStart" });
         // 拉正式 latest 以标记「（最新）」；无正式版时由列表回退。URL 带了 tag 时并行校验该 Release（含预览版）
-        const [latestRelease, page1, urlTagRelease] = await Promise.all([
+        // 自身仓库的识别与 Release 请求并行：本地目录与元数据只需读取一次，命中缓存后不再有开销
+        const [latestRelease, page1, urlTagRelease, selfRepo] = await Promise.all([
             getReleaseInfo(owner, repo, "", this.log, signal, { fallbackToNewestWhenNoLatest: false }),
             listReleasesPage(owner, repo, this.log, signal, 1),
             urlTag ? getReleaseInfo(owner, repo, urlTag, this.log, signal) : Promise.resolve(null),
+            isSelfRepo(owner, repo, this.log),
         ]);
         if (signal.aborted) {
             return;
@@ -363,7 +368,7 @@ export class RepoParser {
                     releases: preferredRow ? [preferredRow] : [],
                     latestTag,
                     ...(preferredTag !== undefined ? { preferredTag } : {}),
-                    meta: { owner, repo, initialPageFull: false },
+                    meta: { owner, repo, initialPageFull: false, selfRepo },
                 },
             });
             return;
@@ -385,6 +390,7 @@ export class RepoParser {
                     owner,
                     repo,
                     initialPageFull: page1.pageFull,
+                    selfRepo,
                 },
             },
         });

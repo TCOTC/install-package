@@ -85,6 +85,13 @@ $scrollbar-width: 10px;
     }
 }
 
+// 版本菜单内的说明行（如自我安装的最低版本限制）
+.jcip-version-menu__hint {
+    cursor: default;
+    color: var(--b3-theme-on-surface-light);
+    white-space: normal;
+}
+
 // 展示区块
 .jcip-show {
     display: flex;

@@ -3,6 +3,7 @@ import { Dialog } from "siyuan";
 import { downloadPackage, type DownloadProgressCallback } from "../github/download";
 import { findPackageZip, getReleaseInfo } from "../github/github";
 import { installPackage, setPackageEnabled } from "./install";
+import { isSelfRepo, reportSelfInstallBlock } from "./selfPackage";
 import type { Logger } from "../ui/logger";
 
 export interface InstallRequest {
@@ -72,6 +73,18 @@ export function abortAllActiveInstalls(): void {
 }
 
 /**
+ * 自我安装的前置校验
+ *
+ * 开发环境下安装自身会把插件目录里的源码替换成发布包，因此直接禁止；
+ * 另外只允许整体重构之后的第一版，避免把重构之前的旧架构覆盖到当前代码上。
+ * 限制原因由 selfPackage 统一写进日志（与面板共用去重），此处只关心能否安装
+ */
+function confirmSelfInstall(version: string, log: Logger): boolean {
+    // 调用前 isSelfRepo 已载入自身包信息，这里取到的原因不会再触发额外的目录读取
+    return reportSelfInstallBlock(log, version) === "";
+}
+
+/**
  * 执行一次安装请求（下载 release 包并安装）。
  * @returns `true` 成功（需提示）、`false` 失败（需提示）、`null` 中性（取消 / 被中止等，不提示）
  */
@@ -86,6 +99,13 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
         }
         activeInstallByRepo.set(repoLockKey, { controller: installAbort, version: request.version });
         notifyActiveInstallChange();
+
+        // 安装自身时启用状态由内核接管（安装完会直接重载本插件），不再走安装后的启停步骤；
+        // 但需要先拦住开发环境与过低版本，避免覆盖插件源码
+        const installSelf = await isSelfRepo(request.owner, request.repo, log);
+        if (installSelf && !confirmSelfInstall(request.version, log)) {
+            return false;
+        }
 
         const releaseInfo = await getReleaseInfo(request.owner, request.repo, request.version, log, signal);
         if (signal.aborted) {
@@ -199,12 +219,17 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
             return false;
         }
 
-        await setPackageEnabled(installResult.packageType, installResult.packageName, request.enableAfterInstall, log);
+        // 自身安装时内核会在安装完成的同时重载本插件，此处不能再用旧实例去改启用状态，
+        // 否则旧实例会把刚装上的自己禁用掉；此路径下插件必然处于启用状态
+        if (!installSelf) {
+            await setPackageEnabled(installResult.packageType, installResult.packageName, request.enableAfterInstall, log);
+        }
 
         let autoEnabledText = "";
         if (["plugin", "theme", "icon"].includes(installResult.packageType)) {
-            autoEnabledText = request.enableAfterInstall ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
-            log.info(i18n.downloadSuccess + (request.enableAfterInstall ? i18n.autoEnabled : i18n.enableManually));
+            const enabled = request.enableAfterInstall || installSelf;
+            autoEnabledText = enabled ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
+            log.info(i18n.downloadSuccess + (enabled ? i18n.autoEnabled : i18n.enableManually));
         }
         const installSuccess = i18n.packageInstalledSuccess
             .replace("{packageType}", installResult.packageType)

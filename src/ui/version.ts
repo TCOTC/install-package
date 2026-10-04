@@ -1,5 +1,6 @@
 import { Menu } from "siyuan";
 import { GITHUB_RELEASES_PER_PAGE, listReleasesPage, mergeInstallReleasePages } from "../github/github";
+import { isSelfInstallableVersion, MIN_SELF_INSTALL_VERSION, selfInstallVersionTooOldText } from "../install/selfPackage";
 import { i18n } from "../infra/i18n";
 import type { InstallReleaseRow } from "../github/github";
 import type { Logger } from "./logger";
@@ -20,6 +21,12 @@ export class InstallPanelVersion {
     private latestReleaseTag: string | null = null;
     private releasesListOwner: string | null = null;
     private releasesListRepo: string | null = null;
+    /** 当前列表对应的仓库是否为插件自身仓库；自我安装需要过滤低于最低版本的 Release */
+    private releasesIsSelfRepo = false;
+    /** 已提示过「版本过低」的 tag，避免重新解析时重复写日志 */
+    private warnedSelfTags = new Set<string>();
+    /** 是否已提示过自身仓库没有可安装的版本 */
+    private warnedSelfNoRelease = false;
     private releasesNextPage = 2;
     private releasesHasMore = false;
     private releasesLoadingMore = false;
@@ -81,6 +88,7 @@ export class InstallPanelVersion {
         this.latestReleaseTag = null;
         this.releasesListOwner = null;
         this.releasesListRepo = null;
+        this.releasesIsSelfRepo = false;
         this.releasesHasMore = false;
         this.releasesNextPage = 2;
         this.renderVersionList();
@@ -90,18 +98,41 @@ export class InstallPanelVersion {
     /** Release 列表更新 */
     onReleasesChanged(options: InstallReleasesPayload): void {
         const { releases, latestTag, preferredTag, meta } = options;
+        // 安装自身时只保留达到最低版本的 Release，否则会把当前代码覆盖成重构前的旧架构
+        const isSelf = meta?.selfRepo === true;
+        let rows = releases;
+        let latest = latestTag;
+        let preferred = preferredTag;
+        if (isSelf) {
+            rows = releases.filter((row) => isSelfInstallableVersion(row.tag));
+            if (latest !== null && !isSelfInstallableVersion(latest)) {
+                latest = null;
+            }
+            if (releases.length > 0 && rows.length === 0 && !this.warnedSelfNoRelease) {
+                this.warnedSelfNoRelease = true;
+                this.log.warn(i18n.selfInstallMinVersionHint.replace("{min}", MIN_SELF_INSTALL_VERSION));
+            }
+            if (typeof preferred === "string" && !isSelfInstallableVersion(preferred)) {
+                if (!this.warnedSelfTags.has(preferred)) {
+                    this.warnedSelfTags.add(preferred);
+                    this.log.warn(selfInstallVersionTooOldText(preferred));
+                }
+                preferred = null;
+            }
+        }
 
         this.releasesFirstPagePending = false;
         this.releaseLoadMoreAbort?.abort();
         this.releaseLoadMoreAbort = null;
         this.releasesLoadingMore = false;
-        this.releaseRows = releases;
-        this.latestReleaseTag = latestTag;
+        this.releasesIsSelfRepo = isSelf;
+        this.releaseRows = rows;
+        this.latestReleaseTag = latest;
         this.releasesNextPage = 2;
         this.releasesListOwner = meta ? meta.owner : null;
         this.releasesListRepo = meta ? meta.repo : null;
         this.releasesHasMore = meta ? meta.initialPageFull : false;
-        this.applyDefaultVersionIfEmpty(latestTag, preferredTag);
+        this.applyDefaultVersionIfEmpty(latest, preferred);
         this.syncVersionDisplay();
         this.renderVersionList();
     }
@@ -347,7 +378,10 @@ export class InstallPanelVersion {
             if (ac.signal.aborted || result === null) {
                 return;
             }
-            this.releaseRows = mergeInstallReleasePages(this.releaseRows, result.rows);
+            const merged = mergeInstallReleasePages(this.releaseRows, result.rows);
+            this.releaseRows = this.releasesIsSelfRepo
+                ? merged.filter((row) => isSelfInstallableVersion(row.tag))
+                : merged;
             this.releasesNextPage += 1;
             this.releasesHasMore = result.pageFull;
             if (this.versionMenuListEl === listEl) {
@@ -420,6 +454,13 @@ export class InstallPanelVersion {
                 row.append(checkedTpl.content.cloneNode(true));
             }
             listEl.append(row);
+        }
+        // 自身仓库的版本列表可能被最低版本限制清空，给出原因，避免看起来像加载失败
+        if (items.length === 0 && queryTrimmed === "" && this.releasesIsSelfRepo) {
+            const hint = document.createElement("div");
+            hint.className = "b3-list-item b3-list-item--narrow jcip-version-menu__hint";
+            hint.textContent = i18n.selfInstallMinVersionHint.replace("{min}", MIN_SELF_INSTALL_VERSION);
+            listEl.append(hint);
         }
     }
 

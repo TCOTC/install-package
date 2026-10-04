@@ -2,6 +2,7 @@ import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
+import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS, type Logger } from "./logger";
@@ -157,6 +158,8 @@ export class InstallPanel {
         };
         const logger = createInstallLogger(this.elements.installLogEl);
         this.log = logger.log;
+        // 提前载入自身包信息（自身仓库键与开发环境标记），供安装键的同步判定使用
+        void getSelfPackageInfo(this.log);
         this.clearInstallLog = logger.clear;
         this.openPluginSettings = openPluginSettings;
         this.versionUI = new InstallPanelVersion(
@@ -364,8 +367,37 @@ export class InstallPanel {
         this.uiStore.syncInstallButtonState({
             getSelectedVersion: () => this.data.version,
             resolveOwnerRepo: () => this.repoParser.getOwnerRepo(),
-            apply: (state) => this.applyInstallButtonState(state),
+            apply: (state) => {
+                const blockReason = this.selfInstallBlockReason();
+                this.applyInstallButtonState(blockReason === "" ? state : "cannotInstall");
+                this.syncInstallButtonTitle(blockReason);
+            },
         });
+    }
+
+    /**
+     * 目标为插件自身时的安装限制文案；不存在限制时返回空串。
+     *
+     * 仅依据已载入的自身包信息判断，载入前未及拦住的点击由安装流程内的异步校验兜住；
+     * 版本为空不算限制：此时安装键本就因缺少版本而禁用，无需把原因说成版本过低。
+     * 判定出限制时把原因写进日志，与安装流程共用去重，不点安装也能看到为何装不了
+     */
+    private selfInstallBlockReason(): string {
+        if (!isSelfRepoKeySync(this.data.repoKey)) {
+            return "";
+        }
+        return reportSelfInstallBlock(this.log, this.data.version);
+    }
+
+    /** 把自我安装的限制原因写到安装键的 title 上；禁用状态下的原生提示仍可显示 */
+    private syncInstallButtonTitle(text: string): void {
+        for (const b of this.elements.installEls) {
+            if (text === "") {
+                b.removeAttribute("title");
+            } else {
+                b.title = text;
+            }
+        }
     }
 
     /** 中止本面板发起的安装 */

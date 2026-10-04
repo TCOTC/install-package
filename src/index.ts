@@ -6,6 +6,7 @@ import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/
 import { InstallPanel } from "./ui/panel";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
 import { abortAllActiveInstalls } from "./install/installSession";
+import { initSelfPackage } from "./install/selfPackage";
 
 /** 顶栏与 openTab 自定义页签共用的图标 id */
 export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";
@@ -21,6 +22,7 @@ export default class InstallPackage extends Plugin {
     onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
+        initSelfPackage(this.name);
 
         // 图标来源：https://lucide.dev/icons/store（ISC 许可），描边宽度调整为与内置图标一致
         this.addIcons(`

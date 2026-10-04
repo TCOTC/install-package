@@ -11,6 +11,7 @@
 
 import { Menu } from "siyuan";
 import { currentInterfaceLang, interfaceLangOptions, switchInterfaceLang } from "../settings/interfaceLanguage";
+import { NO_MENU_ICON } from "./menuItem";
 
 /** 在锚点按钮下方展开界面语言菜单，并勾选当前语言 */
 export function openInterfaceLanguageMenu(anchor: HTMLElement): void {
@@ -18,6 +19,7 @@ export function openInterfaceLanguageMenu(anchor: HTMLElement): void {
     const current = currentInterfaceLang();
     for (const option of interfaceLangOptions()) {
         menu.addItem({
+            ...NO_MENU_ICON,
             label: option.label,
             checked: option.lang === current,
             click: () => {

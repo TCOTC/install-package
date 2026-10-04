@@ -17,6 +17,7 @@ import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger } from "./logger";
 import { installLogCopyPayloadAtOpen } from "./installLogCopy";
 import { openInterfaceLanguageMenu } from "./languageMenu";
+import { NO_MENU_ICON } from "./menuItem";
 import { PanelUninstallTargets, petalDirPath } from "./panelUninstall";
 import { persistFormToLayout, type PersistedForm } from "./panelPersistence";
 import {
@@ -326,10 +327,11 @@ export class InstallPanel {
         this.historyMenu = menu;
         const entries = listInstallHistory();
         if (entries.length === 0) {
-            menu.addItem({ type: "readonly", label: i18n.installHistoryEmpty });
+            menu.addItem({ type: "readonly", ...NO_MENU_ICON, label: i18n.installHistoryEmpty });
         } else {
             for (const entry of entries) {
                 menu.addItem({
+                    ...NO_MENU_ICON,
                     label: `${entry.owner}/${entry.repo} ${entry.version}`,
                     click: () => {
                         this.applyInstallHistoryEntry(entry);

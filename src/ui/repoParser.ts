@@ -1,4 +1,5 @@
 import { i18n } from "../infra/i18n";
+import { escapeHtml } from "../infra/html";
 import {
     fallbackLatestTagFromRows,
     getReleaseInfo,
@@ -42,10 +43,6 @@ type RepoInfoElState =
     | { kind: "parsing" }
     | { kind: "invalid" }
     | { kind: "resolved"; packageInfo: ParsedPackageInfo };
-
-function escapeHtml(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function renderResolvedRepoSummaryHtml(info: ParsedPackageInfo): string {
     const ownerUrl = `https://github.com/${encodeURIComponent(info.owner)}`;

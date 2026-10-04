@@ -1,5 +1,6 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n, PLUGIN_LOCALES } from "../infra/i18n";
+import { safeExternalUrl } from "../infra/html";
 import type { BazaarPullLabel } from "../github/bazaarPrs";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
@@ -455,8 +456,9 @@ export class InstallPanel {
             const label = `#${pull.number} ${pull.title}`.trim();
             titleEl.textContent = label;
             titleEl.title = label;
-            if (pull.htmlUrl !== "") {
-                titleEl.href = pull.htmlUrl;
+            const pullUrl = safeExternalUrl(pull.htmlUrl);
+            if (pullUrl !== "") {
+                titleEl.href = pullUrl;
             }
             this.elements.sourceChipsEl.replaceChildren(
                 ...pull.labels.map((item) => createBazaarPullLabelChip(item)),
@@ -467,8 +469,10 @@ export class InstallPanel {
             this.elements.sourceLabelEl.textContent = i18n.installedTitle;
             titleEl.textContent = installed.displayName;
             titleEl.title = installed.displayName;
-            if (this.data.url !== "") {
-                titleEl.href = this.data.url;
+            // URL 栏里可能是不合法的地址（含非 http/https 协议），不能直接写进 href
+            const sourceUrl = safeExternalUrl(this.data.url);
+            if (sourceUrl !== "") {
+                titleEl.href = sourceUrl;
             }
             this.elements.sourceChipsEl.replaceChildren(
                 createSourceNote(i18n.panelSourceInstalledVersion.replace("{version}", installed.version)),

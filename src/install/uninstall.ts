@@ -7,6 +7,7 @@
 
 import { Dialog, getFrontend } from "siyuan";
 import { i18n } from "../infra/i18n";
+import { escapeHtml } from "../infra/html";
 import { fetchSyncPost } from "../infra/kernelClient";
 import type { PackageType } from "./install";
 import { kernelPackageTypeLabel, type InstalledPackage } from "./installedPackages";
@@ -20,14 +21,6 @@ const UNINSTALL_API: Record<PackageType, { url: string; withFrontend: boolean }>
     widget: { url: "/api/bazaar/uninstallBazaarWidget", withFrontend: false },
     template: { url: "/api/bazaar/uninstallBazaarTemplate", withFrontend: false },
 };
-
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-}
 
 /** 卸载单个已安装包；失败时写一行日志并返回 false */
 export async function uninstallInstalledPackage(pkg: InstalledPackage, log: Logger): Promise<boolean> {

@@ -16,6 +16,7 @@ import {
     type BazaarPullState,
 } from "../github/bazaarPrs";
 import { i18n } from "../infra/i18n";
+import { safeExternalUrl } from "../infra/html";
 import { message } from "../infra/message";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
 import { createConsoleLogger, type Logger } from "./logger";
@@ -287,10 +288,13 @@ export class BazaarPrPanel {
         item.className = "jcip-pr__item";
         item.setAttribute("data-number", String(row.number));
 
-        if (row.authorAvatarUrl !== "") {
+        // 来自 GitHub 接口的地址（头像、PR 页面）只放行 http/https
+        const htmlUrl = safeExternalUrl(row.htmlUrl);
+        const avatarUrl = safeExternalUrl(row.authorAvatarUrl);
+        if (avatarUrl !== "") {
             const avatar = document.createElement("img");
             avatar.className = "jcip-pr__avatar";
-            avatar.src = row.authorAvatarUrl;
+            avatar.src = avatarUrl;
             avatar.alt = "";
             avatar.loading = "lazy";
             avatar.decoding = "async";
@@ -302,7 +306,7 @@ export class BazaarPrPanel {
         main.className = "jcip-pr__main";
         const title = document.createElement("a");
         title.className = "jcip-pr__title";
-        title.href = row.htmlUrl;
+        title.href = htmlUrl;
         title.target = "_blank";
         title.rel = "noopener noreferrer";
         title.textContent = `#${row.number} ${row.title}`;
@@ -336,10 +340,10 @@ export class BazaarPrPanel {
 
         const actions = document.createElement("div");
         actions.className = "jcip-pr__actions";
-        if (row.htmlUrl !== "") {
+        if (htmlUrl !== "") {
             const open = document.createElement("a");
             open.className = "b3-button b3-button--outline";
-            open.href = row.htmlUrl;
+            open.href = htmlUrl;
             open.target = "_blank";
             open.rel = "noopener noreferrer";
             open.textContent = i18n.bazaarPrOpenButton;

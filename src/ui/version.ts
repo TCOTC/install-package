@@ -4,6 +4,7 @@ import { comparePackageVersions } from "../install/packageVersion";
 import { isSelfInstallableVersion, MIN_SELF_INSTALL_VERSION, selfInstallVersionTooOldText } from "../install/selfPackage";
 import { SELECT_ICON_ID } from "./icons";
 import { i18n } from "../infra/i18n";
+import { escapeHtml } from "../infra/html";
 import type { InstallReleaseRow } from "../github/github";
 import type { Logger } from "./logger";
 import type { InstallPanelData } from "./panel";
@@ -564,9 +565,6 @@ function formatReleasePublishedDateTime(iso: string): string {
     });
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 /** 将命中子串包成 `<mark>`，行为对齐思源标签搜索列表；`query` 为空时返回整段转义文本。 */
 function highlightSearchInLabel(label: string, query: string): string {

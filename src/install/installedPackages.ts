@@ -98,11 +98,6 @@ export function repoKeyOf(repoURL: string): string | null {
     return owner !== "" && repo !== "" ? `${owner}/${repo}` : null;
 }
 
-/** 由解析出的 owner / repo 得到仓库键；两侧必须都小写化，元数据里的仓库地址大小写并不统一 */
-export function repoKeyFromOwnerRepo(owner: string, repo: string): string {
-    return `${owner}/${repo}`.trim().toLowerCase();
-}
-
 /** 按仓库键筛选已安装包；`repoKey` 须为小写形式，结果可能有多项（实测一个仓库对应多个包） */
 export function findInstalledByRepo(packages: InstalledPackage[], repoKey: string): InstalledPackage[] {
     const key = repoKey.trim().toLowerCase();

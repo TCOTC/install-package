@@ -119,11 +119,6 @@ export async function isSelfRepo(owner: string, repo: string, log: Logger): Prom
     return repoKey !== "" && repoKey === normalizeRepoKey(owner, repo);
 }
 
-/** 本插件当前是否运行在开发环境中 */
-export async function isSelfDevEnvironment(log: Logger): Promise<boolean> {
-    return (await getSelfPackageInfo(log)).devEnvironment;
-}
-
 /** 按已载入信息同步判断开发环境；尚未载入时返回 false */
 export function isSelfDevEnvironmentSync(): boolean {
     return selfInfo?.devEnvironment ?? false;

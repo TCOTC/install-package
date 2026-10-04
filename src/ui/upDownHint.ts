@@ -2,7 +2,7 @@
  * 与思源 `app/src/util/upDownHint.ts` 中 `upDownHint` 行为一致（插件内无法引用内核路径）。
  */
 
-export const isAbnormalItem = (currentHintElement: HTMLElement, className: string) => {
+const isAbnormalItem = (currentHintElement: HTMLElement, className: string) => {
     return (
         currentHintElement &&
         (!currentHintElement.classList.contains(className) || currentHintElement.getBoundingClientRect().height === 0)

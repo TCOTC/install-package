@@ -50,7 +50,6 @@ export function mergeInstallReleasePages(existing: InstallReleaseRow[], page: In
     return merged;
 }
 
-export type GitHubApiErrorInfo = { status: number; apiMessage?: string };
 type GitHubRateLimitResponse = operations["rate-limit/get"]["responses"][200]["content"]["application/json"];
 
 async function fetchGitHubRateLimit(signal: AbortSignal): Promise<{
@@ -253,7 +252,6 @@ export interface ParsedPackageInfo {
     repo: string;
     description: string;
     stars: number;
-    updatedAtDisplay: string;
     /** 仓库 owner 头像 URL，来自 `GET /repos/{owner}/{repo}` 的 `owner.avatar_url` */
     ownerAvatarUrl: string;
     /** 规范化后的项目主页（仅 http / https），无则空串 */
@@ -408,14 +406,6 @@ export async function parseOwnerRepo(
     if (!repoInfo) {
         return null;
     }
-    const updatedRaw = repoInfo.updated_at;
-    let updatedAtDisplay = "";
-    if (typeof updatedRaw === "string" && updatedRaw) {
-        const d = new Date(updatedRaw);
-        if (Number.isFinite(d.getTime())) {
-            updatedAtDisplay = d.toLocaleDateString();
-        }
-    }
     const avatar =
         repoInfo.owner && typeof repoInfo.owner.avatar_url === "string" ? repoInfo.owner.avatar_url : "";
     const stars =
@@ -430,7 +420,6 @@ export async function parseOwnerRepo(
         repo,
         description: repoInfo.description ?? "",
         stars,
-        updatedAtDisplay,
         ownerAvatarUrl: avatar,
         homepageUrl: normalizeRepositoryHomepage(repoInfo.homepage),
         defaultBranch,

@@ -13,7 +13,7 @@ export interface CustomTabOptions {
 }
 
 /** 按类型取出已打开的自定义页签（顺序为布局中的先后） */
-export function getOpenedCustomTabs(customId: string): Tab[] {
+function getOpenedCustomTabs(customId: string): Tab[] {
     return getAllTabs(customId);
 }
 

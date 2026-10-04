@@ -73,8 +73,6 @@
   "disablePluginFailed": "Failed to disable plugin:",
   "enablePackageFailed": "Failed to enable package:",
   "disablePackageFailed": "Failed to disable package:",
-  "iconReloadFailed": "Icon package installed successfully, but failed to reload icons",
-  "themeReloadFailed": "Theme package installed successfully, but failed to reload themes",
   "iconPackageInstalled": "Icon package has been installed",
   "iconReloadDialogContent": "To ensure the icon package takes full effect, it is recommended to reload the interface. Reload now?",
   "latest": "latest",

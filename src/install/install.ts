@@ -199,6 +199,7 @@ export async function setPackageEnabled(
             break;
         }
         case "theme": {
+            // 安装已由内核完成，内核会重载主题列表并推送外观刷新，此处只需按需切换为当前主题
             const config = window.siyuan.config;
             if (!config) {
                 log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
@@ -208,13 +209,7 @@ export async function setPackageEnabled(
             const wasLightTheme = appearance.themeLight === packageName;
             const wasDarkTheme = appearance.themeDark === packageName;
 
-            const response = await fetchSyncPost("/api/ui/reloadTheme", {});
-            if (response.code !== 0) {
-                log.warn(i18n.themeReloadFailed, response.msg);
-                return;
-            }
             if (enableAfterInstall) {
-                // TODO 看看能不能复用前面获取的 JSON 对象（另外前面必须要 parse JSON 不报错以验证元数据文件是否合法）
                 const modes = await getSetThemeModes(packageName);
                 const appearanceMode = getSwitchAppearanceMode(modes);
                 log.info(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
@@ -256,6 +251,7 @@ export async function setPackageEnabled(
             break;
         }
         case "icon": {
+            // 安装已由内核完成，内核会重载图标列表并推送外观刷新，此处只需按需切换为当前图标
             const config = window.siyuan.config;
             if (!config) {
                 log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
@@ -263,11 +259,6 @@ export async function setPackageEnabled(
             }
             const wasCurrentIcon = config.appearance.icon === packageName;
 
-            const response = await fetchSyncPost("/api/ui/reloadIcon", {});
-            if (response.code !== 0) {
-                log.warn(i18n.iconReloadFailed, response.msg);
-                return;
-            }
             if (enableAfterInstall) {
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {

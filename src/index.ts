@@ -1,5 +1,5 @@
 import "./index.scss";
-import { Custom, getAllTabs, Plugin, openTab, type Tab } from "siyuan";
+import { Custom, getAllTabs, Plugin, openTab } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./infra/i18n";
 import { clearMessagePrefix, setMessagePrefix } from "./infra/message";
 import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/setting";

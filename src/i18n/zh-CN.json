@@ -73,8 +73,6 @@
   "disablePluginFailed": "禁用插件失败：",
   "enablePackageFailed": "启用集市包失败：",
   "disablePackageFailed": "禁用集市包失败：",
-  "iconReloadFailed": "图标集市包安装成功，但重新加载图标失败",
-  "themeReloadFailed": "主题集市包安装成功，但重新加载主题失败",
   "iconPackageInstalled": "图标集市包已安装",
   "iconReloadDialogContent": "为确保图标集市包完全生效，建议重新加载界面。现在重新加载吗？",
   "latest": "最新",

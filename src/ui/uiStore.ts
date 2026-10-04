@@ -11,11 +11,8 @@ export interface InstallPanelSliceState {
      */
     parsePhase: "parsing" | "invalid" | "ready";
     /**
-     * 最近一次 `parse/settled` 的 `owner/repo`；空字符串表示当前输入无效
-     */
-    settledOwnerRepo: { owner: string; repo: string } | null;
-    /**
-     * 上次 `parse/settled` 的仓库键：空字符串表示无有效仓库，非空表示 `owner/repo`
+     * 最近一次 `parse/settled` 的仓库键：空字符串表示无有效仓库，非空表示 `owner/repo`。
+     * 初始值为页签上一次持久化的键，用于判断本次解析结果是否与它相同（相同则不必清空版本）
      */
     lastParsedRepoKey: string;
     /**
@@ -60,12 +57,10 @@ export function reduceInstallPanelSlice(
             const ownerRepo = action.ownerRepo;
             const prevKey = state.lastParsedRepoKey;
             const newKey = ownerRepo ? `${ownerRepo.owner}/${ownerRepo.repo}` : "";
-            const installReady = ownerRepo !== null;
             const clearVersion = prevKey !== newKey;
             const next: InstallPanelSliceState = {
                 ...state,
-                parsePhase: installReady ? "ready" : "invalid",
-                settledOwnerRepo: ownerRepo,
+                parsePhase: ownerRepo !== null ? "ready" : "invalid",
                 lastParsedRepoKey: newKey,
             };
             return {
@@ -82,6 +77,8 @@ export function reduceInstallPanelSlice(
         case "install/ended":
             return { kind: "state", state: { ...state, activeOwnerRepo: null } };
         default:
+            // 新增 action 类型时 `action` 不再是 never，本行会编译报错，避免新分支被静默漏处理
+            action satisfies never;
             return { kind: "state", state };
     }
 }
@@ -92,7 +89,6 @@ export class InstallPanelUiStore {
     constructor(initialLastParsedRepoKey: string) {
         this.state = {
             parsePhase: "invalid",
-            settledOwnerRepo: null,
             lastParsedRepoKey: initialLastParsedRepoKey,
             activeOwnerRepo: null,
         };
@@ -191,5 +187,6 @@ export function resolveInstallButtonState(
 }
 
 export function isRepoParseReadyForInstall(slice: InstallPanelSliceState): boolean {
-    return slice.parsePhase === "ready" && slice.settledOwnerRepo !== null;
+    // `parsePhase === "ready"` 与「最近一次 settled 得到了有效仓库」等价：settled 为 null 时必为 `invalid`
+    return slice.parsePhase === "ready";
 }

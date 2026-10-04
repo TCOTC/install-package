@@ -11,24 +11,25 @@ import { escapeHtml } from "../infra/html";
 import { confirmDialog } from "../infra/dialog";
 import { fetchSyncPost } from "../infra/kernelClient";
 import type { PackageType } from "./install";
-import { kernelPackageTypeLabel, type InstalledPackage } from "./installedPackages";
+import { kernelPackageTypeLabel, kernelTypeNeedsFrontend, type InstalledPackage } from "./installedPackages";
 import type { Logger } from "../ui/logger";
 
-/** 各类型的卸载接口；只有插件与主题按前端过滤 */
-const UNINSTALL_API: Record<PackageType, { url: string; withFrontend: boolean }> = {
-    plugin: { url: "/api/bazaar/uninstallBazaarPlugin", withFrontend: true },
-    theme: { url: "/api/bazaar/uninstallBazaarTheme", withFrontend: true },
-    icon: { url: "/api/bazaar/uninstallBazaarIcon", withFrontend: false },
-    widget: { url: "/api/bazaar/uninstallBazaarWidget", withFrontend: false },
-    template: { url: "/api/bazaar/uninstallBazaarTemplate", withFrontend: false },
+/** 各类型的卸载接口；是否需要 frontend 由 `kernelTypeNeedsFrontend` 判定 */
+const UNINSTALL_API: Record<PackageType, string> = {
+    plugin: "/api/bazaar/uninstallBazaarPlugin",
+    theme: "/api/bazaar/uninstallBazaarTheme",
+    icon: "/api/bazaar/uninstallBazaarIcon",
+    widget: "/api/bazaar/uninstallBazaarWidget",
+    template: "/api/bazaar/uninstallBazaarTemplate",
 };
 
 /** 卸载单个已安装包；失败时写一行日志并返回 false */
 export async function uninstallInstalledPackage(pkg: InstalledPackage, log: Logger): Promise<boolean> {
-    const api = UNINSTALL_API[pkg.type];
     const response = await fetchSyncPost(
-        api.url,
-        api.withFrontend ? { packageName: pkg.name, frontend: getFrontend() } : { packageName: pkg.name },
+        UNINSTALL_API[pkg.type],
+        kernelTypeNeedsFrontend(pkg.kernelType)
+            ? { packageName: pkg.name, frontend: getFrontend() }
+            : { packageName: pkg.name },
     );
     if (response.code !== 0) {
         log.warn(i18n.uninstallFailed, `${pkg.name}: ${response.msg}`);

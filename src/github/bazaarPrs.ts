@@ -51,13 +51,6 @@ export interface BazaarPullRow {
     labels: BazaarPullLabel[];
 }
 
-/** 某条 PR 的安装目标：包仓库与 PR Check 校验过的 tag（取不到 tag 时为空串，按最新版本安装） */
-export interface BazaarPullInstallTarget {
-    /** 形如 `owner/repo` */
-    repo: string;
-    tag: string;
-}
-
 type GitHubPullListItem = operations["pulls/list"]["responses"][200]["content"]["application/json"][number];
 type GitHubIssueComment = operations["issues/list-comments"]["responses"][200]["content"]["application/json"][number];
 
@@ -78,11 +71,12 @@ export function isBazaarPullCIPassed(row: BazaarPullRow): boolean {
 }
 
 /**
- * 从 PR Check 的检查评论中解析安装目标
+ * 从 PR Check 的检查评论中解析包仓库
  *
- * `fp.repo` 为包仓库、`fp.tag` 为本次校验的 Release tag；非新增包的 PR（如下架）没有 `fp`，返回 null
+ * 评论里的 `fp.repo` 就是本次校验的包仓库；非新增包的 PR（如下架、弃用）没有 `fp`，返回 null。
+ * 包版本一律由安装面板按最新 Release 解析，因此不使用 `fp.tag`
  */
-export function parseBazaarCheckMeta(commentBody: string): BazaarPullInstallTarget | null {
+export function parseBazaarCheckMeta(commentBody: string): string | null {
     const match = commentBody.match(BAZAAR_CHECK_META_RE);
     if (!match) {
         return null;
@@ -101,11 +95,7 @@ export function parseBazaarCheckMeta(commentBody: string): BazaarPullInstallTarg
     if (typeof repo !== "string" || !/^[^/\s]+\/[^/\s]+$/.test(repo.trim())) {
         return null;
     }
-    const tag = (fingerprint as { tag?: unknown }).tag;
-    return {
-        repo: repo.trim(),
-        tag: typeof tag === "string" ? tag.trim() : "",
-    };
+    return repo.trim();
 }
 
 /**
@@ -185,17 +175,16 @@ export async function listBazaarPulls(
 }
 
 /**
- * 取某条 PR 的安装目标
+ * 从某条 PR 的检查评论中读取包仓库
  *
- * 先读检查评论里的元数据；评论缺失（非新增包的 PR、评论被删等）时回退为按标题解析仓库、不指定版本。
  * 评论按时间升序返回，因此从最后往前找最新的那条检查评论；`per_page` 取 100，
- * 超过 100 条评论的 PR 找不到元数据时按回退处理
+ * 超过 100 条评论的 PR 找不到元数据时返回 null（由调用方回退为按标题解析）
  */
-export async function getBazaarPullInstallTarget(
+export async function getBazaarPullCommentRepo(
     pullNumber: number,
     log: Logger,
     signal: AbortSignal,
-): Promise<BazaarPullInstallTarget | null> {
+): Promise<string | null> {
     const url = `https://api.github.com/repos/${BAZAAR_REPO_OWNER}/${BAZAAR_REPO_NAME}/issues/${pullNumber}/comments?per_page=100`;
     const comments = await fetchGitHubJson<GitHubIssueComment[]>(url, log, i18n.githubGetPullCommentsFailed, signal);
     if (!Array.isArray(comments)) {
@@ -206,9 +195,9 @@ export async function getBazaarPullInstallTarget(
         if (typeof body !== "string") {
             continue;
         }
-        const target = parseBazaarCheckMeta(body);
-        if (target !== null) {
-            return target;
+        const repo = parseBazaarCheckMeta(body);
+        if (repo !== null) {
+            return repo;
         }
     }
     return null;

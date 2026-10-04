@@ -191,6 +191,26 @@ export function fallbackLatestTagFromRows(rows: InstallReleaseRow[]): string | n
     return rows[0]?.tag ?? null;
 }
 
+/**
+ * 仓库最新 Release 的 tag：优先正式 latest，仅有预览版时回退为发布时间最新的 Release
+ *
+ * 与 `getReleaseInfo` 的默认回退相比少一次请求：回退时只取列表首条的 tag，不再按该 tag 取一次 Release
+ */
+export async function getLatestReleaseTag(
+    owner: string,
+    repo: string,
+    log: Logger,
+    signal: AbortSignal
+): Promise<string | null> {
+    const latest = await getReleaseInfo(owner, repo, "", log, signal, { fallbackToNewestWhenNoLatest: false });
+    const tag = typeof latest?.tag_name === "string" ? latest.tag_name : null;
+    if (tag !== null || signal.aborted) {
+        return tag;
+    }
+    const page = await listReleasesPage(owner, repo, log, signal, 1, 1);
+    return page?.rows[0]?.tag ?? null;
+}
+
 /** 拉取单页已发布 Release（不含草稿）；`pageFull` 依据 API 返回的原始数组长度是否达到 `perPage` */
 export async function listReleasesPage(
     owner: string,
@@ -218,21 +238,6 @@ export async function listReleasesPage(
         }));
     sortInstallReleaseRowsByPublishedDesc(rows);
     return { rows, pageFull };
-}
-
-/** 列出首页已发布 Release（不含草稿）；默认 `per_page` 与 `GITHUB_RELEASES_PER_PAGE` 一致 */
-export async function listReleases(
-    owner: string,
-    repo: string,
-    log: Logger,
-    signal: AbortSignal,
-    perPage = GITHUB_RELEASES_PER_PAGE
-): Promise<InstallReleaseRow[]> {
-    const result = await listReleasesPage(owner, repo, log, signal, 1, perPage);
-    if (result === null) {
-        return [];
-    }
-    return result.rows;
 }
 
 async function getGitHubIssueTitle(

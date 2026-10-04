@@ -13,6 +13,23 @@ export interface KernelApiResponse {
     transportFailed?: boolean;
 }
 
+/** 失败包络；`transportFailed` 仅在请求未到达内核时置位，供调用方决定是否重试 */
+function kernelFailure(msg: string, transportFailed = false): KernelApiResponse {
+    return transportFailed
+        ? { code: -1, msg, data: null, transportFailed: true }
+        : { code: -1, msg, data: null };
+}
+
+/** 非 2xx 响应：内容不是内核的返回包络，属传输失败 */
+function httpFailure(response: Response): KernelApiResponse {
+    return kernelFailure(`HTTP error: ${response.status} ${response.statusText}`);
+}
+
+/** 异常转文本，用于返回给调用方的 msg 与日志 */
+function errorText(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
 export async function fetchSyncPost(url: string, data?: object): Promise<KernelApiResponse> {
     try {
         const response = await fetch(url, {
@@ -23,15 +40,11 @@ export async function fetchSyncPost(url: string, data?: object): Promise<KernelA
             body: JSON.stringify(data ?? {}),
         });
         if (!response.ok) {
-            throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+            return httpFailure(response);
         }
         return await response.json() as KernelApiResponse;
     } catch (error) {
-        return {
-            code: -1,
-            msg: error instanceof Error ? error.message : String(error),
-            data: null,
-        };
+        return kernelFailure(errorText(error));
     }
 }
 
@@ -66,19 +79,11 @@ export async function putFile(params: PutFileParams): Promise<KernelApiResponse>
             body: formData,
         });
         if (!response.ok) {
-            return {
-                code: -1,
-                msg: `HTTP error: ${response.status} ${response.statusText}`,
-                data: null,
-            };
+            return httpFailure(response);
         }
         return (await response.json()) as KernelApiResponse;
     } catch (error) {
-        return {
-            code: -1,
-            msg: error instanceof Error ? error.message : String(error),
-            data: null,
-        };
+        return kernelFailure(errorText(error));
     }
 }
 
@@ -115,7 +120,7 @@ export async function getFile(path: string): Promise<GetFileResult> {
         return {
             ok: false,
             code: -1,
-            msg: error instanceof Error ? error.message : String(error),
+            msg: errorText(error),
         };
     }
 }
@@ -231,20 +236,11 @@ export async function installLocalBazaarPackage(blob: Blob, fileName: string, fr
             body: formData,
         });
         if (!response.ok) {
-            return {
-                code: -1,
-                msg: `HTTP error: ${response.status} ${response.statusText}`,
-                data: null,
-            };
+            return httpFailure(response);
         }
         return (await response.json()) as KernelApiResponse;
     } catch (error) {
         // 断网、连接被拒、响应不可解析都走这里：内核并未处理该请求，与内核返回的失败原因不同
-        return {
-            code: -1,
-            msg: error instanceof Error ? error.message : String(error),
-            data: null,
-            transportFailed: true,
-        };
+        return kernelFailure(errorText(error), true);
     }
 }

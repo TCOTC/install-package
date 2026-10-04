@@ -8,7 +8,7 @@
 
 import { Custom } from "siyuan";
 import {
-    getBazaarPullInstallTarget,
+    getBazaarPullCommentRepo,
     isBazaarPullCIPassed,
     listBazaarPulls,
     ownerRepoFromBazaarPullTitle,
@@ -257,9 +257,9 @@ export class BazaarPrPanel {
      * 因此这里返回 null，由调用方提示该 PR 不能安装
      */
     private async resolvePackageRepo(row: BazaarPullRow, signal: AbortSignal): Promise<string | null> {
-        const fromComment = await getBazaarPullInstallTarget(row.number, this.log, signal);
+        const fromComment = await getBazaarPullCommentRepo(row.number, this.log, signal);
         if (fromComment !== null) {
-            return fromComment.repo;
+            return fromComment;
         }
         return ownerRepoFromBazaarPullTitle(row.title);
     }

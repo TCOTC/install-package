@@ -7,7 +7,7 @@
  */
 
 import { Custom } from "siyuan";
-import { getReleaseInfo, listReleases } from "../github/github";
+import { getLatestReleaseTag } from "../github/github";
 import { i18n } from "../infra/i18n";
 import { comparePackageVersions } from "../install/packageVersion";
 import {
@@ -316,13 +316,7 @@ export class InstalledPanel {
     /** 仓库最新 Release 的 tag；没有正式版时回退为发布时间最新的 Release */
     private async fetchLatestTag(repoKey: string, signal: AbortSignal): Promise<string | null> {
         const [owner, repo] = repoKey.split("/");
-        const latest = await getReleaseInfo(owner, repo, "", this.log, signal, { fallbackToNewestWhenNoLatest: false });
-        const tag = typeof latest?.tag_name === "string" ? latest.tag_name : null;
-        if (tag !== null || signal.aborted) {
-            return tag;
-        }
-        const rows = await listReleases(owner, repo, this.log, signal, 1);
-        return rows[0]?.tag ?? null;
+        return await getLatestReleaseTag(owner, repo, this.log, signal);
     }
 
     private setUpdateState(key: string, state: PackageUpdateState): void {

@@ -7,6 +7,7 @@
 
 import { Constants, getFrontend } from "siyuan";
 import { i18n } from "../infra/i18n";
+import { packageLabelText } from "../infra/packageLabels";
 import { fetchSyncPost } from "../infra/kernelClient";
 import { PACKAGE_TYPE_BY_KERNEL_TYPE, type PackageType } from "./install";
 import type { Logger } from "../ui/logger";
@@ -16,7 +17,7 @@ export const KERNEL_PACKAGE_TYPES = ["plugins", "themes", "icons", "widgets", "t
 
 export type KernelPackageType = (typeof KERNEL_PACKAGE_TYPES)[number];
 
-/** 各类型的已安装包列表接口；只有插件与主题按前端过滤 */
+/** 各类型的已安装包列表接口；是否需要 frontend 由 `kernelTypeNeedsFrontend` 判定 */
 const INSTALLED_PACKAGES_API: Record<KernelPackageType, string> = {
     plugins: "/api/bazaar/getInstalledPlugin",
     themes: "/api/bazaar/getInstalledTheme",
@@ -25,18 +26,14 @@ const INSTALLED_PACKAGES_API: Record<KernelPackageType, string> = {
     templates: "/api/bazaar/getInstalledTemplate",
 };
 
-/** 类型归属的界面文案（与集市 PR 页的标签文案共用） */
-const PACKAGE_TYPE_LABEL: Record<string, () => string> = {
-    plugins: () => i18n.bazaarPrLabelPlugin,
-    themes: () => i18n.bazaarPrLabelTheme,
-    icons: () => i18n.bazaarPrLabelIcon,
-    widgets: () => i18n.bazaarPrLabelWidget,
-    templates: () => i18n.bazaarPrLabelTemplate,
-};
-
-/** 内核包类型名的界面文案；未知类型原样返回 */
+/** 类型归属的界面文案（与集市 PR 标签的文案共用同一份名称映射） */
 export function kernelPackageTypeLabel(kernelType: string): string {
-    return PACKAGE_TYPE_LABEL[kernelType]?.() ?? kernelType;
+    return packageLabelText(PACKAGE_TYPE_BY_KERNEL_TYPE[kernelType] ?? kernelType);
+}
+
+/** 只有插件与主题需要按前端过滤：已安装列表、卸载与集市接口都是这条规则 */
+export function kernelTypeNeedsFrontend(kernelType: KernelPackageType): boolean {
+    return kernelType === "plugins" || kernelType === "themes";
 }
 
 export interface InstalledPackage {
@@ -220,8 +217,10 @@ function parseInstalledPackage(
  */
 export async function listInstalledPackages(log: Logger): Promise<InstalledPackage[] | null> {
     const responses = await Promise.all(KERNEL_PACKAGE_TYPES.map((kernelType) => {
-        const withFrontend = kernelType === "plugins" || kernelType === "themes";
-        return fetchSyncPost(INSTALLED_PACKAGES_API[kernelType], withFrontend ? { frontend: getFrontend() } : {});
+        return fetchSyncPost(
+            INSTALLED_PACKAGES_API[kernelType],
+            kernelTypeNeedsFrontend(kernelType) ? { frontend: getFrontend() } : {},
+        );
     }));
 
     const packages: InstalledPackage[] = [];

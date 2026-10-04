@@ -17,7 +17,8 @@ import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
 import { COPY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import { InstallProgressButton } from "./installProgressButton";
-import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS } from "./logger";
+import { createInstallLogger } from "./logger";
+import { installLogCopyPayloadAtOpen } from "./installLogCopy";
 import {
     normalizeData,
     parseInstalled,
@@ -800,7 +801,7 @@ export class InstallPanel {
 
     /** 复制日志纯文本；`payload` 为右键菜单打开时已算好的内容（避免点击菜单时选区丢失） */
     private async copyInstallLogPlainText(payload?: string): Promise<void> {
-        const text = payload ?? joinAllProcessLineTexts(this.elements.installLogEl);
+        const text = payload ?? installLogCopyPayloadAtOpen(this.elements.installLogEl);
         if (!text.trim()) {
             message(i18n.copyInstallLogEmpty);
             return;
@@ -874,65 +875,4 @@ export class InstallPanel {
         this.unsubActiveInstall?.();
         this.unsubActiveInstall = undefined;
     }
-}
-
-/**
- * 从选区 cloneContents 中只取 `.jcip-show__text--log` 内文本及行内部分选区对应的文本节点；
- * 每个完整日志行块后加单个换行；忽略占位等其它 `<p>`。
- * 跳过仅含空白字符的文本节点（多为标签外换行、缩进），并对结果首尾 trim。
- */
-function plainTextFromRangeCloneContents(range: Range): string {
-    const frag = range.cloneContents();
-    const parts: string[] = [];
-    const walk = (node: Node): void => {
-        if (node.nodeType === Node.TEXT_NODE) {
-            const t = node.textContent ?? "";
-            if (t.trim().length === 0) {
-                return;
-            }
-            parts.push(t.replace(/\r\n/g, "\n"));
-            return;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-            return;
-        }
-        const el = node as Element;
-        if (el.classList.contains(INSTALL_LOG_PROCESS_LINE_CLASS)) {
-            parts.push((el.textContent ?? "").replace(/\r\n/g, "\n"));
-            parts.push("\n");
-            return;
-        }
-        if (el.tagName === "P") {
-            return;
-        }
-        el.childNodes.forEach(walk);
-    };
-    frag.childNodes.forEach(walk);
-    let result = parts.join("");
-    if (result.endsWith("\n")) {
-        result = result.slice(0, -1);
-    }
-    return result.trim();
-}
-
-function joinAllProcessLineTexts(logEl: HTMLDivElement): string {
-    return Array.from(logEl.querySelectorAll("." + INSTALL_LOG_PROCESS_LINE_CLASS))
-        .map((el) => el.textContent ?? "")
-        .join("\n")
-        .trim();
-}
-
-/**
- * 右键打开菜单时：日志内有非折叠选区则只解析选区（不回落为全部行）；否则复制全部日志行。
- * 选区仅覆盖占位说明等非日志行时解析结果为空，复制将提示无可复制。
- */
-function installLogCopyPayloadAtOpen(logEl: HTMLDivElement): string {
-    const sel = document.getSelection();
-    if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        if (logEl.contains(range.startContainer) && logEl.contains(range.endContainer)) {
-            return plainTextFromRangeCloneContents(range);
-        }
-    }
-    return joinAllProcessLineTexts(logEl);
 }

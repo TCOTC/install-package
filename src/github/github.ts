@@ -20,6 +20,13 @@ export const GITHUB_RELEASES_PER_PAGE = 30;
 export interface InstallReleaseRow {
     tag: string;
     publishedAt: string;
+    /**
+     * 该 Release 的 `package.zip` 附件上传时间（ISO）
+     *
+     * 取附件而不是 Release 记录的时间：附件每次重新上传都会更新，更接近「这个包什么时候产出的」；
+     * 没有该附件（或字段缺失）时为空串
+     */
+    packageZipAt: string;
     prerelease: boolean;
 }
 
@@ -234,6 +241,7 @@ export async function listReleasesPage(
         .map((r) => ({
             tag: r.tag_name,
             publishedAt: typeof r.published_at === "string" ? r.published_at : "",
+            packageZipAt: packageZipCreatedAt(r.assets),
             prerelease: r.prerelease === true,
         }));
     sortInstallReleaseRowsByPublishedDesc(rows);
@@ -440,6 +448,16 @@ export function findPackageZip(assets: GitHubRelease["assets"]): GitHubReleaseAs
     }
     // 大小写敏感，跟 bazaar 的逻辑一致
     return assets.find((asset) => asset.name === "package.zip") ?? null;
+}
+
+/**
+ * `package.zip` 附件的上传时间（ISO）
+ *
+ * 与 `findPackageZip` 同源，因此调用方不必自己重复找一次附件；无附件或字段缺失时返回空串
+ */
+export function packageZipCreatedAt(assets: GitHubRelease["assets"]): string {
+    const zip = findPackageZip(assets);
+    return zip && typeof zip.created_at === "string" ? zip.created_at : "";
 }
 
 // TODO 包名不一定等于仓库名

@@ -175,5 +175,19 @@
   "localListEnableAllPlugins": "Enable All Plugins",
   "localListResetTheme": "Restore Default Theme",
   "localListResetIcon": "Restore Default Icon",
-  "openPackageDetail": "Open Marketplace Details"
+  "openPackageDetail": "Open Marketplace Details",
+  "compareRowName": "Name",
+  "compareRowVersion": "Version",
+  "compareRowType": "Type",
+  "compareRowAuthor": "Author",
+  "compareRowDescription": "Description",
+  "compareRowRepo": "Repository",
+  "compareRowInstalledAt": "Installed",
+  "compareRowUpdatedAt": "Updated",
+  "compareRowPublishedAt": "Published",
+  "compareRowZipUploadedAt": "Zip uploaded",
+  "compareRowLicense": "License",
+  "compareRowStars": "Stars",
+  "compareLocalPackagesTitle": "Compare with local package {name}",
+  "compareLogLine": "{label}: {local} | {remote}"
 }

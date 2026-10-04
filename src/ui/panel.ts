@@ -2,7 +2,7 @@ import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { safeExternalUrl, escapeHtml } from "../infra/html";
 import type { Logger } from "../infra/logger";
-import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
+import { RepoParser, type InstallReleasesPayload, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import {
     clearInstallHistory,
@@ -26,6 +26,7 @@ import { createInstallLogger } from "./logger";
 import { installLogCopyPayloadAtOpen } from "./installLogCopy";
 import { openInterfaceLanguageMenu } from "./languageMenu";
 import { NO_MENU_ICON } from "./menuItem";
+import { PackageCompareLogger } from "./packageCompareLog";
 import { PanelUninstallTargets, petalDirPath } from "./panelUninstall";
 import { persistFormToLayout, type PersistedForm } from "./panelPersistence";
 import {
@@ -175,6 +176,12 @@ export class InstallPanel {
     private unsubActiveInstall: (() => void) | undefined;
     /** 与当前仓库匹配的本地集市包（卸载与打开目录几个键的依据） */
     private readonly uninstallTargets: PanelUninstallTargets;
+    /** 最近一次 Release 数据；日志里的对比据此取所选版本的发布时间与最新 tag */
+    private releases: InstallReleasesPayload = { releases: [], latestTag: null };
+    /** Release 数据是否已到位（拉取开始时先置 false）：对比日志要等它到位才输出，避免写出半截信息 */
+    private releasesLoaded = false;
+    /** 匹配到本地集市包时把对比写进日志（同一组内容只写一次） */
+    private readonly compareLogger: PackageCompareLogger;
     /**
      * 刚从历史记录选定的仓库键（小写 owner/repo）
      *
@@ -229,20 +236,25 @@ export class InstallPanel {
         // 提前载入自身包信息（自身仓库键与开发环境标记），供安装键的同步判定使用
         void getSelfPackageInfo(this.log);
         this.clearInstallLog = logger.clear;
+        this.compareLogger = new PackageCompareLogger(this.log);
         this.versionUI = new InstallPanelVersion(
             this.data,
             this.elements.versionEl,
             this.elements.repoInfoMainEl,
             this.log,
             {
-                onPickedVersion: this.syncInstallButtonDisabled.bind(this),
+                onPickedVersion: () => {
+                    this.syncInstallButtonDisabled();
+                    // 用户改了目标版本，日志里的对比跟着刷新（同一版本不会重复写）
+                    this.logLocalPackageCompare();
+                },
             },
         );
         this.repoParser = new RepoParser(this.data, this.log, this.elements.repoInfoMainEl, this.elements.repoInfoPlaceholderEl, {
             onRepoParseEvent: this.applyRepoParseEvent.bind(this),
             onRepoReleasesEvent: this.applyRepoReleasesEvent.bind(this),
         });
-        this.uninstallTargets = new PanelUninstallTargets(pluginName, this.log, () => this.syncUninstallButton());
+        this.uninstallTargets = new PanelUninstallTargets(pluginName, this.log, () => this.syncLocalPackageActions());
         this.unsubActiveInstall = subscribeActiveInstallChange(() => this.syncInstallButtonDisabled());
 
         this.init();
@@ -676,10 +688,10 @@ export class InstallPanel {
     /**
      * 有匹配到的本地集市包时显示针对该包的操作键
      *
-     * 同一仓库可能匹配到多个包（实测存在），「打开文件夹」只针对第一个；
+     * 同一仓库可能匹配到多个包（实测存在），「卸载」处理全部而其余几个键只针对第一个；
      * 存储目录只有插件才有，而且由插件自己在运行时创建，需内核确认存在后才显示入口
      */
-    private syncUninstallButton(): void {
+    private syncLocalPackageActions(): void {
         const target = this.uninstallTargets.first;
         const visible = target !== undefined;
         for (const btn of this.elements.uninstallEls) {
@@ -704,16 +716,47 @@ export class InstallPanel {
                 btn.title = petalDirPath(target.name);
             }
         }
+        // 匹配结果可能晚于 Release 数据到达（检测要问内核），因此这里也补一次
+        this.logLocalPackageCompare();
+    }
+
+    /**
+     * 把「本地已安装包 vs 线上仓库」的对比写进日志
+     *
+     * 本地侧只取匹配到的第一个包（与打开文件夹、打开详情页一致）；
+     * 线上侧用面板已解析好的摘要与 Release 列表，不再发请求。
+     * 必须等 Release 数据到位才输出，否则版本、发布时间会缺一半；
+     * 重复调用由 `PackageCompareLogger` 去重，切换目标包或版本时会重新输出
+     */
+    private logLocalPackageCompare(): void {
+        if (!this.releasesLoaded) {
+            return;
+        }
+        const version = this.data.version.trim();
+        this.compareLogger.log({
+            local: this.uninstallTargets.first,
+            remote: this.repoParser.getResolvedInfo(),
+            version,
+            latestTag: this.releases.latestTag,
+            selectedRelease: this.releases.releases.find((row) => row.tag === version) ?? null,
+        });
     }
 
     /** Release：拉取开始，或列表 / `latestTag` 更新 */
     private applyRepoReleasesEvent(event: RepoReleasesEvent): void {
         if (event.type === "fetchStart") {
+            // 上一轮的列表与最新 tag 已作废，对比日志不该再拿它当线上侧数据
+            this.releases = { releases: [], latestTag: null };
+            this.releasesLoaded = false;
             this.versionUI.onReleasesFetchStart();
             return;
         }
+        this.releases = event.data;
         this.versionUI.onReleasesChanged(event.data);
+        this.releasesLoaded = true;
         this.syncInstallButtonDisabled();
+        // 版本可能在 `onReleasesChanged` 里落到最新 tag，因此放在其后输出对比
+        this.logLocalPackageCompare();
     }
 
     /**

@@ -9,7 +9,6 @@ This is a plugin for installing marketplace packages, which can download and ins
 - Support listing the local marketplace packages in the panel: check for GitHub updates, or click a card to open the install tab
 - Support listing the local marketplace packages in the menu: quickly enable or disable them, or open the package details in the marketplace
 - Display marketplace package info (repo summary, Release info, file size)
-- File validation and integrity checks
 - Support configuring GitHub Token (encrypted storage) to avoid API rate limits
 - Support installing plugins, themes, icons, widgets, templates and toggling them on or off after installation
 - Output logs in the tab during installation; abortable at any time

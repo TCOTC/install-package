@@ -49,6 +49,12 @@ export interface InstalledPackage {
     displayName: string;
     /** 元数据里的版本 */
     version: string;
+    /** 元数据里的作者（`author` 字段）；无则空串 */
+    author: string;
+    /** 元数据里的描述（内核按当前语言挑好的 `preferredDesc`）；无则空串 */
+    description: string;
+    /** 安装日期（内核格式化的 `YYYY-MM-DD`）；无则空串 */
+    hInstallDate: string;
     /** 元数据里的仓库地址（内核只保留 http/https 链接）；无则空串 */
     repoURL: string;
     /** 由 `repoURL` 规范化后的仓库键（小写 owner/repo）；无则空串 */
@@ -130,6 +136,9 @@ function parseInstalledPackage(
         name,
         displayName: preferredName !== "" ? preferredName : name,
         version: asString(raw.version),
+        author: asString(raw.author),
+        description: asString(raw.preferredDesc),
+        hInstallDate: asString(raw.hInstallDate),
         repoURL,
         repoKey: repoKeyOf(repoURL) ?? "",
         iconURL: asString(raw.iconURL),

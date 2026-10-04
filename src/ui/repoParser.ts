@@ -6,6 +6,7 @@ import {
     githubRawRootFileUrl,
     listReleasesPage,
     mergeInstallReleasePages,
+    packageZipCreatedAt,
     parseOwnerRepo,
     type ParsedPackageInfo,
 } from "../github/github";
@@ -221,6 +222,8 @@ function wireRawPreviewImages(root: HTMLElement): void {
 export class RepoParser {
     private infoAbort?: AbortController;
     private lastParsed: { url: string; owner: string; repo: string } | null = null;
+    /** 最近一次成功解析出的仓库信息（摘要块渲染用）；解析中 / 无效 / 未输入时为 null */
+    private resolvedInfo: ParsedPackageInfo | null = null;
     private pendingRefresh: Promise<void> = Promise.resolve();
     /** 当前 `pendingRefresh` 所对应的非空 URL；完成后或与新一轮刷新顶替时清除 */
     private pendingRefreshUrl: string | null = null;
@@ -315,7 +318,18 @@ export class RepoParser {
         return { owner: this.lastParsed.owner, repo: this.lastParsed.repo };
     }
 
+    /**
+     * 最近一次成功解析出的仓库信息（描述、星标、许可证、主页等）
+     *
+     * 与摘要块展示的是同一份数据，因此「对比本地包信息」不需要为它再发一次请求；
+     * 解析中、无效或解析失败时为 null
+     */
+    getResolvedInfo(): ParsedPackageInfo | null {
+        return this.resolvedInfo;
+    }
+
     private updateRepoInfoEl(state: RepoInfoElState): void {
+        this.resolvedInfo = state.kind === "resolved" ? state.packageInfo : null;
         if (!this.repoInfoMainEl.isConnected) {
             return;
         }
@@ -388,6 +402,7 @@ export class RepoParser {
                 preferredRow = {
                     tag: urlTagRelease.tag_name,
                     publishedAt: typeof urlTagRelease.published_at === "string" ? urlTagRelease.published_at : "",
+                    packageZipAt: packageZipCreatedAt(urlTagRelease.assets),
                     prerelease: urlTagRelease.prerelease === true,
                 };
             } else {

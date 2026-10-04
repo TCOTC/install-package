@@ -175,5 +175,19 @@
   "localListEnableAllPlugins": "启用全部插件",
   "localListResetTheme": "恢复默认主题",
   "localListResetIcon": "恢复默认图标",
-  "openPackageDetail": "打开集市详情页"
+  "openPackageDetail": "打开集市详情页",
+  "compareRowName": "名称",
+  "compareRowVersion": "版本",
+  "compareRowType": "类型",
+  "compareRowAuthor": "作者",
+  "compareRowDescription": "描述",
+  "compareRowRepo": "仓库",
+  "compareRowInstalledAt": "安装时间",
+  "compareRowUpdatedAt": "更新时间",
+  "compareRowPublishedAt": "发布时间",
+  "compareRowZipUploadedAt": "zip 上传时间",
+  "compareRowLicense": "许可证",
+  "compareRowStars": "星标",
+  "compareLocalPackagesTitle": "对比本地集市包 {name}",
+  "compareLogLine": "{label}：{local} ｜ {remote}"
 }

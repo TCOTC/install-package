@@ -17,6 +17,9 @@ export type InstallPanelVersionHooks = {
     onPickedVersion: () => void;
 };
 
+/** 列表里还没有该 tag 时的占位行；新增字段集中在这里补齐，避免多处字面量各漏一个 */
+const EMPTY_RELEASE_ROW: InstallReleaseRow = { tag: "", publishedAt: "", packageZipAt: "", prerelease: false };
+
 /**
  * 版本选择控件：折叠展示、可搜索菜单、Release 分页加载、与 `data.version` 同步。
  */
@@ -195,7 +198,7 @@ export class InstallPanelVersion {
         }
         // 「（最新）」「（预发布）」后缀与摘要里的已选版本链接共用同一份拼接
         const row = this.releaseRows.find((r) => r.tag === tag);
-        this.versionEl.textContent = this.formatTagRowLabel(tag, row ?? { tag, publishedAt: "", prerelease: false });
+        this.versionEl.textContent = this.formatTagRowLabel(tag, row ?? { ...EMPTY_RELEASE_ROW, tag });
         this.syncRepoSummaryReleaseExtras();
     }
 
@@ -238,7 +241,7 @@ export class InstallPanelVersion {
             pickedWrap.classList.remove("fn__none");
             pickedWrap.setAttribute("aria-hidden", "false");
             pickedLink.href = releaseUrl;
-            pickedLink.textContent = this.formatTagRowLabel(tag, releaseRow ?? { tag, publishedAt: "", prerelease: false });
+            pickedLink.textContent = this.formatTagRowLabel(tag, releaseRow ?? { ...EMPTY_RELEASE_ROW, tag });
             pickedLink.title = i18n.packageVersionSideOpenRelease;
         } else {
             pickedWrap.classList.add("fn__none");

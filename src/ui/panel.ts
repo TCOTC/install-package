@@ -4,9 +4,12 @@ import type { BazaarPullLabel } from "../github/bazaarPrs";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
+import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
+import { uninstallInstalledPackages } from "../install/uninstall";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
 import { createBazaarPullLabelChip } from "./bazaarPullLabels";
+import { COPY_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS, type Logger } from "./logger";
 import { InstallPanelUiStore, isRepoParseReadyForInstall, type InstallButtonState } from "./uiStore";
@@ -23,6 +26,8 @@ export interface InstallPanelData {
     presetRepoKey: string;
     /** 入口带入的来源 PR 信息（JSON）；供页签重载后恢复展示 */
     presetPull: string;
+    /** 入口带入的来源本地集市包信息（JSON）；供页签重载后恢复「隐藏 URL、保留版本」形态 */
+    presetInstalled: string;
 }
 
 const INSTALL_PANEL_DEFAULT: InstallPanelData = {
@@ -32,6 +37,7 @@ const INSTALL_PANEL_DEFAULT: InstallPanelData = {
     repoKey: "",
     presetRepoKey: "",
     presetPull: "",
+    presetInstalled: "",
 };
 
 const INSTALL_PANEL_KEYS = Object.keys(INSTALL_PANEL_DEFAULT) as (keyof InstallPanelData)[];
@@ -62,16 +68,32 @@ export interface InstallPanelPull {
     labels: BazaarPullLabel[];
 }
 
+/** 来源本地集市包的展示信息（由「本地集市包」页带入） */
+export interface InstallPanelInstalledSource {
+    /** 内核包类型（复数），用于展示 */
+    kernelType: string;
+    /** 包名（安装目录名） */
+    name: string;
+    /** 当前语言下的展示名 */
+    displayName: string;
+    /** 已安装版本，回填到版本栏 */
+    version: string;
+    /** 该包当前的启用状态，用作「安装后启用」的初始值；挂件与模板没有该状态时省略 */
+    enableAfterInstall?: boolean;
+}
+
 /**
- * 由别的页签（集市 PR 页等）带过来的安装目标
+ * 由别的页签（集市 PR 页、本地集市包页）带过来的安装目标
  *
- * URL 已确定，版本按最新 Release 解析；`repoKey` 用于按包复用安装页签，`pull` 用于展示来源 PR
+ * URL 与版本已确定，面板形态由来源决定：PR 来源隐藏 URL 与版本栏并展示 PR，
+ * 本地集市包来源只隐藏 URL 栏（保留版本下拉框），并回填已安装版本
  */
 export interface InstallPanelPreset {
     url: string;
     /** 目标包仓库键（`owner/repo`）；面板内统一按小写存储与比较 */
     repoKey: string;
     pull?: InstallPanelPull;
+    installed?: InstallPanelInstalledSource;
 }
 
 /** 来源 PR 信息的序列化；无信息时为空串 */
@@ -102,6 +124,34 @@ function parsePull(raw: string): InstallPanelPull | undefined {
     };
 }
 
+/** 来源本地集市包信息的序列化；无信息时为空串 */
+function serializeInstalled(installed: InstallPanelInstalledSource | undefined): string {
+    return installed === undefined ? "" : JSON.stringify(installed);
+}
+
+/** 反序列化来源本地集市包信息；内容异常时按「无信息」处理，只影响展示与回填 */
+function parseInstalled(raw: string): InstallPanelInstalledSource | undefined {
+    if (raw === "") {
+        return undefined;
+    }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return undefined;
+    }
+    const installed = parsed as Partial<InstallPanelInstalledSource> | null;
+    if (!installed || typeof installed.name !== "string" || typeof installed.kernelType !== "string") {
+        return undefined;
+    }
+    return {
+        kernelType: installed.kernelType,
+        name: installed.name,
+        displayName: typeof installed.displayName === "string" && installed.displayName !== "" ? installed.displayName : installed.name,
+        version: typeof installed.version === "string" ? installed.version : "",
+    };
+}
+
 /** 待安装面板构造时消费的预设；页签尚未创建或面板尚未初始化时先暂存于此 */
 let pendingPreset: InstallPanelPreset | null = null;
 
@@ -126,24 +176,25 @@ function renderInstallPanel(root: HTMLElement): void {
                 <label class="jcip-action__enable">
                     <span class="jcip-action__enable-label">${i18n.enableAfterInstall}</span>
                     <input data-type="enableAfterInstall" type="checkbox" class="b3-switch fn__flex-center">
-                </label>`;
+                </label>
+                <button data-type="uninstall" type="button" class="b3-button b3-button--outline fn__none">${i18n.uninstallLocalPackageButton}</button>`;
     root.innerHTML = `
     <div class="jcip-panel">
         <div class="jcip-input">
-            <section class="jcip__vflow jcip-input__field">
+            <section class="jcip__vflow jcip-input__field jcip-input__field--url">
                 <div class="jcip__label">${i18n.urlLabel}</div>
                 <input data-type="url" class="b3-text-field fn__block" value="" placeholder="https://github.com/user/repo" spellcheck="false">
+            </section>
+            <section class="jcip__vflow jcip-input__source">
+                <div class="jcip__label" data-type="source-label"></div>
+                <div class="jcip-input__source-body">
+                    <a class="jcip-input__source-title" data-type="source-title" target="_blank" rel="noopener noreferrer"></a>
+                    <span class="jcip-input__source-chips" data-type="source-chips"></span>
+                </div>
             </section>
             <section class="jcip__vflow jcip-input__field">
                 <div class="jcip__label">${i18n.versionLabel}</div>
                 <button type="button" data-type="version" class="jcip-version-select fn__block b3-select" disabled></button>
-            </section>
-            <section class="jcip__vflow jcip-input__pull">
-                <div class="jcip__label">${i18n.bazaarPrTitle}</div>
-                <div class="jcip-input__pull-body">
-                    <a class="jcip-input__pull-title" data-type="pull-link" target="_blank" rel="noopener noreferrer"></a>
-                    <span class="jcip-input__pull-labels" data-type="pull-labels"></span>
-                </div>
             </section>
             <section class="jcip__vflow jcip-input__button">
                 <div class="jcip__label jcip__label--placeholder" aria-hidden="true">&nbsp;</div>
@@ -186,17 +237,27 @@ function renderInstallPanel(root: HTMLElement): void {
     </div>`;
 }
 
+/** 来源块的补充说明（纯文本，不可点击） */
+function createSourceNote(text: string): HTMLSpanElement {
+    const el = document.createElement("span");
+    el.className = "jcip-input__source-note";
+    el.textContent = text;
+    return el;
+}
+
 interface InstallPanelElements {
     inputEl: HTMLDivElement;
     urlEl: HTMLInputElement;
     versionEl: HTMLButtonElement;
-    pullLinkEl: HTMLAnchorElement;
-    pullLabelsEl: HTMLElement;
+    sourceLabelEl: HTMLDivElement;
+    sourceTitleEl: HTMLAnchorElement;
+    sourceChipsEl: HTMLElement;
     repoInfoPlaceholderEl: HTMLParagraphElement;
     repoInfoMainEl: HTMLDivElement;
     enableAfterInstallSwitchEls: NodeListOf<HTMLInputElement>;
     installEls: NodeListOf<HTMLButtonElement>;
     abortEls: NodeListOf<HTMLButtonElement>;
+    uninstallEls: NodeListOf<HTMLButtonElement>;
     installLogEl: HTMLDivElement;
 }
 
@@ -216,12 +277,21 @@ export class InstallPanel {
     private readonly uiStore: InstallPanelUiStore;
     /** 页签关闭时取消订阅 */
     private unsubActiveInstall: (() => void) | undefined;
+    /** 插件自身包名：卸载目标里必须把插件自身剔除 */
+    private readonly pluginName: string;
+    /** 与当前 URL 仓库相同的本地集市包；为空表示当前没有可卸载的目标 */
+    private uninstallTargets: InstalledPackage[] | null = null;
+    /** 检测序号：URL 变化或页签关闭后作废在途回调 */
+    private uninstallDetectSeq = 0;
+    /** 仓库键到检测结果的缓存，安装或卸载成功后失效 */
+    private readonly uninstallCache = new Map<string, InstalledPackage[]>();
 
-    constructor(custom: Custom) {
+    constructor(custom: Custom, pluginName: string) {
         this.custom = custom;
+        this.pluginName = pluginName;
         this.data = this.debounceSaveLayout(normalizeData(this.custom.data));
         this.custom.data = this.data;
-        // 由别的页签带过来的目标：URL 直接采用，版本留空以便按最新 Release 解析
+        // 由别的页签带过来的目标：URL 直接采用
         const preset = consumePendingInstallPreset();
         if (preset !== null) {
             this.storePreset(preset);
@@ -233,13 +303,15 @@ export class InstallPanel {
             inputEl: this.root.querySelector(".jcip-input") as HTMLDivElement,
             urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
             versionEl: this.root.querySelector("[data-type='version']") as HTMLButtonElement,
-            pullLinkEl: this.root.querySelector("a[data-type='pull-link']") as HTMLAnchorElement,
-            pullLabelsEl: this.root.querySelector("[data-type='pull-labels']") as HTMLElement,
+            sourceLabelEl: this.root.querySelector("[data-type='source-label']") as HTMLDivElement,
+            sourceTitleEl: this.root.querySelector("a[data-type='source-title']") as HTMLAnchorElement,
+            sourceChipsEl: this.root.querySelector("[data-type='source-chips']") as HTMLElement,
             repoInfoPlaceholderEl: this.root.querySelector("p[data-type='repo-info-placeholder']") as HTMLParagraphElement,
             repoInfoMainEl: this.root.querySelector("div[data-type='repo-info-main']") as HTMLDivElement,
             enableAfterInstallSwitchEls: this.root.querySelectorAll("input[data-type='enableAfterInstall']") as NodeListOf<HTMLInputElement>,
             installEls: this.root.querySelectorAll("button[data-type='install']") as NodeListOf<HTMLButtonElement>,
             abortEls: this.root.querySelectorAll("button[data-type='abort-install']") as NodeListOf<HTMLButtonElement>,
+            uninstallEls: this.root.querySelectorAll("button[data-type='uninstall']") as NodeListOf<HTMLButtonElement>,
             installLogEl: this.root.querySelector("div[data-type='install-log']") as HTMLDivElement,
         };
         const logger = createInstallLogger(this.elements.installLogEl);
@@ -272,74 +344,123 @@ export class InstallPanel {
     }
 
     /**
-     * 载入入口带入的安装目标：URL 换成该目标、版本留空以按最新 Release 解析，面板切为精简形态
+     * 载入入口带入的安装目标：URL 换成该目标、面板切为对应形态，并重新解析
      */
     applyPreset(preset: InstallPanelPreset): void {
         this.storePreset(preset);
         this.elements.urlEl.value = preset.url;
         this.versionUI.syncDisplayFromData();
         this.applyStoredPreset();
+        this.syncEnableAfterInstall();
         void this.repoParser.refresh();
     }
 
     /**
      * 本面板所属包仓库键（小写 `owner/repo`）；空串表示这是顶栏入口打开的完整表单
      *
-     * 集市 PR 页据此按包复用安装页签：只有同一个包才复用同一个页签
+     * 集市 PR 页与本地集市包页据此按包复用安装页签：只有同一个包才复用同一个页签
      */
     getPresetRepoKey(): string {
         return this.data.presetRepoKey;
     }
 
-    /** 把入口带入的目标写进页签数据（不碰界面）；形态与来源信息随后由 `applyStoredPreset` 推导 */
+    /**
+     * 把入口带入的目标写进页签数据（不碰界面）；形态与来源信息随后由 `applyStoredPreset` 推导
+     *
+     * 本地集市包来源回填已安装版本（Release 列表到达后由版本控件对齐到实际 tag），
+     * 其它来源留空，以便解析完成后落到最新 Release
+     */
     private storePreset(preset: InstallPanelPreset): void {
         this.data.url = preset.url;
-        this.data.version = "";
+        this.data.version = preset.installed?.version ?? "";
         this.data.presetRepoKey = preset.repoKey.trim().toLowerCase();
         this.data.presetPull = serializePull(preset.pull);
+        this.data.presetInstalled = serializeInstalled(preset.installed);
+        // 本地集市包来源：按该包当前的启用状态决定「安装后启用」的初始值，避免装完把原本启用的包停掉
+        if (preset.installed?.enableAfterInstall !== undefined) {
+            this.data.enableAfterInstall = preset.installed.enableAfterInstall;
+        }
     }
 
     /**
      * 依据页签数据决定形态与来源信息展示
      *
-     * 形态存在数据里而不只是内存字段：页签重载恢复后面板仍是精简形态，也仍能被按包复用
+     * 三种形态都由持久化数据推导：页签重载恢复后形态不会退化，也仍能被按包复用
+     * - 顶栏入口：完整表单（URL 与版本栏都在）
+     * - 集市 PR 页：隐藏 URL 与版本栏，改为展示来源 PR
+     * - 本地集市包页：只隐藏 URL 栏，保留版本下拉框，并展示来源本地集市包
      */
     private applyStoredPreset(): void {
-        const repoKey = this.data.presetRepoKey;
-        this.elements.inputEl.classList.toggle("jcip-input--compact", repoKey !== "");
-        this.renderPullInfo(repoKey === "" ? undefined : parsePull(this.data.presetPull));
+        const form = this.currentForm();
+        this.elements.inputEl.classList.toggle("jcip-input--compact", form === "pull");
+        this.elements.inputEl.classList.toggle("jcip-input--no-url", form === "installed");
+        const pull = form === "pull" ? parsePull(this.data.presetPull) : undefined;
+        const installed = form === "installed" ? parseInstalled(this.data.presetInstalled) : undefined;
+        this.elements.inputEl.classList.toggle("jcip-input--with-source", pull !== undefined || installed !== undefined);
+        this.renderSourceInfo(pull, installed);
+        this.versionUI.setInstalledVersionAlias(installed?.version ?? "");
     }
 
-    /** 在精简形态的输入区里展示来源 PR（编号与标题可点击打开该 PR）；无信息时该块不显示 */
-    private renderPullInfo(pull: InstallPanelPull | undefined): void {
-        this.elements.inputEl.classList.toggle("jcip-input--with-pull", pull !== undefined);
-        if (pull === undefined) {
-            this.elements.pullLinkEl.textContent = "";
-            this.elements.pullLinkEl.removeAttribute("href");
-            this.elements.pullLinkEl.removeAttribute("title");
-            this.elements.pullLabelsEl.replaceChildren();
+    /** 由持久化数据推导面板形态；`presetRepoKey` 为空串说明目标来自顶栏入口 */
+    private currentForm(): "full" | "pull" | "installed" {
+        if (this.data.presetRepoKey === "") {
+            return "full";
+        }
+        if (this.data.presetInstalled !== "") {
+            return "installed";
+        }
+        return this.data.presetPull !== "" ? "pull" : "full";
+    }
+
+    /** 刚解析出的仓库是否为入口带入的那个包（两侧都小写比较） */
+    private isPresetRepo(parsedRepoKey: string): boolean {
+        return this.data.presetRepoKey !== "" && parsedRepoKey.toLowerCase() === this.data.presetRepoKey;
+    }
+
+    /**
+     * 在隐藏 URL 栏的形态里展示来源
+     *
+     * 集市 PR 显示编号与标题（可点击打开该 PR），本地集市包显示包名（可点击打开仓库）与已安装版本；
+     * 两种信息不会同时出现，取不到信息时整块不显示
+     */
+    private renderSourceInfo(pull: InstallPanelPull | undefined, installed: InstallPanelInstalledSource | undefined): void {
+        const titleEl = this.elements.sourceTitleEl;
+        this.elements.sourceLabelEl.textContent = "";
+        titleEl.textContent = "";
+        titleEl.removeAttribute("href");
+        titleEl.removeAttribute("title");
+        this.elements.sourceChipsEl.replaceChildren();
+        if (pull !== undefined) {
+            this.elements.sourceLabelEl.textContent = i18n.bazaarPrTitle;
+            // 文案来自外部数据，一律用 textContent 写入；过长时由样式省略，完整文案放在 title 里
+            const label = `#${pull.number} ${pull.title}`.trim();
+            titleEl.textContent = label;
+            titleEl.title = label;
+            if (pull.htmlUrl !== "") {
+                titleEl.href = pull.htmlUrl;
+            }
+            this.elements.sourceChipsEl.replaceChildren(
+                ...pull.labels.map((item) => createBazaarPullLabelChip(item)),
+            );
             return;
         }
-        // 标题来自外部数据，一律用 textContent 写入；过长时由样式省略，完整标题放在 title 里
-        const label = `#${pull.number} ${pull.title}`.trim();
-        this.elements.pullLinkEl.textContent = label;
-        this.elements.pullLinkEl.title = label;
-        if (pull.htmlUrl === "") {
-            this.elements.pullLinkEl.removeAttribute("href");
-        } else {
-            this.elements.pullLinkEl.href = pull.htmlUrl;
+        if (installed !== undefined) {
+            this.elements.sourceLabelEl.textContent = i18n.installedTitle;
+            titleEl.textContent = installed.displayName;
+            titleEl.title = installed.displayName;
+            if (this.data.url !== "") {
+                titleEl.href = this.data.url;
+            }
+            this.elements.sourceChipsEl.replaceChildren(
+                createSourceNote(i18n.panelSourceInstalledVersion.replace("{version}", installed.version)),
+            );
         }
-        this.elements.pullLabelsEl.replaceChildren(
-            ...pull.labels.map((item) => createBazaarPullLabelChip(item)),
-        );
     }
 
     private init(): void {
         this.elements.urlEl.value = this.data.url;
         this.versionUI.syncVersionDisplay();
-        for (const cb of this.elements.enableAfterInstallSwitchEls) {
-            cb.checked = this.data.enableAfterInstall;
-        }
+        this.syncEnableAfterInstall();
 
         // 从 URL 输入框单向同步到 `this.data`（trim）；版本由下拉框写入 `this.data`
         // 立即刷新一次，用于界面重载之后初始化页签
@@ -387,6 +508,11 @@ export class InstallPanel {
                 this.abortCurrentRepoInstall();
             });
         }
+        for (const btn of this.elements.uninstallEls) {
+            btn.addEventListener("click", () => {
+                void this.uninstallMatchedPackages();
+            });
+        }
 
         this.elements.installLogEl.addEventListener("contextmenu", (event) => {
             event.preventDefault();
@@ -395,14 +521,14 @@ export class InstallPanel {
             const copyPayload = installLogCopyPayloadAtOpen(this.elements.installLogEl);
             const menu = new Menu("install-package-install-log");
             menu.addItem({
-                icon: "iconCopy",
+                icon: COPY_ICON_ID,
                 label: i18n.copyInstallLog,
                 click: () => {
                     void this.copyInstallLogPlainText(copyPayload);
                 },
             });
             menu.addItem({
-                icon: "iconTrashcan",
+                icon: TRASHCAN_ICON_ID,
                 label: i18n.clearInstallLog,
                 click: () => {
                     this.clearInstallLog();
@@ -432,6 +558,13 @@ export class InstallPanel {
                     break;
             }
         });
+    }
+
+    /** 把「安装后启用」的当前值同步到两个开关上（入口带入的值与页签重载恢复的值都走这里） */
+    private syncEnableAfterInstall(): void {
+        for (const cb of this.elements.enableAfterInstallSwitchEls) {
+            cb.checked = this.data.enableAfterInstall;
+        }
     }
 
     /**
@@ -502,6 +635,72 @@ export class InstallPanel {
         abortInstall(ownerRepo.owner, ownerRepo.repo);
     }
 
+    /** 目标是否为插件自身（按包名）；自身不能卸载 */
+    private isOwnPlugin(pkg: InstalledPackage): boolean {
+        return pkg.type === "plugin" && pkg.name === this.pluginName;
+    }
+
+    /**
+     * 按当前 URL 的仓库检测本地同仓库的集市包，决定「卸载」键的显隐
+     *
+     * 同一仓库可能对应多个包（实测有插件与主题元数据里写着同一个仓库地址），因此结果是个列表；
+     * 检测失败时静默降级（隐藏键），不阻塞安装；只命中插件自身时也会剔光，因此不显示
+     */
+    private async refreshUninstallTargets(): Promise<void> {
+        const seq = ++this.uninstallDetectSeq;
+        const repoKey = this.data.repoKey.trim().toLowerCase();
+        if (repoKey === "") {
+            this.uninstallTargets = null;
+            this.syncUninstallButton();
+            return;
+        }
+        const cached = this.uninstallCache.get(repoKey);
+        if (cached !== undefined) {
+            this.uninstallTargets = cached;
+            this.syncUninstallButton();
+            return;
+        }
+        const packages = await listInstalledPackages(this.log);
+        if (seq !== this.uninstallDetectSeq) {
+            return;
+        }
+        if (packages === null) {
+            this.uninstallTargets = null;
+            this.syncUninstallButton();
+            return;
+        }
+        const matched = findInstalledByRepo(packages, repoKey);
+        const targets = matched.filter((pkg) => !this.isOwnPlugin(pkg));
+        if (targets.length === 0 && matched.length > 0) {
+            this.log.info(i18n.uninstallSelfExcluded);
+        }
+        this.uninstallCache.set(repoKey, targets);
+        this.uninstallTargets = targets;
+        this.syncUninstallButton();
+    }
+
+    /** 有可卸载目标时显示「卸载」键 */
+    private syncUninstallButton(): void {
+        const visible = (this.uninstallTargets?.length ?? 0) > 0;
+        for (const btn of this.elements.uninstallEls) {
+            btn.classList.toggle("fn__none", !visible);
+        }
+    }
+
+    /** 确认后卸载与当前仓库匹配的全部本地集市包，然后重新检测 */
+    private async uninstallMatchedPackages(): Promise<void> {
+        // 检测结果可能已过期，执行前再剔一次插件自身
+        const targets = (this.uninstallTargets ?? []).filter((pkg) => !this.isOwnPlugin(pkg));
+        if (targets.length === 0) {
+            return;
+        }
+        const allOk = await uninstallInstalledPackages(targets, this.log);
+        if (allOk) {
+            this.uninstallCache.clear();
+        }
+        await this.refreshUninstallTargets();
+    }
+
     /**
      * 用 Proxy 包装表单：属性赋值且值变化时 400ms 防抖写入 layout。
      * 假定仅通过类型化的 `InstallPanelData` 字段写入。
@@ -550,7 +749,8 @@ export class InstallPanel {
         } else {
             const { clearVersion, state } = this.uiStore.dispatch({ type: "parse/settled", ownerRepo: event.data });
             this.data.repoKey = state.lastParsedRepoKey;
-            if (clearVersion) {
+            // 入口带入的版本与仓库是同一个来源，解析落定不能把它当作用户上一次选择的版本清掉（URL 与版本栏都被隐藏，清了就无法恢复）
+            if (clearVersion && !this.isPresetRepo(state.lastParsedRepoKey)) {
                 this.clearVersionFieldAndRefreshUi();
             }
         }
@@ -558,6 +758,9 @@ export class InstallPanel {
         const installReady = event.type === "settled" && event.data !== null;
         this.versionUI.setRepoParseReady(installReady);
         this.syncInstallButtonDisabled();
+        if (event.type === "settled") {
+            void this.refreshUninstallTargets();
+        }
     }
 
     private clearVersionFieldAndRefreshUi(): void {
@@ -612,6 +815,9 @@ export class InstallPanel {
                 const text = i18n.installDone.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
                 this.log.info(text);
                 message(text, true);
+                // 刚装上的包开始参与匹配，重新检测一次
+                this.uninstallCache.clear();
+                void this.refreshUninstallTargets();
             } else if (result === false) {
                 const text = i18n.installFailed.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
                 this.log.warn(text);
@@ -628,6 +834,7 @@ export class InstallPanel {
     /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
     destroy(): void {
         window.clearTimeout(this.persistTimer);
+        this.uninstallDetectSeq++;
         this.versionUI.destroy();
         this.repoParser.destroy();
         this.unsubActiveInstall?.();

@@ -80,7 +80,7 @@ $jcip-pr-avatar-size: 32px;
         padding-left: $spacing-b;
     }
 
-    // 精简形态（目标由集市 PR 页等入口带入）：隐藏 URL 与版本栏
+    // 精简形态（目标由集市 PR 页带入）：隐藏 URL 与版本栏
     &--compact {
         .jcip-input__field {
             display: none;
@@ -92,19 +92,24 @@ $jcip-pr-avatar-size: 32px;
         }
     }
 
-    // 来源 PR 信息：平时不占位，有信息时占用 URL / 版本栏的位置
-    &__pull {
+    // 只隐藏 URL 栏（目标由「本地集市包」页带入）：版本下拉框保留，便于换装别的版本
+    &--no-url .jcip-input__field--url {
+        display: none;
+    }
+
+    // 来源信息（集市 PR / 本地集市包）：平时不占位，有信息时占用被隐藏的输入栏位置
+    &__source {
         display: none;
         flex: 1 1 0;
         min-width: 0;
     }
 
-    &--with-pull .jcip-input__pull {
+    &--with-source .jcip-input__source {
         display: flex;
     }
 
-    // 与输入控件同高，避免精简形态下「重新验证」按钮跟着移动
-    &__pull-body {
+    // 与输入控件同高，避免隐藏输入栏后「重新验证」按钮跟着移动
+    &__source-body {
         display: flex;
         align-items: center;
         gap: $spacing-s * 0.5;
@@ -112,7 +117,7 @@ $jcip-pr-avatar-size: 32px;
         min-width: 0;
     }
 
-    &__pull-title {
+    &__source-title {
         flex: 0 1 auto;
         min-width: 0;
         overflow: hidden;
@@ -127,11 +132,19 @@ $jcip-pr-avatar-size: 32px;
         }
     }
 
-    &__pull-labels {
+    &__source-chips {
         display: flex;
         flex: 0 0 auto;
         align-items: center;
         gap: 4px;
+    }
+
+    // 来源补充说明（如「已安装 0.4.6」）：纯文本，不参与标题的省略宽度
+    &__source-note {
+        flex: 0 0 auto;
+        font-size: $font-size-s;
+        color: var(--b3-theme-on-surface-light);
+        white-space: nowrap;
     }
 
     // 版本选择按钮
@@ -712,6 +725,291 @@ $jcip-repo-summary-avatar-size: 50px;
     button[data-type="install"] {
         min-width: 120px;
     }
+}
+
+// 「本地集市包」页：类型页签 + 卡片列表（卡片式与分页签都照思源集市「已下载」页的做法）
+.jcip-local {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: $spacing-s;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: $spacing-b;
+
+    // 类型页签与检查、刷新
+    &__toolbar {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: $spacing-s;
+    }
+
+    &__tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: $spacing-s * 0.5;
+    }
+
+    // 页签上的数量：实心按钮里不能再用 chip 底色，跟随按钮文字色即可
+    &__tab-count {
+        margin-left: 4px;
+        opacity: 0.86;
+    }
+
+    &__progress {
+        font-size: $font-size-s;
+        color: var(--b3-theme-on-surface-light);
+    }
+
+    &__toolbar-space {
+        flex: 1 1 auto;
+    }
+
+    // 列表自身滚动，状态行写在框内
+    &__list {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 140px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        border: 1px solid var(--b3-border-color);
+        border-radius: var(--b3-border-radius);
+        padding: $spacing-s ($spacing-s - $scrollbar-width) $spacing-s $spacing-s;
+        scrollbar-gutter: stable;
+
+        &::-webkit-scrollbar {
+            width: $scrollbar-width;
+        }
+    }
+
+    // 卡片网格：紧凑排布，一行尽量多放
+    &__cards {
+        display: grid;
+        flex: 0 0 auto;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+        grid-auto-rows: max-content;
+        align-content: start;
+    }
+
+    // 加载中 / 加载失败 / 为空提示
+    &__status {
+        flex: 0 0 auto;
+        margin: 0;
+        font-size: $font-size-s;
+        color: var(--b3-theme-on-surface-light);
+
+        &--error {
+            color: var(--b3-theme-error);
+        }
+    }
+}
+
+// 状态行跟在卡片后面时与卡片留出间距
+.jcip-local__cards:not(:empty) + .jcip-local__status {
+    padding-top: $spacing-s;
+}
+
+// 单张卡片：图标 + 名称与来源 + 右下角的图标按钮
+.jcip-local__card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--b3-border-radius);
+    background-color: var(--b3-theme-surface);
+    cursor: pointer;
+    transition: var(--b3-background-transition);
+
+    &:hover {
+        background-color: var(--b3-list-hover);
+    }
+}
+
+// 卡片图标（圆角与卡片一致）
+.jcip-local__card-icon {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+    border-radius: var(--b3-border-radius);
+    background-color: var(--b3-theme-background);
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+}
+
+// 图标缺失或加载失败时的集市图标占位
+.jcip-local__icon-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: var(--b3-theme-primary);
+
+    svg {
+        width: 100%;
+        height: 100%;
+    }
+}
+
+// 卡片右侧的文字列
+.jcip-local__card-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+// 顶行：名称在左，已安装版本与更新提示贴在右上角
+.jcip-local__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+}
+
+.jcip-local__name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    font-size: $font-size-m;
+    font-weight: 600;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// 已安装版本；更新提示紧随其后，故两者都是不收缩的
+.jcip-local__version {
+    flex: 0 0 auto;
+    font-size: $font-size-s;
+    line-height: 18px;
+    color: var(--b3-theme-on-surface-light);
+    user-select: text;
+}
+
+// 来源与操作键同一行：操作键因此贴在卡片右下角，又不会另占一列把名称挤成两行
+.jcip-local__foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+// 卡片上的图标按钮组
+.jcip-local__card-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+}
+
+// 检查更新进行中：图标转起来
+.jcip-local__check--busy svg {
+    animation: jcip-spin 1s linear infinite;
+}
+
+// 发现新版本时把图标标成主色，与卡片里的文字提示呼应
+.jcip-local__check--outdated {
+    color: var(--b3-theme-primary);
+}
+
+@keyframes jcip-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// 卡片里的元信息行：仓库来源与状态说明；宽度不够时先省略仓库地址
+.jcip-local__meta {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0 6px;
+    min-width: 0;
+    overflow: hidden;
+    font-size: $font-size-s;
+    line-height: 18px;
+    color: var(--b3-theme-on-surface);
+    user-select: text;
+}
+
+.jcip-local__repo {
+    overflow: hidden;
+    color: var(--b3-theme-primary);
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}
+
+// 状态说明（本插件 / 本地包异常等），纯文本
+.jcip-local__note {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    color: var(--b3-theme-on-surface-light);
+}
+
+// 更新检查结果：无更新 / 版本不可比较 / 检查失败；有新版本时用「→ 新版本」并把箭头前后两段拼在主色上
+.jcip-local__update {
+    flex: 0 1 auto;
+    overflow: hidden;
+    font-size: $font-size-s;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    // 没有结果时不占位，否则行末会多出一个空隙
+    &:empty {
+        display: none;
+    }
+
+    // 箭头与新版本号同属这一段，因此整段用主色即可
+    &--outdated {
+        color: var(--b3-theme-primary);
+    }
+
+    &--error {
+        color: var(--b3-theme-error);
+    }
+}
+
+// 卸载确认框里的待卸载列表
+.jcip-uninstall-list {
+    margin: 0;
+    padding-left: 1.2em;
+    user-select: text;
+
+    li {
+        margin-top: 4px;
+        word-break: break-all;
+    }
+}
+
+.jcip-uninstall-list__type {
+    margin-right: 4px;
+}
+
+.jcip-uninstall-list__version {
+    margin-left: 4px;
+    color: var(--b3-theme-on-surface-light);
 }
 
 // 单列窄布局

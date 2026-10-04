@@ -5,22 +5,28 @@ import { clearMessagePrefix, setMessagePrefix } from "./infra/message";
 import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/setting";
 import { InstallPanel, setPendingInstallPreset, type InstallPanelPreset } from "./ui/panel";
 import { BazaarPrPanel } from "./ui/prPanel";
+import { InstalledPanel } from "./ui/installedPanel";
+import {
+    BAZAAR_PR_ICON_ID,
+    INSTALL_PACKAGE_ICON_ID,
+    INSTALL_PACKAGE_ICON_SYMBOLS,
+    LOCAL_PACKAGE_ICON_ID,
+    SETTINGS_ICON_ID,
+} from "./ui/icons";
 import { findCustomTabForReuse, focusCustomTab, openNewCustomTab, openOrFocusCustomTab } from "./ui/tabs";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
 import { abortAllActiveInstalls } from "./install/installSession";
 import { initSelfPackage } from "./install/selfPackage";
 
-/** 顶栏与 openTab 自定义页签共用的图标 id */
-export const INSTALL_PACKAGE_ICON_ID = "iconInstallPackage";
-/** 「集市 PR」页的图标 id */
-export const BAZAAR_PR_ICON_ID = "iconBazaarPr";
 /** 与 addTab 的 type 一致，openTab 的 custom.id 为 plugin.name + INSTALL_TAB_TYPE */
 export const INSTALL_TAB_TYPE = "install_package_panel";
 /** 「集市 PR」页的 addTab type，openTab 的 custom.id 为 plugin.name + BAZAAR_PR_TAB_TYPE */
 export const BAZAAR_PR_TAB_TYPE = "bazaar_pr_panel";
+/** 「本地集市包」页的 addTab type，openTab 的 custom.id 为 plugin.name + LOCAL_TAB_TYPE */
+export const LOCAL_TAB_TYPE = "installed_package_panel";
 
 /** 自定义页签 `Custom` 与其面板实例；关闭页签时调用各自的 `destroy` */
-const tabPanels = new Map<Custom, InstallPanel | BazaarPrPanel>();
+const tabPanels = new Map<Custom, InstallPanel | BazaarPrPanel | InstalledPanel>();
 
 /** 自定义页签关闭时由 `addTab.destroy` 调用，销毁面板并解除登记 */
 function destroyTabPanel(custom: Custom): void {
@@ -53,36 +59,24 @@ function topBarMenuAnchor(button: HTMLElement): DOMRect {
 export default class InstallPackage extends Plugin {
     private installTabCustomId = this.name + INSTALL_TAB_TYPE;
     private bazaarPrTabCustomId = this.name + BAZAAR_PR_TAB_TYPE;
+    private localTabCustomId = this.name + LOCAL_TAB_TYPE;
 
     onload() {
         setMessagePrefix(this.displayName);
         setI18n(this.i18n as PluginI18n);
         initSelfPackage(this.name);
 
-        // 图标来源：https://lucide.dev/icons/store、https://lucide.dev/icons/git-pull-request（ISC 许可），描边宽度调整为与内置图标一致
-        this.addIcons(`
-            <symbol id="${INSTALL_PACKAGE_ICON_ID}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7">
-                    <path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5m8.774-10.69a1.12 1.12 0 0 0-1.549 0a2.5 2.5 0 0 1-3.451 0a1.12 1.12 0 0 0-1.548 0a2.5 2.5 0 0 1-3.452 0a1.12 1.12 0 0 0-1.549 0a2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"/>
-                    <path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"/>
-                </g>
-            </symbol>
-            <symbol id="${BAZAAR_PR_ICON_ID}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7">
-                    <circle cx="18" cy="18" r="3"/>
-                    <circle cx="6" cy="6" r="3"/>
-                    <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
-                    <path d="M6 9v12"/>
-                </g>
-            </symbol>
-        `);
+        // 图标定义集中在 src/ui/icons.ts（含从思源内置图标集复制的几个，避免思源改图标时影响本插件）
+        this.addIcons(INSTALL_PACKAGE_ICON_SYMBOLS);
 
         const openPluginSettings = this.openSetting.bind(this);
         const openInstallTab = this.openInstallTab.bind(this);
+        // 面板需要知道插件自身包名，用于把「卸载」目标里的插件自身剔除
+        const pluginName = this.name;
         this.addTab({
             type: INSTALL_TAB_TYPE,
             init(this: Custom) {
-                tabPanels.set(this, new InstallPanel(this));
+                tabPanels.set(this, new InstallPanel(this, pluginName));
             },
             destroy(this: Custom) {
                 destroyTabPanel(this);
@@ -97,13 +91,22 @@ export default class InstallPackage extends Plugin {
                 destroyTabPanel(this);
             },
         });
+        this.addTab({
+            type: LOCAL_TAB_TYPE,
+            init(this: Custom) {
+                tabPanels.set(this, new InstalledPanel(this, openInstallTab, pluginName));
+            },
+            destroy(this: Custom) {
+                destroyTabPanel(this);
+            },
+        });
 
         const topBarElement = this.addTopBar({
             icon: INSTALL_PACKAGE_ICON_ID,
             title: i18n.title,
             position: "right",
             callback: () => {
-                // 菜单项与 issue #41 的顺序一致；「本地集市包」「本地集市包列表」「重载界面」尚未实现，暂不列出
+                // 菜单项与 issue #41 的顺序一致；「本地集市包列表」「重载界面」尚未实现，暂不列出
                 const menu = new Menu("install-package-entry");
                 menu.addItem({
                     icon: INSTALL_PACKAGE_ICON_ID,
@@ -121,7 +124,14 @@ export default class InstallPackage extends Plugin {
                 });
                 menu.addSeparator();
                 menu.addItem({
-                    icon: "iconSettings",
+                    icon: LOCAL_PACKAGE_ICON_ID,
+                    label: i18n.installedTitle,
+                    click: () => {
+                        this.openLocalTab();
+                    },
+                });
+                menu.addItem({
+                    icon: SETTINGS_ICON_ID,
                     label: i18n.openPluginSettings,
                     click: openPluginSettings,
                 });
@@ -193,6 +203,15 @@ export default class InstallPackage extends Plugin {
         });
     }
 
+    private openLocalTab(): void {
+        openOrFocusCustomTab({
+            app: this.app,
+            customId: this.localTabCustomId,
+            icon: LOCAL_PACKAGE_ICON_ID,
+            title: i18n.installedTitle,
+        });
+    }
+
     onDataChanged() {
         // 避免数据同步时重启插件导致自定义页签内容样式抖动
         loadSetting(this);
@@ -207,7 +226,7 @@ export default class InstallPackage extends Plugin {
             panel.destroy();
         }
         tabPanels.clear();
-        for (const customId of [this.installTabCustomId, this.bazaarPrTabCustomId]) {
+        for (const customId of [this.installTabCustomId, this.bazaarPrTabCustomId, this.localTabCustomId]) {
             const tabsToClose = getAllTabs(customId);
             for (const tab of tabsToClose) {
                 try {

@@ -4,8 +4,9 @@
 
 ### 特性
 
-- 支持从 GitHub 仓库或集市 PR URL 下载 Release 版本
+- 支持从 GitHub 仓库或集市 PR URL 安装指定集市包的指定版本
 - 支持列出集市仓库 siyuan-note/bazaar 的 PR，安装对应的集市包
+- 支持列出本地集市包，可以检查 GitHub 更新，还可以点击卡片打开安装页
 - 显示集市包信息（仓库摘要、Release 信息、文件大小）
 - 文件验证和完整性检查
 - 支持配置 GitHub Token（加密保存）以避免接口限流

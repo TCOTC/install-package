@@ -30,7 +30,7 @@ const INSTALL_PATHS = {
 export type PackageType = keyof typeof INSTALL_PATHS;
 
 /** 内核集市接口使用的包类型名（复数形式）与本插件包类型的映射 */
-const PACKAGE_TYPE_BY_KERNEL_TYPE: Record<string, PackageType | undefined> = {
+export const PACKAGE_TYPE_BY_KERNEL_TYPE: Record<string, PackageType | undefined> = {
     plugins: "plugin",
     widgets: "widget",
     templates: "template",

@@ -7,6 +7,7 @@ import { i18n } from "../infra/i18n";
 import { message } from "../infra/message";
 import { createTokenVault, seedFromSiyuanSystem } from "siyuan-token-vault";
 import type { TokenVault } from "siyuan-token-vault";
+import { EYE_ICON_ID } from "../ui/icons";
 
 /**
  * 模块级 Token Vault 单例（首次使用时按当前插件实例惰性初始化）
@@ -67,7 +68,7 @@ export function createSetting(plugin: Plugin): Setting {
     const tokenInputWrapper = document.createRange().createContextualFragment(`
         <div class="b3-form__icona fn__block">
             <input id="secretKey" type="password" class="b3-text-field b3-form__icona-input"  placeholder="${i18n.githubTokenPlaceholder}" spellcheck="false" autocomplete="off">
-            <svg class="b3-form__icona-icon" data-action="togglePassword" style="cursor: pointer; user-select: none;"><use xlink:href="#iconEye"></use></svg>
+            <svg class="b3-form__icona-icon" data-action="togglePassword" style="cursor: pointer; user-select: none;"><use xlink:href="#${EYE_ICON_ID}"></use></svg>
         </div>
     `).firstElementChild as HTMLDivElement | null;
     const tokenInput = tokenInputWrapper?.querySelector("#secretKey") as HTMLInputElement | null;

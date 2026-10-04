@@ -4,10 +4,13 @@
  * 插件默认使用思源注入的文案（跟随思源的语言），这里的选择是一层覆盖：选择会落盘到插件私有目录，
  * 下次加载时先用思源的语言初始化，再覆盖为保存的语言；切换后重载界面，让所有已打开的页面都跟着变。
  * 只读工作空间里无法落盘，此时语言只在本次会话生效。
+ *
+ * 可选语言是思源支持的全部语言；插件没有对应语言的文案时用回退语言（`en`），
+ * 这与思源加载插件 i18n 的回退链一致，也便于查看「某个语言的用户会看到什么」
  */
 
 import type { Plugin } from "siyuan";
-import { localeMessages, setI18n } from "../infra/i18n";
+import { defaultLocaleMessages, localeMessages, setI18n } from "../infra/i18n";
 import { fetchSyncPost } from "../infra/kernelClient";
 
 /** 「界面语言」菜单的一项 */
@@ -32,13 +35,29 @@ export function setLocaleHost(plugin: Plugin): void {
     hostPlugin = plugin;
 }
 
-/** 把思源的语言代码（可能带地区，如 `en-US`）归一为内置语言代码；无匹配时返回空串 */
-function matchLocale(lang: string): string {
-    const normalized = lang.trim().replace(/_/g, "-");
-    if (localeMessages(normalized) !== undefined) {
-        return normalized;
+/**
+ * 把语言代码归一为思源语言列表里的规范写法
+ *
+ * 思源当前语言可能带地区（`en-US`），而语言列表里是短代码（`en`），故先精确匹配列表再退回主语言；
+ * `zh-TW` 本身就是规范代码，不会被截成 `zh`（截了就落到回退语言，那是错的）。
+ * 列表取不到时（异常）按插件内置语言包判断，再取不到返回空串
+ */
+function normalizeLang(raw: string): string {
+    const code = raw.trim().replace(/_/g, "-");
+    if (code === "") {
+        return "";
     }
-    const primary = normalized.split("-")[0];
+    const langs = window.siyuan.config?.langs ?? [];
+    if (langs.some((item) => item.name === code)) {
+        return code;
+    }
+    const primary = code.split("-")[0];
+    if (langs.some((item) => item.name === primary)) {
+        return primary;
+    }
+    if (localeMessages(code) !== undefined) {
+        return code;
+    }
     return localeMessages(primary) !== undefined ? primary : "";
 }
 
@@ -47,21 +66,21 @@ export function currentLocale(): string {
     if (activeLocale !== "") {
         return activeLocale;
     }
-    return matchLocale(window.siyuan.config?.lang ?? "");
+    return normalizeLang(window.siyuan.config?.lang ?? "");
 }
 
 /**
- * 「界面语言」菜单的选项
+ * 「界面语言」菜单的选项：思源支持的全部语言
  *
  * 语言清单与名称取自思源下发的 `config.langs`（与「设置 - 外观 - 界面 - 语言」同一份数据），
- * 但只保留插件确实内置了语言包的项：列出选不了的语言只会让用户困惑。
- * 同一语言可能对应思源列表里的多项（如 `en` 与 `en-US`），按插件语言代码去重
+ * **不限于插件已翻译的语言**：插件跟随思源的语言列表，选了没有对应语言包的语言时回退到 `en`
+ * （与思源加载插件 i18n 的回退链一致），因此选中它就等于「该语言的用户会看到什么」
  */
 export function localeOptions(): LocaleOption[] {
     const options: LocaleOption[] = [];
     const seen = new Set<string>();
     for (const item of window.siyuan.config?.langs ?? []) {
-        const lang = matchLocale(item.name);
+        const lang = normalizeLang(item.name);
         if (lang === "" || seen.has(lang)) {
             continue;
         }
@@ -78,20 +97,24 @@ export async function applySavedLocale(plugin: Plugin): Promise<void> {
         plugin.loadData(STORAGE_NAME).catch(() => ""),
         new Promise<string>((resolve) => window.setTimeout(() => resolve(""), LOAD_TIMEOUT_MS)),
     ]);
-    const lang = typeof raw === "string" ? matchLocale(raw) : "";
+    const lang = typeof raw === "string" ? normalizeLang(raw) : "";
     if (lang === "") {
         return;
     }
     applyLocale(lang);
 }
 
-/** 应用语言：模块内的 `i18n` 与插件实例的 `i18n`（命令名从这里取）同步覆盖 */
+/**
+ * 应用语言：模块内的 `i18n` 与插件实例的 `i18n`（命令名从这里取）同步覆盖
+ *
+ * 该语言没有语言包时用回退语言的文案（见 `DEFAULT_LOCALE`），选择的语言本身照常生效与显示
+ */
 function applyLocale(lang: string): void {
-    const messages = localeMessages(lang);
-    if (messages === undefined) {
+    if (lang === "") {
         return;
     }
     activeLocale = lang;
+    const messages = localeMessages(lang) ?? defaultLocaleMessages();
     setI18n(messages);
     if (hostPlugin !== undefined) {
         hostPlugin.i18n = messages as unknown as Plugin["i18n"];
@@ -105,16 +128,17 @@ function applyLocale(lang: string): void {
  * 落盘失败（只读工作空间）时本次会话仍会切换，只是下次加载会回到思源的语言
  */
 export async function switchLocale(lang: string): Promise<void> {
-    if (lang === currentLocale() || localeMessages(lang) === undefined) {
+    const target = normalizeLang(lang);
+    if (target === "" || target === currentLocale()) {
         return;
     }
     if (hostPlugin !== undefined) {
         try {
-            await hostPlugin.saveData(STORAGE_NAME, lang);
+            await hostPlugin.saveData(STORAGE_NAME, target);
         } catch (error) {
             console.warn("failed to save interface language:", error);
         }
     }
-    applyLocale(lang);
+    applyLocale(target);
     await fetchSyncPost("/api/ui/reloadUI");
 }

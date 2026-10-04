@@ -42,6 +42,22 @@ function formatLogArg(arg: unknown): string {
     return String(arg);
 }
 
+/**
+ * 没有日志区的页面用（如集市 PR 页）：把日志写到开发者工具的控制台，界面自行用状态行等提示
+ */
+export function createConsoleLogger(): Logger {
+    return {
+        info: (...args: unknown[]): void => console.log(...args),
+        warn: (...args: unknown[]): void => console.warn(...args),
+        // 该类页面不展示进度行，返回空实现以满足接口
+        progress: () => ({
+            update: (): void => {},
+            finish: (): void => {},
+            discard: (): void => {},
+        }),
+    };
+}
+
 export function createInstallLogger(installLogElement: HTMLDivElement): { log: Logger; clear: () => void } {
     /** 当前未定稿的进度行元素；追加普通日志时会被移到末尾，保证进度行始终在最后一行 */
     let progressElement: HTMLParagraphElement | null = null;

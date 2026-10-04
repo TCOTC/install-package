@@ -101,7 +101,11 @@ export type GitHubReleaseAsset = NonNullable<GitHubRelease["assets"]>[number];
 /** GET /repos/{owner}/{repo}/issues/{issue_number} 的 200 响应体（含 PR，可通过 pull_request 区分） */
 export type GitHubIssue = operations["issues/get"]["responses"][200]["content"]["application/json"];
 
-async function fetchGitHubJson<T>(
+/**
+ * 请求 GitHub 接口并解析 JSON；失败（含限流、鉴权、中止）时返回 null 并只在此处写日志。
+ * `quietStatuses` 中的状态码属预期分支，不写日志也不弹鉴权提示（如仅有预览版时的 404）
+ */
+export async function fetchGitHubJson<T>(
     url: string,
     log: Logger,
     errorLabel: string,

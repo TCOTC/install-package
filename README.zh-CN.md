@@ -5,21 +5,22 @@
 ### 特性
 
 - 支持从 GitHub 仓库或集市 PR URL 下载 Release 版本
+- 支持列出集市仓库 siyuan-note/bazaar 的 PR，安装对应的集市包
 - 显示集市包信息（仓库摘要、Release 信息、文件大小）
 - 文件验证和完整性检查
 - 支持配置 GitHub Token（加密保存）以避免接口限流
 - 支持安装插件、主题、图标、挂件、模板等集市包，并可选择安装后启用或禁用
 - 安装过程在页签内输出日志，可随时中断
-- 快速打开 Plugins、Petal、Themes、Icons、Widgets、Templates 等目录，或打开开发者工具和插件设置（仅桌面版）
+- 快速打开 Plugins、Petal、Themes、Icons、Widgets、Templates 等目录，或打开开发者工具（仅桌面版）
 
-### 使用方法
+### 快速入门
 
-1. 点击顶部工具栏的下载图标，打开安装页签
+1. 点击顶部工具栏的插件按钮，在弹出的入口菜单中选择「安装集市包」
 2. 输入集市 PR URL 或 GitHub 仓库 URL（格式：`https://github.com/user/repo`、`user/repo` 或 `https://github.com/siyuan-note/bazaar/pull/xxxx`）
 3. 从版本下拉菜单中选择 Git Tag（默认最新版本，支持搜索）
 4. 选择安装之后是否启用集市包
 5. 点击「安装集市包」开始下载；安装过程中可点击「中断安装」中止
-6. 可在底部工具栏快速打开上述目录或开发者工具、插件设置（仅桌面版）
+6. 可在底部工具栏快速打开上述目录或开发者工具（仅桌面版）
 
 ### 注意事项
 

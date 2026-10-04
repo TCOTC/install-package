@@ -1,10 +1,13 @@
 import { Custom, Menu, saveLayout } from "siyuan";
 import { i18n } from "../infra/i18n";
+import type { BazaarPullLabel } from "../github/bazaarPrs";
 import { RepoParser, type RepoParseEvent, type RepoReleasesEvent } from "./repoParser";
 import { abortInstall, subscribeActiveInstallChange, runInstall } from "../install/installSession";
 import { getSelfPackageInfo, isSelfRepoKeySync, reportSelfInstallBlock } from "../install/selfPackage";
 import { message } from "../infra/message";
 import { electron, openDirectory, toggleDevTools } from "../infra/desktop";
+import { createBazaarPullLabelChip } from "./bazaarPullLabels";
+import { InstallProgressButton } from "./installProgressButton";
 import { createInstallLogger, INSTALL_LOG_PROCESS_LINE_CLASS, type Logger } from "./logger";
 import { InstallPanelUiStore, isRepoParseReadyForInstall, type InstallButtonState } from "./uiStore";
 import { InstallPanelVersion } from "./version";
@@ -16,6 +19,10 @@ export interface InstallPanelData {
     enableAfterInstall: boolean;
     /** 最近一次成功解析的仓库键，形如 "owner/repo"；空字符串表示当前无有效仓库 */
     repoKey: string;
+    /** 入口带入目标的包仓库键（小写 owner/repo）；空串表示这是顶栏入口的完整表单 */
+    presetRepoKey: string;
+    /** 入口带入的来源 PR 信息（JSON）；供页签重载后恢复展示 */
+    presetPull: string;
 }
 
 const INSTALL_PANEL_DEFAULT: InstallPanelData = {
@@ -23,6 +30,8 @@ const INSTALL_PANEL_DEFAULT: InstallPanelData = {
     version: "",
     enableAfterInstall: true,
     repoKey: "",
+    presetRepoKey: "",
+    presetPull: "",
 };
 
 const INSTALL_PANEL_KEYS = Object.keys(INSTALL_PANEL_DEFAULT) as (keyof InstallPanelData)[];
@@ -45,13 +54,72 @@ export function normalizeData(raw: unknown): InstallPanelData {
     return data as InstallPanelData;
 }
 
+/** 来源 PR 的展示信息（由集市 PR 页带入） */
+export interface InstallPanelPull {
+    number: number;
+    title: string;
+    htmlUrl: string;
+    labels: BazaarPullLabel[];
+}
+
+/**
+ * 由别的页签（集市 PR 页等）带过来的安装目标
+ *
+ * URL 已确定，版本按最新 Release 解析；`repoKey` 用于按包复用安装页签，`pull` 用于展示来源 PR
+ */
+export interface InstallPanelPreset {
+    url: string;
+    /** 目标包仓库键（`owner/repo`）；面板内统一按小写存储与比较 */
+    repoKey: string;
+    pull?: InstallPanelPull;
+}
+
+/** 来源 PR 信息的序列化；无信息时为空串 */
+function serializePull(pull: InstallPanelPull | undefined): string {
+    return pull === undefined ? "" : JSON.stringify(pull);
+}
+
+/** 反序列化来源 PR 信息；内容异常时按「无信息」处理，只影响展示 */
+function parsePull(raw: string): InstallPanelPull | undefined {
+    if (raw === "") {
+        return undefined;
+    }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return undefined;
+    }
+    const pull = parsed as Partial<InstallPanelPull> | null;
+    if (!pull || typeof pull.number !== "number" || typeof pull.title !== "string") {
+        return undefined;
+    }
+    return {
+        number: pull.number,
+        title: pull.title,
+        htmlUrl: typeof pull.htmlUrl === "string" ? pull.htmlUrl : "",
+        labels: Array.isArray(pull.labels) ? pull.labels : [],
+    };
+}
+
+/** 待安装面板构造时消费的预设；页签尚未创建或面板尚未初始化时先暂存于此 */
+let pendingPreset: InstallPanelPreset | null = null;
+
+/** 暂存预设，供随后创建的安装面板载入 */
+export function setPendingInstallPreset(preset: InstallPanelPreset | null): void {
+    pendingPreset = preset;
+}
+
+function consumePendingInstallPreset(): InstallPanelPreset | null {
+    const preset = pendingPreset;
+    pendingPreset = null;
+    return preset;
+}
+
 function renderInstallPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
-    // 百分比放在标签内部的绝对定位层里：它不参与排版，标签文本始终居中在原本的位置，不随百分比位数变化而移动
-    // 标签文案另用一层包裹，便于按阶段改写而不会连带清掉百分比层
-    const abortInstallButton = "<button data-type=\"abort-install\" type=\"button\" class=\"b3-button jcip-abort fn__none\">"
-        + `<span class="jcip-abort__label"><span class="jcip-abort__text">${i18n.abortInstallButton}</span><span class="jcip-abort__percent"></span></span>`
-        + "</button>";
+    // 中断安装按钮的内层结构（标签层与百分比层）由 InstallProgressButton 填充
+    const abortInstallButton = "<button data-type=\"abort-install\" type=\"button\" class=\"b3-button jcip-abort fn__none\"></button>";
     const actionInstallCore = `
                 <button data-type="install" type="button" class="b3-button" disabled>${i18n.installPackageButton}</button>
                 ${abortInstallButton}
@@ -69,6 +137,13 @@ function renderInstallPanel(root: HTMLElement): void {
             <section class="jcip__vflow jcip-input__field">
                 <div class="jcip__label">${i18n.versionLabel}</div>
                 <button type="button" data-type="version" class="jcip-version-select fn__block b3-select" disabled></button>
+            </section>
+            <section class="jcip__vflow jcip-input__pull">
+                <div class="jcip__label">${i18n.bazaarPrTitle}</div>
+                <div class="jcip-input__pull-body">
+                    <a class="jcip-input__pull-title" data-type="pull-link" target="_blank" rel="noopener noreferrer"></a>
+                    <span class="jcip-input__pull-labels" data-type="pull-labels"></span>
+                </div>
             </section>
             <section class="jcip__vflow jcip-input__button">
                 <div class="jcip__label jcip__label--placeholder" aria-hidden="true">&nbsp;</div>
@@ -106,15 +181,17 @@ function renderInstallPanel(root: HTMLElement): void {
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/icons">${i18n.openIconsDir}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/widgets">${i18n.openWidgetsDir}</button>
                 <button data-type="open-directory" type="button" class="b3-button b3-button--outline${electron ? "" : " fn__none"}" title="data/templates">${i18n.openTemplatesDir}</button>
-                <button data-type="open-settings" type="button" class="b3-button b3-button--outline">${i18n.openPluginSettings}</button>
             </div>
         </div>
     </div>`;
 }
 
 interface InstallPanelElements {
+    inputEl: HTMLDivElement;
     urlEl: HTMLInputElement;
     versionEl: HTMLButtonElement;
+    pullLinkEl: HTMLAnchorElement;
+    pullLabelsEl: HTMLElement;
     repoInfoPlaceholderEl: HTMLParagraphElement;
     repoInfoMainEl: HTMLDivElement;
     enableAfterInstallSwitchEls: NodeListOf<HTMLInputElement>;
@@ -130,25 +207,34 @@ export class InstallPanel {
     private readonly elements: InstallPanelElements;
     private readonly log: Logger;
     private readonly clearInstallLog: () => void;
-    private readonly openPluginSettings: () => void;
     private readonly repoParser: RepoParser;
     private readonly versionUI: InstallPanelVersion;
+    /** 中断安装按钮兼任下载进度条；两处复用同一份按钮，故整体操作 */
+    private readonly abortProgress: InstallProgressButton;
     private persistTimer: number | undefined;
     /** 仅通过 `dispatch` 修改的解析/安装面板 UI 状态管理器 */
     private readonly uiStore: InstallPanelUiStore;
     /** 页签关闭时取消订阅 */
     private unsubActiveInstall: (() => void) | undefined;
 
-    constructor(custom: Custom, openPluginSettings: () => void) {
+    constructor(custom: Custom) {
         this.custom = custom;
         this.data = this.debounceSaveLayout(normalizeData(this.custom.data));
         this.custom.data = this.data;
+        // 由别的页签带过来的目标：URL 直接采用，版本留空以便按最新 Release 解析
+        const preset = consumePendingInstallPreset();
+        if (preset !== null) {
+            this.storePreset(preset);
+        }
         this.uiStore = new InstallPanelUiStore(this.data.repoKey);
         this.root = this.custom.element as HTMLElement;
         renderInstallPanel(this.root);
         this.elements = {
+            inputEl: this.root.querySelector(".jcip-input") as HTMLDivElement,
             urlEl: this.root.querySelector("input[data-type='url']") as HTMLInputElement,
             versionEl: this.root.querySelector("[data-type='version']") as HTMLButtonElement,
+            pullLinkEl: this.root.querySelector("a[data-type='pull-link']") as HTMLAnchorElement,
+            pullLabelsEl: this.root.querySelector("[data-type='pull-labels']") as HTMLElement,
             repoInfoPlaceholderEl: this.root.querySelector("p[data-type='repo-info-placeholder']") as HTMLParagraphElement,
             repoInfoMainEl: this.root.querySelector("div[data-type='repo-info-main']") as HTMLDivElement,
             enableAfterInstallSwitchEls: this.root.querySelectorAll("input[data-type='enableAfterInstall']") as NodeListOf<HTMLInputElement>,
@@ -158,10 +244,14 @@ export class InstallPanel {
         };
         const logger = createInstallLogger(this.elements.installLogEl);
         this.log = logger.log;
+        this.abortProgress = new InstallProgressButton(Array.from(this.elements.abortEls), {
+            idle: i18n.abortInstallButton,
+            abort: i18n.abortInstallButton,
+            installing: i18n.installingPackage,
+        });
         // 提前载入自身包信息（自身仓库键与开发环境标记），供安装键的同步判定使用
         void getSelfPackageInfo(this.log);
         this.clearInstallLog = logger.clear;
-        this.openPluginSettings = openPluginSettings;
         this.versionUI = new InstallPanelVersion(
             this.data,
             this.elements.versionEl,
@@ -178,6 +268,70 @@ export class InstallPanel {
         this.unsubActiveInstall = subscribeActiveInstallChange(() => this.syncInstallButtonDisabled());
 
         this.init();
+        this.applyStoredPreset();
+    }
+
+    /**
+     * 载入入口带入的安装目标：URL 换成该目标、版本留空以按最新 Release 解析，面板切为精简形态
+     */
+    applyPreset(preset: InstallPanelPreset): void {
+        this.storePreset(preset);
+        this.elements.urlEl.value = preset.url;
+        this.versionUI.syncDisplayFromData();
+        this.applyStoredPreset();
+        void this.repoParser.refresh();
+    }
+
+    /**
+     * 本面板所属包仓库键（小写 `owner/repo`）；空串表示这是顶栏入口打开的完整表单
+     *
+     * 集市 PR 页据此按包复用安装页签：只有同一个包才复用同一个页签
+     */
+    getPresetRepoKey(): string {
+        return this.data.presetRepoKey;
+    }
+
+    /** 把入口带入的目标写进页签数据（不碰界面）；形态与来源信息随后由 `applyStoredPreset` 推导 */
+    private storePreset(preset: InstallPanelPreset): void {
+        this.data.url = preset.url;
+        this.data.version = "";
+        this.data.presetRepoKey = preset.repoKey.trim().toLowerCase();
+        this.data.presetPull = serializePull(preset.pull);
+    }
+
+    /**
+     * 依据页签数据决定形态与来源信息展示
+     *
+     * 形态存在数据里而不只是内存字段：页签重载恢复后面板仍是精简形态，也仍能被按包复用
+     */
+    private applyStoredPreset(): void {
+        const repoKey = this.data.presetRepoKey;
+        this.elements.inputEl.classList.toggle("jcip-input--compact", repoKey !== "");
+        this.renderPullInfo(repoKey === "" ? undefined : parsePull(this.data.presetPull));
+    }
+
+    /** 在精简形态的输入区里展示来源 PR（编号与标题可点击打开该 PR）；无信息时该块不显示 */
+    private renderPullInfo(pull: InstallPanelPull | undefined): void {
+        this.elements.inputEl.classList.toggle("jcip-input--with-pull", pull !== undefined);
+        if (pull === undefined) {
+            this.elements.pullLinkEl.textContent = "";
+            this.elements.pullLinkEl.removeAttribute("href");
+            this.elements.pullLinkEl.removeAttribute("title");
+            this.elements.pullLabelsEl.replaceChildren();
+            return;
+        }
+        // 标题来自外部数据，一律用 textContent 写入；过长时由样式省略，完整标题放在 title 里
+        const label = `#${pull.number} ${pull.title}`.trim();
+        this.elements.pullLinkEl.textContent = label;
+        this.elements.pullLinkEl.title = label;
+        if (pull.htmlUrl === "") {
+            this.elements.pullLinkEl.removeAttribute("href");
+        } else {
+            this.elements.pullLinkEl.href = pull.htmlUrl;
+        }
+        this.elements.pullLabelsEl.replaceChildren(
+            ...pull.labels.map((item) => createBazaarPullLabelChip(item)),
+        );
     }
 
     private init(): void {
@@ -274,9 +428,6 @@ export class InstallPanel {
                 case "open-directory":
                     await openDirectory(button.title);
                     break;
-                case "open-settings":
-                    this.openPluginSettings();
-                    break;
                 default:
                     break;
             }
@@ -298,68 +449,10 @@ export class InstallPanel {
         }
         for (const b of this.elements.abortEls) {
             b.classList.toggle("fn__none", !installing);
-            if (!installing) {
-                this.resetAbortProgress(b);
-            }
         }
-    }
-
-    /** 清除中断安装按钮上的进度外观，回到可点的普通按钮（安装结束后调用） */
-    private resetAbortProgress(button: HTMLButtonElement): void {
-        button.disabled = false;
-        button.classList.remove("jcip-abort--download", "jcip-abort--indeterminate");
-        button.style.removeProperty("--jcip-abort-progress");
-        this.setAbortPercentText("");
-        this.setAbortLabelText(i18n.abortInstallButton);
-    }
-
-    /** 只改写标签文案层；标签宽度变化不会带动右侧百分比层 */
-    private setAbortLabelText(text: string): void {
-        for (const b of this.elements.abortEls) {
-            const textEl = b.querySelector(".jcip-abort__text");
-            if (textEl !== null) {
-                textEl.textContent = text;
-            }
+        if (!installing) {
+            this.abortProgress.reset();
         }
-    }
-
-    /** 只改写标签右侧的百分比层；标签文本不变，因此标签位置固定 */
-    private setAbortPercentText(text: string): void {
-        for (const b of this.elements.abortEls) {
-            const percentEl = b.querySelector(".jcip-abort__percent") as HTMLElement | null;
-            if (percentEl !== null) {
-                percentEl.textContent = text;
-            }
-        }
-    }
-
-    /** 下载阶段：按钮保持可点，写入进度填充与标签右侧百分比（0 到 1） */
-    private renderInstallProgress(ratio: number): void {
-        const percent = Math.floor(Math.max(0, Math.min(ratio, 1)) * 100);
-        for (const b of this.elements.abortEls) {
-            b.disabled = false;
-            b.classList.remove("jcip-abort--indeterminate");
-            b.classList.add("jcip-abort--download");
-            b.style.setProperty("--jcip-abort-progress", `${percent}%`);
-        }
-        this.setAbortPercentText(`${percent}%`);
-        this.setAbortLabelText(i18n.abortInstallButton);
-    }
-
-    /**
-     * 本地安装阶段：上传与安装由内核同步完成，客户端 abort 不会真的停下它，
-     * 因此置为不可点并把文案改为「正在安装」，避免按钮给出停不下来的假承诺；
-     * 字节进度不可得，改用滚动的斜条纹表示进行中
-     */
-    private renderInstallIndeterminate(): void {
-        for (const b of this.elements.abortEls) {
-            b.disabled = true;
-            b.classList.remove("jcip-abort--download");
-            b.classList.add("jcip-abort--indeterminate");
-            b.style.removeProperty("--jcip-abort-progress");
-        }
-        this.setAbortPercentText("");
-        this.setAbortLabelText(i18n.installingPackage);
     }
 
     /** 安装区三态由 `uiStore.syncInstallButtonState` / `resolveInstallButtonState` 统一推导 */
@@ -508,10 +601,10 @@ export class InstallPanel {
                 this.log,
                 {
                     onDownloadProgress: (loaded, total) => {
-                        this.renderInstallProgress(total > 0 ? loaded / total : 0);
+                        this.abortProgress.renderDownload(total > 0 ? loaded / total : 0);
                     },
                     onDownloadComplete: () => {
-                        this.renderInstallIndeterminate();
+                        this.abortProgress.renderIndeterminate();
                     },
                 },
             );

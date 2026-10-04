@@ -8,6 +8,12 @@ $font-size-b: 15px;
 // 卡片内 WebKit 纵向滚动条宽度；右侧 padding 为小档间距减去该值，与 scrollbar-gutter: stable 配合使内容区与其它三边对齐
 $scrollbar-width: 10px;
 
+// 集市 PR 列表头像尺寸
+//
+// 取 32px：与整个 `__main`（标题 21px + 间距 6px + 元信息行 20px，高 47px）垂直居中时上下各留约 7px，
+// 且始终小于 `__main` 的高度（标题写得再多只会更高）
+$jcip-pr-avatar-size: 32px;
+
 // 插件自定义页签挂载根节点
 .jcip-tab {
     container-type: inline-size;
@@ -72,6 +78,60 @@ $scrollbar-width: 10px;
         width: min(300px, 100%);
         // 与操作区列 max 300px 及 padding-left 大档间距一致，使按钮宽度与「安装集市包」相同
         padding-left: $spacing-b;
+    }
+
+    // 精简形态（目标由集市 PR 页等入口带入）：隐藏 URL 与版本栏
+    &--compact {
+        .jcip-input__field {
+            display: none;
+        }
+
+        // 按钮栏仍贴着输入区右边缘，与完整形态下的位置一致
+        .jcip-input__button {
+            margin-left: auto;
+        }
+    }
+
+    // 来源 PR 信息：平时不占位，有信息时占用 URL / 版本栏的位置
+    &__pull {
+        display: none;
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    &--with-pull .jcip-input__pull {
+        display: flex;
+    }
+
+    // 与输入控件同高，避免精简形态下「重新验证」按钮跟着移动
+    &__pull-body {
+        display: flex;
+        align-items: center;
+        gap: $spacing-s * 0.5;
+        height: 28px;
+        min-width: 0;
+    }
+
+    &__pull-title {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        font-size: $font-size-m;
+        color: var(--b3-theme-primary);
+        text-decoration: none;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    &__pull-labels {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 4px;
     }
 
     // 版本选择按钮
@@ -481,6 +541,179 @@ $jcip-repo-summary-avatar-size: 50px;
     }
 }
 
+// 「集市 PR」页：工具行 + 自身滚动的列表 + 状态行 + 日志
+.jcip-pr {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: $spacing-s;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: $spacing-b;
+
+    // 状态切换与刷新
+    &__toolbar {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: $spacing-s;
+    }
+
+    &__toolbar-space {
+        flex: 1 1 auto;
+    }
+
+    // 列表自身滚动，接近底部时追加下一页
+    &__list {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 140px;
+        overflow-x: hidden;
+        border: 1px solid var(--b3-border-color);
+        border-radius: var(--b3-border-radius);
+        padding: $spacing-s ($spacing-s - $scrollbar-width) $spacing-s $spacing-s;
+        scrollbar-gutter: stable;
+
+        &::-webkit-scrollbar {
+            width: $scrollbar-width;
+        }
+    }
+
+    // PR 行容器：状态行不是行，不能进这里（每次加载都会整体替换）
+    &__items {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+    }
+
+    // 加载中 / 加载失败 / 列表为空：写在列表框内部，列表为空时框里不会什么都没有
+    &__status {
+        flex: 0 0 auto;
+        margin: 0;
+        font-size: $font-size-s;
+        color: var(--b3-theme-on-surface-light);
+
+        &--error {
+            color: var(--b3-theme-error);
+        }
+    }
+}
+
+// 状态行跟在行后面时（加载下一页）与末行留出间距
+.jcip-pr__items:not(:empty) + .jcip-pr__status {
+    padding-top: $spacing-s;
+}
+
+// 单条 PR
+.jcip-pr__item {
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-s;
+    padding: $spacing-s 0;
+    border-bottom: 1px solid var(--b3-border-color);
+
+    &:last-child {
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+}
+
+.jcip-pr__avatar {
+    flex: 0 0 auto;
+    // 对齐整个 `__main` 而不是标题：行内最高的子项是 `__main`，居中即与其等高居中
+    align-self: center;
+    box-sizing: border-box;
+    width: $jcip-pr-avatar-size;
+    height: $jcip-pr-avatar-size;
+    // 兜底：万一 `__main` 比头像还矮（如极窄布局下标题与元信息被压成一行），头像跟着缩小
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    outline: 1px solid var(--b3-border-color);
+    outline-offset: -1px;
+    background-color: var(--b3-theme-surface);
+}
+
+.jcip-pr__main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.jcip-pr__title {
+    font-size: $font-size-m;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--b3-theme-primary);
+    text-decoration: none;
+    word-break: break-word;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}
+
+.jcip-pr__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font-size: $font-size-s;
+    // 固定行高：`line-height: normal` 下纯拉丁文本（作者名）与含中日韩字的文本 / 标签行盒高度不同，
+    // 各子项再按自身盒子居中就对不齐，作者名会看起来偏上
+    line-height: 20px;
+    color: var(--b3-theme-on-surface-light);
+    user-select: text;
+}
+
+// 已合并标记
+.jcip-pr__merged {
+    padding: 0 8px;
+    border-radius: var(--b3-border-radius-b);
+    font-weight: 600;
+    color: var(--b3-theme-on-secondary);
+    background-color: var(--b3-theme-secondary);
+}
+
+// 标签胶囊（集市 PR 页与安装面板共用）：色点取自 GitHub 的标签颜色，文字沿用主题前景色，明暗两套主题下都清晰
+.jcip-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--b3-border-radius-b);
+    background-color: var(--b3-theme-surface);
+}
+
+.jcip-label__dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.jcip-pr__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: $spacing-s * 0.5;
+
+    a {
+        text-decoration: none;
+    }
+
+    // 安装键在下载阶段兼作进度条，百分比叠在标签右侧，需要留出足够宽度
+    button[data-type="install"] {
+        min-width: 120px;
+    }
+}
+
 // 单列窄布局
 @mixin narrow {
     // 窄屏下改为一列纵向 flex
@@ -503,6 +736,11 @@ $jcip-repo-summary-avatar-size: 50px;
             .jcip__label--placeholder {
                 display: none;
             }
+        }
+
+        // 单列下按钮本就全宽，再靠右会让它缩成内容宽度
+        &--compact .jcip-input__button {
+            margin-left: 0;
         }
     }
 
@@ -542,6 +780,21 @@ $jcip-repo-summary-avatar-size: 50px;
             display: flex;
         }
     }
+
+    // PR 列表项：操作区换行到下方并靠右
+    .jcip-pr__item {
+        flex-wrap: wrap;
+    }
+
+    // flex 基准取 0，否则长的 PR 标题会把头像挤到单独一行
+    .jcip-pr__main {
+        flex: 1 1 0;
+    }
+
+    .jcip-pr__actions {
+        flex: 1 1 100%;
+        justify-content: flex-end;
+    }
 }
 
 // 页签宽度不足时单列堆叠
@@ -553,3 +806,4 @@ $jcip-repo-summary-avatar-size: 50px;
 @media (max-width: 860px) {
     @include narrow;
 }
+

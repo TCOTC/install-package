@@ -115,7 +115,6 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
             log.warn(i18n.releaseInfoError.replace("{version}", request.version || "latest"));
             return false;
         }
-        log.info("Release description: " + (releaseInfo.body?.substring(0, 200) + ((releaseInfo.body?.length ?? 0) > 200 ? "..." : "")));
         log.info(i18n.foundRelease
             .replace("{tagName}", releaseInfo.tag_name)
             .replace("{publishedAt}", releaseInfo.published_at ? i18n.publishedOn.replace("{date}", new Date(releaseInfo.published_at).toLocaleDateString()) : ""),
@@ -225,11 +224,11 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
             await setPackageEnabled(installResult.packageType, installResult.packageName, request.enableAfterInstall, log);
         }
 
+        // 插件、主题、图标的启用状态拼进下面那一行成功日志；挂件与模板没有启用状态，留空
         let autoEnabledText = "";
         if (["plugin", "theme", "icon"].includes(installResult.packageType)) {
             const enabled = request.enableAfterInstall || installSelf;
             autoEnabledText = enabled ? i18n.packageInstalledSuccessAuto : i18n.packageInstalledSuccessManual;
-            log.info(i18n.downloadSuccess + (enabled ? i18n.autoEnabled : i18n.enableManually));
         }
         const installSuccess = i18n.packageInstalledSuccess
             .replace("{packageType}", installResult.packageType)

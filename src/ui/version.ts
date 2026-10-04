@@ -5,7 +5,7 @@ import { isSelfInstallableVersion, MIN_SELF_INSTALL_VERSION, selfInstallVersionT
 import { SELECT_ICON_ID } from "./icons";
 import { i18n } from "../infra/i18n";
 import { escapeHtml } from "../infra/html";
-import { REPO_SUMMARY_ATTRS } from "./repoSummaryDom";
+import { REPO_SUMMARY_ATTRS, isRepoSummaryRendered } from "./repoSummaryDom";
 import type { InstallReleaseRow } from "../github/github";
 import type { Logger } from "../infra/logger";
 import type { InstallPanelData } from "./panelData";
@@ -212,7 +212,8 @@ export class InstallPanelVersion {
      */
     private syncRepoSummaryReleaseExtras(): void {
         const root = this.packageInfoMainEl;
-        if (!root.isConnected) {
+        if (!isRepoSummaryRendered(root)) {
+            // 摘要尚未渲染（首次解析前、解析中、解析失败）时根节点是空的，找不到约定节点属正常，不是模板失配
             return;
         }
         const chip = root.querySelector(`[${REPO_SUMMARY_ATTRS.releasePublishedChip}]`);

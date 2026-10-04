@@ -17,3 +17,14 @@ export const REPO_SUMMARY_ATTRS = {
     /** 元信息区里显示所选版本发布时间的胶囊 */
     releasePublishedChip: "data-jcip-release-published-chip",
 } as const;
+
+/**
+ * 摘要块是否已由 `repoParser` 渲染
+ *
+ * 面板初始化与每次 `refresh` 都会先清空摘要再同步一次版本状态，那时根节点必然是空的；
+ * 这种「还没渲染」不是模板失配，`version` 不应据此报警告。
+ * 参数只取判定所需的两个属性，便于在无 DOM 的单元测试里传入替身。
+ */
+export function isRepoSummaryRendered(root: Pick<HTMLElement, "isConnected" | "innerHTML">): boolean {
+    return root.isConnected && root.innerHTML !== "";
+}

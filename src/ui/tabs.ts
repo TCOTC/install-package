@@ -10,6 +10,8 @@ export interface CustomTabOptions {
     customId: string;
     icon: string;
     title: string;
+    /** 投递给新页签的初始数据（写进 `custom.data`，由页签自己的面板构造时取用） */
+    data?: Record<string, unknown>;
 }
 
 /** 按类型取出已打开的自定义页签（顺序为布局中的先后） */
@@ -38,7 +40,7 @@ export function openNewCustomTab(options: CustomTabOptions): void {
             id: options.customId,
             icon: options.icon,
             title: options.title,
-            data: {},
+            data: options.data ?? {},
         },
     });
 }

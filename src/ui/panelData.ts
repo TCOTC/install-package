@@ -125,6 +125,37 @@ export function serializeInstalled(installed: InstallPanelInstalledSource | unde
     return installed === undefined ? "" : JSON.stringify(installed);
 }
 
+/**
+ * 入口把安装目标投递给新页签时用的键
+ *
+ * 目标写在页签自己的 `Custom.data` 里而不是模块级变量：页签没建成时目标不会留给下一个页签，
+ * 也不会出现两个页签抢同一份待载入目标
+ */
+export const PENDING_INSTALL_PRESET_KEY = "__pendingInstallPreset";
+
+/**
+ * 从页签数据里取出入口投递的安装目标，并删除该键（不留在页签数据里反复持久化）
+ *
+ * 投递方是插件自身（集市 PR 页、本地集市包页），因此只做最小形态校验；形态不符时按无目标处理
+ */
+export function takePendingInstallPreset(data: Record<string, unknown>): InstallPanelPreset | null {
+    const raw: unknown = data[PENDING_INSTALL_PRESET_KEY];
+    delete data[PENDING_INSTALL_PRESET_KEY];
+    if (raw === null || typeof raw !== "object") {
+        return null;
+    }
+    const preset = raw as Partial<InstallPanelPreset>;
+    if (typeof preset.url !== "string" || typeof preset.repoKey !== "string") {
+        return null;
+    }
+    return {
+        url: preset.url,
+        repoKey: preset.repoKey,
+        ...(preset.pull === undefined ? {} : { pull: preset.pull }),
+        ...(preset.installed === undefined ? {} : { installed: preset.installed }),
+    };
+}
+
 /** 反序列化来源本地集市包信息；内容异常时按「无信息」处理，只影响展示与回填 */
 export function parseInstalled(raw: string): InstallPanelInstalledSource | undefined {
     if (raw === "") {
@@ -145,5 +176,7 @@ export function parseInstalled(raw: string): InstallPanelInstalledSource | undef
         name: installed.name,
         displayName: typeof installed.displayName === "string" && installed.displayName !== "" ? installed.displayName : installed.name,
         version: typeof installed.version === "string" ? installed.version : "",
+        // 与 serializeInstalled 对称：该字段可省略，但该带上时必须带上
+        ...(typeof installed.enableAfterInstall === "boolean" ? { enableAfterInstall: installed.enableAfterInstall } : {}),
     };
 }

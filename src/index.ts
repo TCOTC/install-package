@@ -3,8 +3,8 @@ import { Custom, getAllTabs, Menu, Plugin } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./infra/i18n";
 import { clearMessagePrefix, message, setMessagePrefix } from "./infra/message";
 import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/setting";
-import { InstallPanel, setPendingInstallPreset } from "./ui/panel";
-import type { InstallPanelPreset } from "./ui/panelData";
+import { InstallPanel } from "./ui/panel";
+import { PENDING_INSTALL_PRESET_KEY, type InstallPanelPreset } from "./ui/panelData";
 import { BazaarPrPanel } from "./ui/prPanel";
 import { InstalledPanel } from "./ui/installedPanel";
 import { LocalPackagesMenu } from "./ui/localPackagesMenu";
@@ -186,8 +186,6 @@ export default class InstallPackage extends Plugin {
      */
     private openInstallTab(preset?: InstallPanelPreset): void {
         if (preset === undefined) {
-            // 清掉可能遗留的待载入目标，保证新面板是空的完整表单
-            setPendingInstallPreset(null);
             this.createInstallTab();
             return;
         }
@@ -202,17 +200,17 @@ export default class InstallPackage extends Plugin {
             focusCustomTab(reusable.tab);
             return;
         }
-        // 这个包还没有安装页签：新建一个，目标交给它的构造函数载入
-        setPendingInstallPreset(preset);
-        this.createInstallTab();
+        // 这个包还没有安装页签：新建一个，目标随页签数据交给它的构造函数载入
+        this.createInstallTab(preset);
     }
 
-    private createInstallTab(): void {
+    private createInstallTab(preset?: InstallPanelPreset): void {
         openNewCustomTab({
             app: this.app,
             customId: this.installTabCustomId,
             icon: INSTALL_PACKAGE_ICON_ID,
             title: i18n.title,
+            ...(preset === undefined ? {} : { data: { [PENDING_INSTALL_PRESET_KEY]: preset } }),
         });
     }
 

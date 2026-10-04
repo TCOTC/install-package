@@ -23,6 +23,7 @@ import {
     parsePull,
     serializeInstalled,
     serializePull,
+    takePendingInstallPreset,
     type InstallPanelData,
     type InstallPanelInstalledSource,
     type InstallPanelPreset,
@@ -30,20 +31,6 @@ import {
 } from "./panelData";
 import { InstallPanelUiStore, isRepoParseReadyForInstall, type InstallButtonState } from "./uiStore";
 import { InstallPanelVersion } from "./version";
-
-/** 待安装面板构造时消费的预设；页签尚未创建或面板尚未初始化时先暂存于此 */
-let pendingPreset: InstallPanelPreset | null = null;
-
-/** 暂存预设，供随后创建的安装面板载入 */
-export function setPendingInstallPreset(preset: InstallPanelPreset | null): void {
-    pendingPreset = preset;
-}
-
-function consumePendingInstallPreset(): InstallPanelPreset | null {
-    const preset = pendingPreset;
-    pendingPreset = null;
-    return preset;
-}
 
 function renderInstallPanel(root: HTMLElement): void {
     root.classList.add("jcip-tab");
@@ -176,12 +163,12 @@ export class InstallPanel {
 
     constructor(custom: Custom, pluginName: string) {
         this.custom = custom;
+        // 入口带入的安装目标随页签数据一道送达；先取出再归一表单，避免它被写回页签数据
+        const pendingPreset = takePendingInstallPreset(custom.data as Record<string, unknown>);
         this.data = this.debounceSaveLayout(normalizeData(this.custom.data));
         this.custom.data = this.data;
-        // 由别的页签带过来的目标：URL 直接采用
-        const preset = consumePendingInstallPreset();
-        if (preset !== null) {
-            this.storePreset(preset);
+        if (pendingPreset !== null) {
+            this.storePreset(pendingPreset);
         }
         this.uiStore = new InstallPanelUiStore(this.data.repoKey);
         this.root = this.custom.element as HTMLElement;

@@ -1,0 +1,43 @@
+name: Check
+
+# 提交到 main 与 PR 时都跑一遍。此前只有发版 tag 会构建，类型检查实际发生在发布那一刻；
+# 而 `lint` 带 --fix 会改文件，不能当门禁，因此这里用 `lint:check`
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# 只读仓库内容即可
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, Typecheck and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        # 省略 version，自动读取 package.json 中的 packageManager 字段（pnpm@11.9.0）
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint:check
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm test

@@ -6,7 +6,9 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "lint": "eslint . --fix --cache",
+    "lint:check": "eslint . --cache",
     "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/",
     "dev": "webpack --mode development",
     "build": "webpack --mode production",
     "push": "git push origin HEAD --tags"

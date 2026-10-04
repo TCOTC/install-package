@@ -172,5 +172,19 @@
   "uninstallDone": "已卸载 {packageType} [{packageName}]",
   "uninstallFailed": "卸载集市包失败：",
   "uninstallSelfExcluded": "匹配到的本地集市包只有插件自身，已排除",
-  "panelSourceInstalledVersion": "已安装 {version}"
+  "panelSourceInstalledVersion": "已安装 {version}",
+  "reloadUI": "重载界面",
+  "localListTitle": "本地集市包列表",
+  "localListLoadFailed": "已安装集市包加载失败，请重新打开列表重试",
+  "localListEnablePlugin": "启用插件",
+  "localListDisablePlugin": "禁用插件",
+  "localListUse": "使用",
+  "localListDisable": "禁用",
+  "localListToggleUnavailable": "该包与当前思源版本不兼容，需先升级思源",
+  "localListToggleFailed": "切换集市包状态失败",
+  "localListDisableAllPlugins": "禁用全部插件（包括本插件）",
+  "localListEnableAllPlugins": "启用全部插件",
+  "localListResetTheme": "恢复默认主题",
+  "localListResetIcon": "恢复默认图标",
+  "localListOpenDetail": "打开集市详情页"
 }

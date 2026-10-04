@@ -206,40 +206,46 @@ function getSwitchAppearanceMode(modes: number[]): string {
     return "";
 }
 
+/**
+ * 按需启用或禁用集市包
+ *
+ * 「禁用」与「卸载」是两件事：禁用只是停用，卸载才会移除本地文件。
+ * `enabled` 为真时启用，为假时禁用；安装流程只记录日志，列表菜单需要用返回值决定是否提示失败
+ */
 export async function setPackageEnabled(
     packageType: PackageType,
     packageName: string,
-    enableAfterInstall: boolean,
+    enabled: boolean,
     log: Logger
-): Promise<void> {
+): Promise<boolean> {
     switch (packageType) {
         case "plugin": {
-            const action = enableAfterInstall ? "enable" : "disable";
+            const action = enabled ? "enable" : "disable";
             log.info(`Attempting to ${action} plugin: ${packageName}`);
             const response = await fetchSyncPost("/api/petal/setPetalEnabled", {
                 packageName: packageName,
-                enabled: enableAfterInstall,
+                enabled: enabled,
                 frontend: getFrontend(),
             });
             if (response.code === 0) {
                 log.info(`Plugin ${packageName} ${action}d successfully`);
-                return;
+                return true;
             }
-            log.warn(enableAfterInstall ? i18n.enablePluginFailed : i18n.disablePluginFailed, response.msg);
-            break;
+            log.warn(enabled ? i18n.enablePluginFailed : i18n.disablePluginFailed, response.msg);
+            return false;
         }
         case "theme": {
             // 安装已由内核完成，内核会重载主题列表并推送外观刷新，此处只需按需切换为当前主题
             const config = window.siyuan.config;
             if (!config) {
                 log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
-                return;
+                return false;
             }
             const appearance = config.appearance;
             const wasLightTheme = appearance.themeLight === packageName;
             const wasDarkTheme = appearance.themeDark === packageName;
 
-            if (enableAfterInstall) {
+            if (enabled) {
                 const modes = await getSetThemeModes(packageName);
                 const appearanceMode = getSwitchAppearanceMode(modes);
                 log.info(`Applying theme [${packageName}], modes=[${modes.join(",")}], appearanceMode=[${appearanceMode}]`);
@@ -250,12 +256,12 @@ export async function setPackageEnabled(
                 });
                 if (response.code === 0) {
                     log.info(`Theme ${packageName} applied successfully`);
-                    return;
+                    return true;
                 }
                 log.warn(i18n.enablePackageFailed, response.msg);
-                return;
+                return false;
             } else {
-                // 禁用时重置为默认主题
+                // 禁用时把主题重置为默认
                 if (wasLightTheme) {
                     const resetLight = await fetchSyncPost("/api/setting/setTheme", {
                         theme: "daylight",
@@ -263,7 +269,7 @@ export async function setPackageEnabled(
                     });
                     if (resetLight.code !== 0) {
                         log.warn(`Failed to reset light theme to default: ${resetLight.msg}`);
-                        return;
+                        return false;
                     }
                 }
                 if (wasDarkTheme) {
@@ -273,46 +279,46 @@ export async function setPackageEnabled(
                     });
                     if (resetDark.code !== 0) {
                         log.warn(`Failed to reset dark theme to default: ${resetDark.msg}`);
-                        return;
+                        return false;
                     }
                 }
             }
             log.info(`Theme ${packageName} installed (not switching)`);
-            break;
+            return true;
         }
         case "icon": {
             // 安装已由内核完成，内核会重载图标列表并推送外观刷新，此处只需按需切换为当前图标
             const config = window.siyuan.config;
             if (!config) {
                 log.warn(i18n.enablePackageFailed, "siyuan config unavailable");
-                return;
+                return false;
             }
             const wasCurrentIcon = config.appearance.icon === packageName;
 
-            if (enableAfterInstall) {
+            if (enabled) {
                 const response = await fetchSyncPost("/api/setting/setIcon", { icon: packageName });
                 if (response.code === 0) {
                     log.info(`Icon ${packageName} applied successfully`);
-                    return;
+                    return true;
                 }
                 log.warn(i18n.enablePackageFailed, response.msg);
-                return;
+                return false;
             } else {
-                // 禁用时重置为默认图标
+                // 禁用时把图标重置为默认
                 if (wasCurrentIcon) {
                     const resetIcon = await fetchSyncPost("/api/setting/setIcon", { icon: "litheness" });
                     if (resetIcon.code !== 0) {
                         log.warn(`Failed to reset icon to default: ${resetIcon.msg}`);
-                        return;
+                        return false;
                     }
                 }
             }
             log.info(`Icon ${packageName} installed (not switching)`);
-            break;
+            return true;
         }
         default: {
             log.info(`${packageType} ${packageName} installed`);
-            break;
+            return true;
         }
     }
 }

@@ -29,6 +29,12 @@ export const SELECT_ICON_ID = "iconInstallPackageSelect";
 export const BAZAAR_ICON_ID = "iconInstallPackageBazaar";
 /** 设置面板里的令牌显示/隐藏（复制自内置 iconEye，lucide eye） */
 export const EYE_ICON_ID = "iconInstallPackageEye";
+/** 入口菜单「本地集市包列表」（复制自内置 iconMenu，lucide menu） */
+export const LIST_ICON_ID = "iconInstallPackageList";
+/** 主题、图标的「禁用」（复制自内置 iconClose，lucide x） */
+export const CLOSE_ICON_ID = "iconInstallPackageClose";
+/** 「打开本地详情页」（复制自内置 iconInfo，lucide info） */
+export const INFO_ICON_ID = "iconInstallPackageInfo";
 
 /**
  * 图标定义
@@ -74,5 +80,14 @@ export const INSTALL_PACKAGE_ICON_SYMBOLS = `
 </symbol>
 <symbol id="${EYE_ICON_ID}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
     <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>
+</symbol>
+<symbol id="${LIST_ICON_ID}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/>
+</symbol>
+<symbol id="${CLOSE_ICON_ID}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+</symbol>
+<symbol id="${INFO_ICON_ID}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
 </symbol>
 `;

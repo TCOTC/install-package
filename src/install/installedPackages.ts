@@ -5,7 +5,7 @@
  * 仓库来源是本插件各入口互相匹配的唯一依据（URL 输入、集市 PR、本地集市包页都归一到小写 `owner/repo`）。
  */
 
-import { getFrontend } from "siyuan";
+import { Constants, getFrontend } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { fetchSyncPost } from "../infra/kernelClient";
 import { PACKAGE_TYPE_BY_KERNEL_TYPE, type PackageType } from "./install";
@@ -58,12 +58,18 @@ export interface InstalledPackage {
     iconURL: string;
     /** 安装时间（Unix 毫秒） */
     installTime: number;
+    /** 本地包内容最近一次变更的时间（Unix 毫秒） */
+    updateTime: number;
     /** 插件是否启用；非插件恒为 false */
     enabled: boolean;
     /** 主题或图标是否为当前正在使用的；其它类型恒为 false */
     current: boolean;
     /** 内核给出的本地包异常原因，非空表示该包不可用 */
     invalidReason: string;
+    /** 本地已安装的版本与当前思源是否不兼容；内核只对插件与主题下发 */
+    incompatible: boolean;
+    /** 需要升级思源才能启用或使用 */
+    disallowInstall: boolean;
 }
 
 /**
@@ -103,6 +109,81 @@ export function findInstalledByRepo(packages: InstalledPackage[], repoKey: strin
     return key === "" ? [] : packages.filter((pkg) => pkg.repoKey === key);
 }
 
+/** 思源集市「已下载」列表的排序配置键，存在 `window.siyuan.storage["local-bazaar"]` 里 */
+const BAZAAR_SORT_KEY: Record<KernelPackageType, string> = {
+    plugins: "downloadedPlugin",
+    themes: "downloadedTheme",
+    icons: "downloadedIcon",
+    widgets: "downloadedWidget",
+    templates: "downloadedTemplate",
+};
+
+/**
+ * 读取思源集市「已下载」列表的排序方式
+ *
+ * 思源把这个偏好存在本地存储（`local-bazaar`）而非接口响应里，取值：0 默认、1 安装时间降序、
+ * 2 安装时间升序、3 更新时间降序、4 更新时间升序、5 已启用优先、6 已禁用优先（后两者只对插件有意义）
+ */
+function bazaarSortValue(kernelType: KernelPackageType): string {
+    const storage = window.siyuan.storage?.[Constants.LOCAL_BAZAAR] as Record<string, unknown> | undefined;
+    const value = storage?.[BAZAAR_SORT_KEY[kernelType]];
+    return typeof value === "string" ? value : "0";
+}
+
+/**
+ * 按思源集市的排序配置排列某一类型的已安装包
+ *
+ * 排序规则与思源集市页的「已下载」列表一致：默认（0）沿用内核顺序；5、6 对插件以外的类型按默认处理。
+ * 返回新数组，不改动传入的列表
+ */
+export function sortInstalledPackages(kernelType: KernelPackageType, packages: InstalledPackage[]): InstalledPackage[] {
+    let sortValue = bazaarSortValue(kernelType);
+    if (kernelType !== "plugins" && (sortValue === "5" || sortValue === "6")) {
+        sortValue = "0";
+    }
+    if (sortValue === "0") {
+        return packages;
+    }
+    // 记录原下标，使“保持不变”成为后备比较结果（与思源的实现一致）
+    const indexed = packages.map((pkg, index) => ({ pkg, index }));
+    const byTime = (field: "installTime" | "updateTime", descending: boolean): InstalledPackage[] =>
+        indexed.sort((a, b) => {
+            const aTime = a.pkg[field];
+            const bTime = b.pkg[field];
+            // 没取到时间的排在后面
+            if (aTime < 1 && bTime < 1) {
+                return a.index - b.index;
+            }
+            if (aTime < 1) {
+                return 1;
+            }
+            if (bTime < 1) {
+                return -1;
+            }
+            return (descending ? bTime - aTime : aTime - bTime) || a.index - b.index;
+        }).map((entry) => entry.pkg);
+    switch (sortValue) {
+        case "1":
+            return byTime("installTime", true);
+        case "2":
+            return byTime("installTime", false);
+        case "3":
+            return byTime("updateTime", true);
+        case "4":
+            return byTime("updateTime", false);
+        case "5":
+        case "6":
+            return indexed.sort((a, b) => {
+                const aEnabled = a.pkg.enabled ? 1 : 0;
+                const bEnabled = b.pkg.enabled ? 1 : 0;
+                return ((sortValue === "5" ? bEnabled - aEnabled : aEnabled - bEnabled) || a.index - b.index);
+            }).map((entry) => entry.pkg);
+        default:
+            // 取值超出已知范围（如后续思源新增排序方式）时保持内核顺序
+            return packages;
+    }
+}
+
 function asString(value: unknown): string {
     return typeof value === "string" ? value : "";
 }
@@ -126,10 +207,13 @@ function parseInstalledPackage(
         repoKey: repoKeyOf(repoURL) ?? "",
         iconURL: asString(raw.iconURL),
         installTime: typeof raw.installTime === "number" ? raw.installTime : 0,
+        updateTime: typeof raw.updateTime === "number" ? raw.updateTime : 0,
         // 内核只对插件下发 enabled、只对主题与图标下发 current
         enabled: kernelType === "plugins" && raw.enabled === true,
         current: (kernelType === "themes" || kernelType === "icons") && raw.current === true,
         invalidReason: asString(raw.invalidReason),
+        incompatible: raw.installedIncompatible === true,
+        disallowInstall: raw.disallowInstall === true,
     };
 }
 

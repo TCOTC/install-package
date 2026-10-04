@@ -1,22 +1,27 @@
 import "./index.scss";
 import { Custom, getAllTabs, Menu, Plugin } from "siyuan";
 import { i18n, setI18n, type PluginI18n } from "./infra/i18n";
-import { clearMessagePrefix, setMessagePrefix } from "./infra/message";
+import { clearMessagePrefix, message, setMessagePrefix } from "./infra/message";
 import { clearRuntimeSecretCache, createSetting, loadSetting } from "./settings/setting";
 import { InstallPanel, setPendingInstallPreset, type InstallPanelPreset } from "./ui/panel";
 import { BazaarPrPanel } from "./ui/prPanel";
 import { InstalledPanel } from "./ui/installedPanel";
+import { LocalPackagesMenu } from "./ui/localPackagesMenu";
 import {
     BAZAAR_PR_ICON_ID,
     INSTALL_PACKAGE_ICON_ID,
     INSTALL_PACKAGE_ICON_SYMBOLS,
+    LIST_ICON_ID,
     LOCAL_PACKAGE_ICON_ID,
+    REFRESH_ICON_ID,
     SETTINGS_ICON_ID,
 } from "./ui/icons";
 import { findCustomTabForReuse, focusCustomTab, openNewCustomTab, openOrFocusCustomTab } from "./ui/tabs";
+import { openMenuFlushSide } from "./ui/menuPosition";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
 import { abortAllActiveInstalls } from "./install/installSession";
 import { initSelfPackage } from "./install/selfPackage";
+import { fetchSyncPost } from "./infra/kernelClient";
 
 /** 与 addTab 的 type 一致，openTab 的 custom.id 为 plugin.name + INSTALL_TAB_TYPE */
 export const INSTALL_TAB_TYPE = "install_package_panel";
@@ -60,6 +65,10 @@ export default class InstallPackage extends Plugin {
     private installTabCustomId = this.name + INSTALL_TAB_TYPE;
     private bazaarPrTabCustomId = this.name + BAZAAR_PR_TAB_TYPE;
     private localTabCustomId = this.name + LOCAL_TAB_TYPE;
+    /** 「本地集市包列表」所在的菜单；在读数据前不开，数据到齐后才建并展示 */
+    private listMenu?: Menu;
+    /** 列表本体；菜单关闭时销毁 */
+    private localPackagesMenu?: LocalPackagesMenu;
 
     onload() {
         setMessagePrefix(this.displayName);
@@ -106,8 +115,12 @@ export default class InstallPackage extends Plugin {
             title: i18n.title,
             position: "right",
             callback: () => {
-                // 菜单项与 issue #41 的顺序一致；「本地集市包列表」「重载界面」尚未实现，暂不列出
-                const menu = new Menu("install-package-entry");
+                // 菜单项与 issue #41 的顺序一致
+                const menu = new Menu("install-package-entry", () => this.closeLocalPackagesMenu());
+                if (menu.isOpen) {
+                    // 再次点击顶栏按钮时构造方法已经收起菜单，无需重复添加菜单项
+                    return;
+                }
                 menu.addItem({
                     icon: INSTALL_PACKAGE_ICON_ID,
                     label: i18n.title,
@@ -131,10 +144,27 @@ export default class InstallPackage extends Plugin {
                     },
                 });
                 menu.addItem({
+                    icon: LIST_ICON_ID,
+                    label: i18n.localListTitle,
+                    click: () => {
+                        // 不阻止菜单关闭：数据到齐后会另开一个菜单展示列表
+                        this.openLocalPackagesMenu(topBarElement);
+                    },
+                });
+                menu.addSeparator();
+                menu.addItem({
+                    icon: REFRESH_ICON_ID,
+                    label: i18n.reloadUI,
+                    click: () => {
+                        void fetchSyncPost("/api/ui/reloadUI");
+                    },
+                });
+                menu.addItem({
                     icon: SETTINGS_ICON_ID,
                     label: i18n.openPluginSettings,
                     click: openPluginSettings,
                 });
+                // 入口菜单按按钮原位弹出，不做贴边处理（贴边只给「本地集市包列表」用）
                 const rect = topBarMenuAnchor(topBarElement);
                 menu.open({
                     x: rect.right,
@@ -212,6 +242,50 @@ export default class InstallPackage extends Plugin {
         });
     }
 
+    /**
+     * 打开「本地集市包列表」
+     *
+     * 菜单的宽高都由内容撑开，先把列表数据读出来再展示，否则会看到菜单先出现、随后突然变高。
+     * 这里要等入口菜单收完再动手：思源在点击回调返回之后还会清一次菜单内容并调用它的关闭回调，
+     * 此时创建的菜单会被那个关闭回调连带收走
+     */
+    private openLocalPackagesMenu(anchor: HTMLElement): void {
+        window.setTimeout(() => {
+            void this.startLocalPackagesMenu(anchor);
+        }, 0);
+    }
+
+    /** 读列表 → 数据到齐后新建菜单并展示；读取失败时提示并不开菜单 */
+    private async startLocalPackagesMenu(anchor: HTMLElement): Promise<void> {
+        // 新建菜单时思源会先清空共用的菜单容器，顺手收掉上一个列表菜单
+        const menu = new Menu("install-package-local-list", () => this.closeLocalPackagesMenu());
+        const itemsElement = menu.element.querySelector(":scope > .b3-menu__items");
+        if (!(itemsElement instanceof HTMLElement)) {
+            return;
+        }
+        const list = new LocalPackagesMenu(itemsElement, () => menu.close());
+        this.listMenu = menu;
+        this.localPackagesMenu = list;
+        if (!(await list.start())) {
+            this.closeLocalPackagesMenu();
+            this.listMenu = undefined;
+            message(i18n.localListLoadFailed);
+            return;
+        }
+        if (this.localPackagesMenu !== list) {
+            // 读数据期间列表已被替换或插件已被禁用
+            return;
+        }
+        // 列表内容宽窄差别大，向锚点所在的那一侧贴边看起来更整齐
+        openMenuFlushSide(menu, anchor);
+    }
+
+    /** 菜单关闭时调用：在途的列表加载凭销毁标记自行作废 */
+    private closeLocalPackagesMenu(): void {
+        this.localPackagesMenu?.destroy();
+        this.localPackagesMenu = undefined;
+    }
+
     onDataChanged() {
         // 避免数据同步时重启插件导致自定义页签内容样式抖动
         loadSetting(this);
@@ -222,6 +296,12 @@ export default class InstallPackage extends Plugin {
         destroyGitHubNotice();
         clearRuntimeSecretCache();
         clearMessagePrefix();
+        // 列表还开着时先收起菜单：列表里的控件指向本插件的回调
+        if (this.localPackagesMenu?.isAttached() === true) {
+            this.listMenu?.close();
+        }
+        this.closeLocalPackagesMenu();
+        this.listMenu = undefined;
         for (const panel of tabPanels.values()) {
             panel.destroy();
         }

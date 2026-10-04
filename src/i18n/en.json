@@ -172,5 +172,19 @@
   "uninstallDone": "Removed {packageType} [{packageName}]",
   "uninstallFailed": "Failed to uninstall the marketplace package:",
   "uninstallSelfExcluded": "The matched local marketplace package is the plugin itself, which was excluded",
-  "panelSourceInstalledVersion": "Installed {version}"
+  "panelSourceInstalledVersion": "Installed {version}",
+  "reloadUI": "Reload UI",
+  "localListTitle": "Local Package List",
+  "localListLoadFailed": "Failed to load installed marketplace packages, reopen the list to retry",
+  "localListEnablePlugin": "Enable Plugin",
+  "localListDisablePlugin": "Disable Plugin",
+  "localListUse": "Use",
+  "localListDisable": "Disable",
+  "localListToggleUnavailable": "This package is incompatible with the current SiYuan version, upgrade SiYuan first",
+  "localListToggleFailed": "Failed to change the marketplace package state",
+  "localListDisableAllPlugins": "Disable All Plugins (including this plugin)",
+  "localListEnableAllPlugins": "Enable All Plugins",
+  "localListResetTheme": "Restore Default Theme",
+  "localListResetIcon": "Restore Default Icon",
+  "localListOpenDetail": "Open Marketplace Details"
 }

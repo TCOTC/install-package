@@ -6,7 +6,8 @@ This is a plugin for installing marketplace packages, which can download and ins
 
 - Support downloading Release versions from GitHub repositories or marketplace PR URLs
 - Support listing pull requests of the siyuan-note/bazaar repository and installing the corresponding marketplace packages
-- Support listing the local marketplace packages: check for GitHub updates, or click a card to open the install tab
+- Support listing the local marketplace packages in the panel: check for GitHub updates, or click a card to open the install tab
+- Support listing the local marketplace packages in the menu: quickly enable or disable them, or open the package details in the marketplace
 - Display marketplace package info (repo summary, Release info, file size)
 - File validation and integrity checks
 - Support configuring GitHub Token (encrypted storage) to avoid API rate limits

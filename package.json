@@ -11,7 +11,8 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.mjs\"",
     "dev": "webpack --mode development",
     "build": "webpack --mode production",
-    "push": "git push origin HEAD --tags"
+    "push": "git push origin HEAD --tags",
+    "preview": "node tools/preview/run.mjs"
   },
   "keywords": [
     "开发者工具",

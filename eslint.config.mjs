@@ -19,6 +19,7 @@ export default [{
         "dist",
         "node_modules",
         "index.js",
+        ".preview",
     ],
 }, ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended"), {
     plugins: {

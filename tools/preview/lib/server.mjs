@@ -19,6 +19,8 @@ const CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".png": "image/png",
     ".jpg": "image/jpeg",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
     ".svg": "image/svg+xml",
     ".json": "application/json; charset=utf-8",
 };

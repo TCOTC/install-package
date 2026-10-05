@@ -13,6 +13,7 @@ import {
 import type { InstallReleaseRow } from "../github/github";
 import { isSelfRepo } from "../install/selfPackage";
 import type { Logger } from "../infra/logger";
+import { packageImageFileNames } from "../infra/packageImage";
 import type { InstallPanelData } from "./panelData";
 import { REPO_SUMMARY_ATTRS } from "./repoSummaryDom";
 import { openImagePreview } from "./imagePreview";
@@ -23,18 +24,28 @@ const REPO_SUMMARY_DASH = "—";
 /** 缩略图加载成功后才允许点击放大；`src/index.scss` 用同一个类名给出可点样式 */
 const RAW_PREVIEW_READY_CLASS = "jcip-repo-summary__preview-frame--ready";
 
+/** 单个缩略图候选：`fileName` 用作标题与可访问名，`url` 是 raw 资源地址 */
+type RawPreviewCandidate = { fileName: string; url: string };
+
 /**
- * 仓库默认分支根目录里的 icon.png / preview.png 缩略图
+ * 仓库默认分支根目录里的 icon / preview 缩略图
  *
- * 两个文件只有文件名与标题不同，模板集中在这里生成，避免两份交互属性各写一遍而失配。
- * 缩略图加载失败时 `wireRawPreviewImages` 换成 `REPO_SUMMARY_DASH` 并保持不可交互
+ * 两种图只有基名不同，模板集中在这里生成，避免两份交互属性各写一遍而失配。
+ * 文件名按 `PACKAGE_IMAGE_EXTENSIONS` 的顺序依次尝试：首个候选直接写进 `src`，
+ * 其余候选交给 `wireRawPreviewImages` 在加载失败时逐个往下试；全部失败则换成
+ * `REPO_SUMMARY_DASH` 并保持不可交互
  */
-function renderRawPreviewHtml(info: ParsedPackageInfo, fileName: string, caption: string): string {
+function renderRawPreviewHtml(info: ParsedPackageInfo, baseName: string): string {
+    const candidates: RawPreviewCandidate[] = packageImageFileNames(baseName).map((fileName) => ({
+        fileName,
+        url: githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, fileName),
+    }));
+    const caption = candidates[0].fileName;
     const zoomLabel = escapeHtml(i18n.repoRootPreviewZoomIn.replace("{name}", caption));
     return `<div class="jcip-repo-summary__preview">
-<span class="jcip__label">${escapeHtml(caption)}</span>
+<span class="jcip__label" data-jcip-preview-label>${escapeHtml(caption)}</span>
 <div class="jcip-repo-summary__preview-frame" data-jcip-preview-frame data-jcip-preview-caption="${escapeHtml(caption)}" role="button" tabindex="-1" aria-disabled="true" aria-label="${zoomLabel}">
-<img data-jcip-raw-img src="${escapeHtml(githubRawRootFileUrl(info.owner, info.repo, info.defaultBranch, fileName))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+<img data-jcip-raw-img data-jcip-raw-candidates="${escapeHtml(JSON.stringify(candidates))}" src="${escapeHtml(candidates[0].url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
 <span class="fn__none" data-jcip-raw-missing>${REPO_SUMMARY_DASH}</span>
 </div>
 </div>`;
@@ -88,8 +99,8 @@ function renderResolvedRepoSummaryHtml(info: ParsedPackageInfo): string {
     const previewsBlock =
         info.defaultBranch.length > 0
             ? `<div class="jcip-repo-summary__previews" aria-label="${escapeHtml(i18n.repoRootPreviewGroupAria)}">
-${renderRawPreviewHtml(info, "icon.png", i18n.repoRootPreviewIconCaption)}
-${renderRawPreviewHtml(info, "preview.png", i18n.repoRootPreviewPreviewCaption)}
+${renderRawPreviewHtml(info, "icon")}
+${renderRawPreviewHtml(info, "preview")}
 </div>`
             : "";
     return `<div class="jcip-repo-summary__body">
@@ -163,10 +174,42 @@ export type RepoParserHooks = {
     onRepoReleasesEvent?: (event: RepoReleasesEvent) => void;
 };
 
+/** 类型守卫：属性里的候选必须是 `{ fileName, url }` 且两者都是字符串 */
+function isRawPreviewCandidate(value: unknown): value is RawPreviewCandidate {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+    const { fileName, url } = value as Partial<RawPreviewCandidate>;
+    return typeof fileName === "string" && typeof url === "string";
+}
+
+/**
+ * 读取模板写下的候选列表
+ *
+ * 属性由本模块的模板生成，结构可信；但仍防御内容损坏，避免异常冒泡到 `refresh` 把整块摘要判成无效
+ */
+function parseRawPreviewCandidates(raw: string | null): RawPreviewCandidate[] {
+    if (!raw) {
+        return [];
+    }
+    try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        const valid = parsed.filter(isRawPreviewCandidate);
+        return valid.length === parsed.length ? valid : [];
+    } catch {
+        return [];
+    }
+}
+
 /**
  * 缩略图加载成功后接入放大预览（点击或回车 / 空格）
  *
- * 加载失败（仓库根目录没有该文件）时保持不可交互：既是空图，也不该弹出对话框
+ * 文件名按扩展名顺序依次尝试：某个候选加载失败就换下一个（仓库根目录里可能只有 `preview.webp`），
+ * 命中哪个就把标题与可访问名换成那个文件名；全部失败时保持不可交互
+ * （既是空图，也不该弹出对话框）
  */
 function wireRawPreviewImages(root: HTMLElement): void {
     for (const img of root.querySelectorAll<HTMLImageElement>("img[data-jcip-raw-img]")) {
@@ -175,6 +218,7 @@ function wireRawPreviewImages(root: HTMLElement): void {
         if (!frame || !miss) {
             continue;
         }
+        const label = frame.parentElement?.querySelector<HTMLElement>("[data-jcip-preview-label]");
         const markMissing = () => {
             img.classList.add("fn__none");
             miss.classList.remove("fn__none");
@@ -182,23 +226,52 @@ function wireRawPreviewImages(root: HTMLElement): void {
             frame.setAttribute("aria-disabled", "true");
             frame.tabIndex = -1;
         };
-        const markReady = () => {
+        const markReady = (fileName: string) => {
             miss.classList.add("fn__none");
             frame.classList.add(RAW_PREVIEW_READY_CLASS);
             frame.setAttribute("aria-disabled", "false");
+            frame.setAttribute("data-jcip-preview-caption", fileName);
+            frame.setAttribute("aria-label", i18n.repoRootPreviewZoomIn.replace("{name}", fileName));
+            if (label) {
+                label.textContent = fileName;
+            }
             frame.tabIndex = 0;
         };
-        // 命中浏览器缓存时 load / error 不会再触发，先按当前状态定一次
-        if (img.complete) {
-            if (img.naturalWidth > 0) {
-                markReady();
-            } else {
+        const candidates = parseRawPreviewCandidates(img.getAttribute("data-jcip-raw-candidates"));
+        const attempt = (index: number) => {
+            const candidate = candidates[index];
+            if (candidate === undefined) {
                 markMissing();
+                return;
             }
-        } else {
-            img.addEventListener("load", markReady, { once: true });
-            img.addEventListener("error", markMissing, { once: true });
-        }
+            const cleanup = () => {
+                img.removeEventListener("load", onLoad);
+                img.removeEventListener("error", onError);
+            };
+            const onLoad = () => {
+                cleanup();
+                markReady(candidate.fileName);
+            };
+            const onError = () => {
+                cleanup();
+                attempt(index + 1);
+            };
+            img.addEventListener("load", onLoad);
+            img.addEventListener("error", onError);
+            if (index > 0) {
+                // 首个候选的 `src` 已由模板写入，重复赋值没有意义（同地址时可能是空操作）
+                img.src = candidate.url;
+            }
+            // 命中浏览器缓存时 load / error 不会再触发，按当前状态结算一次
+            if (img.complete) {
+                if (img.naturalWidth > 0) {
+                    onLoad();
+                } else {
+                    onError();
+                }
+            }
+        };
+        attempt(0);
 
         const openPreview = () => {
             if (img.naturalWidth === 0) {

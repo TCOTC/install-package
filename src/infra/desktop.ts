@@ -61,3 +61,14 @@ export async function openDirectory(path: string): Promise<void> {
 export function toggleDevTools(): void {
     electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "toggleDevTools");
 }
+
+/**
+ * 还原并激活当前窗口
+ *
+ * 宿主把 `siyuan://` 链接转给渲染进程时不会激活窗口（`app/electron/main.js` 的 `second-instance` 分支只在
+ * 没有链接时才调 `showWindow`），因此以深链为入口的功能需要自己补一次。这与思源处理块链接时调用的是
+ * 同一条命令。浏览器端与移动端没有 Electron，调用即空操作
+ */
+export function showWindow(): void {
+    electron?.ipcRenderer?.send(Constants.SIYUAN_CMD, "show");
+}

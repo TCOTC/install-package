@@ -19,7 +19,7 @@ import {
 } from "./ui/icons";
 import { customTabPanelHost } from "./ui/panelHost";
 import { DialogPanels } from "./ui/dialogPanels";
-import { isMobileFrontend } from "./infra/desktop";
+import { isMobileFrontend, showWindow } from "./infra/desktop";
 import { findCustomTabForReuse, focusCustomTab, openNewCustomTab, openOrFocusCustomTab } from "./ui/tabs";
 import { openMenuFlushSide, topBarMenuAnchor } from "./ui/menuPosition";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
@@ -120,6 +120,8 @@ export default class InstallPackage extends Plugin {
         // 一键安装链接（`siyuan://plugins/<包名>/install?...`）由宿主的 open-siyuan-url-plugin 事件送达，
         // 必须在这里注册：链接到达时若还没有订阅者，事件会被直接丢弃，宿主不做排队
         this.eventBus.on("open-siyuan-url-plugin", (event) => {
+            // 宿主转发链接时不激活窗口，先自己把窗口调到前台，否则用户看不到打开的安装页签
+            showWindow();
             this.openInstallUri(event.detail.url);
         });
 

@@ -1,4 +1,6 @@
 import { i18n } from "../infra/i18n";
+import { electron } from "../infra/desktop";
+import { kernelProxyUrl } from "../infra/kernelProxy";
 import { extractPackageNameFromUrl } from "./github";
 import type { Logger } from "../infra/logger";
 
@@ -6,13 +8,20 @@ import type { Logger } from "../infra/logger";
 export type DownloadProgressCallback = (loaded: number, total: number) => void;
 
 /**
- * 下载进度参数
+ * 下载选项
  *
  * `totalBytes` 取 Release 资源的 `size` 而非响应头的 `Content-Length`：资源会跳转到对象存储，
  * 前者零额外请求且不依赖跳转后的响应头
  */
-export interface DownloadProgressOptions {
+export interface DownloadPackageOptions {
     totalBytes: number;
+    /**
+     * 仓库键（`owner/repo`）与 Release 附件 id
+     *
+     * 非 Electron 前端改走内核代理时需要它们拼出 GitHub API 的资源地址，见 `fetchTarget`
+     */
+    ownerRepo?: string;
+    assetId?: number;
     onProgress?: DownloadProgressCallback;
 }
 
@@ -56,15 +65,54 @@ type ZipBodyResult =
     | { ok: true; blob: Blob }
     | { ok: false; reason: "aborted" | "network" | "invalid"; loaded: number };
 
+/**
+ * GitHub API 的 Release 附件地址
+ *
+ * 带 `Accept: application/octet-stream` 请求该地址时会 302 到签名地址，返回附件内容本身
+ */
+function gitHubAssetApiUrl(ownerRepo: string, assetId: number): string {
+    return `https://api.github.com/repos/${ownerRepo}/releases/assets/${assetId}`;
+}
+
+/**
+ * 实际发请求的地址
+ *
+ * Electron 桌面窗口关闭了 `webSecurity`，直连 `browser_download_url` 即可（流式下载、进度精确）；
+ * 其余前端（浏览器桌面版、浏览器移动版、移动端与 HarmonyOS WebView）会被 CORS 拦下，改走内核代理。
+ *
+ * 代理的目标取**API 资源地址**而不是 `browser_download_url`：前者在内核侧由 Go 客户端自己跟随 302，
+ * 于是不要求内核能直连 `github.com`；插件本来就要访问 `api.github.com` 拉 Release 列表，
+ * 因此只要安装流程能走到下载这一步，这个地址就是可达的。
+ * 附件 id 缺失时退回代理 `browser_download_url`
+ */
+function fetchTarget(
+    downloadUrl: string,
+    options?: DownloadPackageOptions,
+): { url: string; viaKernel: boolean } {
+    if (electron !== undefined) {
+        return { url: downloadUrl, viaKernel: false };
+    }
+    if (options?.ownerRepo !== undefined && options.assetId !== undefined) {
+        return {
+            url: kernelProxyUrl(gitHubAssetApiUrl(options.ownerRepo, options.assetId), {
+                Accept: ["application/octet-stream"],
+            }),
+            viaKernel: true,
+        };
+    }
+    return { url: kernelProxyUrl(downloadUrl), viaKernel: true };
+}
+
 export async function downloadPackage(
     downloadUrl: string,
     fileName: string,
     log: Logger,
     installAbort: AbortController,
-    progress?: DownloadProgressOptions
+    options?: DownloadPackageOptions
 ): Promise<DownloadResult> {
     const signal = installAbort.signal;
-    const totalBytes = progress?.totalBytes ?? 0;
+    const totalBytes = options?.totalBytes ?? 0;
+    const target = fetchTarget(downloadUrl, options);
 
     /**
      * 停滞看门狗：连接或传输长时间没有新数据时只在日志里提示，不中止连接。
@@ -100,10 +148,10 @@ export async function downloadPackage(
     armStallTimer();
     try {
         // 下载远程文件
-        log.info("Downloading file from GitHub:", downloadUrl);
+        log.info(target.viaKernel ? "Downloading file via kernel proxy:" : "Downloading file from GitHub:", downloadUrl);
         let response: Response;
         try {
-            response = await fetch(downloadUrl, {
+            response = await fetch(target.url, {
                 signal,
             });
         } catch (error) {
@@ -120,7 +168,7 @@ export async function downloadPackage(
         }
 
         // 读取并校验 ZIP 文件
-        const body = await readZipBody(response, signal, progress, noteData);
+        const body = await readZipBody(response, signal, options, noteData);
         if (!body.ok) {
             return { ok: false, reason: body.reason, loadedBytes: body.loaded, totalBytes };
         }
@@ -147,7 +195,7 @@ export async function downloadPackage(
 async function readZipBody(
     response: Response,
     signal: AbortSignal,
-    progress?: DownloadProgressOptions,
+    progress?: DownloadPackageOptions,
     onData?: () => void
 ): Promise<ZipBodyResult> {
     // 正常 GET 成功时 body 为 ReadableStream；为 null 时无法按块读取

@@ -150,6 +150,8 @@ export async function runInstall(request: InstallRequest, log: Logger, options?:
             installAbort,
             {
                 totalBytes: packageZip.size,
+                ownerRepo: `${request.owner}/${request.repo}`,
+                assetId: packageZip.id,
                 onProgress: (loaded, total) => {
                     const percent = total > 0 ? Math.min(loaded / total, 1) : 0;
                     const now = Date.now();

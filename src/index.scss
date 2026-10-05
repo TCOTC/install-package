@@ -38,47 +38,31 @@ $jcip-pr-avatar-size: 32px;
     border-radius: 0;
     box-shadow: none;
 
-    // 面板撑满对话框高度，面板内部的列表 / 日志卡片才能在各自区域内滚动；
-    // 内容高于视口时由面板自己滚动，不把滚动交给对话框（避免两层滚动条）
-    > .b3-dialog__body > .jcip-tab {
-        flex: 1 1 auto;
-        min-height: 0;
+    // 面板自己滚动时不要牵连到后面的主界面
+    .b3-dialog__body {
+        overscroll-behavior: contain;
     }
 
-    // 整屏时按视口分配高度而不是按内容撑开：输入区与操作区按内容高度，
-    // 展示区吃掉剩下的部分，日志卡片因此始终可见、不把操作区顶出屏幕
-    .jcip-panel {
-        flex: 1 1 auto;
-        min-height: 0;
-    }
-
+    // 安装面板的三段（输入 / 展示 / 操作）一律按内容高度排布，任何一块都不被压缩：
+    // 它们各自内部有滚动区（日志卡片），被压扁时连滚动区一起塌掉，表现为内容被截断。
+    // 内容高于视口时由对话框的 body 滚动（面板是 `flex-shrink: 0`，不会被压回视口高）
     .jcip-input,
-    .jcip-action {
+    .jcip-show,
+    .jcip-show__info,
+    .jcip-show__log,
+    .jcip-action,
+    .jcip-action__tools {
         flex: 0 0 auto;
     }
 
-    .jcip-show {
-        flex: 1 1 auto;
-        min-height: 0;
-    }
-
-    // 窄布局把信息区与日志区改成了「按内容撑开、可见溢出」，整屏时要改回「填满父级、内部滚动」：
-    // 卡片高度改为跟随区块（`max-height: 100%`），超出部分由卡片自身的滚动条承接
-    .jcip-show__info,
-    .jcip-show__log {
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .jcip-show__card {
-        min-height: 0;
-        max-height: 100%;
+    // 日志可能很长：沿用窄布局的 `dvh` 上限，超出部分在卡片内部滚动
+    .jcip-show__log .jcip-show__card {
+        overflow-y: auto;
     }
 
     // 移动端只剩「界面语言」一个工具键（其余依赖 Electron 或桌面路径），
     // 竖排会得到一个通栏按钮，改成靠右的紧凑一行
     .jcip-action__tools {
-        flex: 0 0 auto;
         flex-flow: row wrap;
         justify-content: flex-end;
     }
@@ -494,7 +478,9 @@ $jcip-repo-summary-avatar-size: 50px;
         flex: 0 0 auto;
         grid-template-columns: repeat(2, minmax(0, 68px));
         gap: $spacing-s * 0.5;
-        align-self: stretch;
+        // 不要拉伸到与左侧正文同高：隐式行是 auto，网格被拉高时 `align-content: stretch`
+        // 会把多出来的高度分给缩略图那一行，框子跟着变长
+        align-self: flex-start;
     }
 
     &__preview {
@@ -506,10 +492,11 @@ $jcip-repo-summary-avatar-size: 50px;
     // 缩略图框；`data-jcip-preview-frame` 是脚本查找用的钩子，样式走这个类
     &__preview-frame {
         display: flex;
-        flex: 1 1 auto;
+        // 高度只由内容（图片上限 52px + 内边距与边框）决定，不参与任何拉伸
+        flex: 0 0 auto;
         align-items: center;
         justify-content: center;
-        min-height: 52px;
+        height: 62px;
         min-width: 0;
         padding: 4px;
         border: 1px solid var(--b3-border-color);
@@ -1291,7 +1278,14 @@ $jcip-repo-summary-avatar-size: 50px;
 
     // 展示区块竖排
     .jcip-show {
-        &__info,
+        // 单列时高度交给内容：信息区原本的 160px 上限是给桌面双列留的，
+        // 单列下摘要（含两张缩略图）会比它高，留着上限会把底部的缩略图行截在卡片外
+        &__info {
+            min-height: auto;
+            max-height: none;
+            overflow: visible;
+        }
+
         &__log {
             min-height: auto;
             overflow: visible;
@@ -1345,6 +1339,23 @@ $jcip-repo-summary-avatar-size: 50px;
 // 页签宽度不足时单列堆叠
 @container (max-width: 860px) {
     @include narrow;
+}
+
+// 移动端整屏对话框里容器只有 300 多像素：仓库摘要改为上下排列，缩略图占满一行
+@container (max-width: 420px) {
+    .jcip-repo-summary {
+        flex-direction: column;
+    }
+
+    // 横排时这是「至少 160px 宽」的伸缩基准，改成纵排后它会变成至少 160px 高
+    .jcip-repo-summary__body {
+        flex: 0 0 auto;
+    }
+
+    .jcip-repo-summary__previews {
+        align-self: stretch;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 // 无容器查询时按视口兜底

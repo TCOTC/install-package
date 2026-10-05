@@ -23,6 +23,19 @@ $jcip-pr-avatar-size: 32px;
     background-color: var(--b3-theme-background);
 }
 
+// 移动端的面板对话框：面板本就自带 24px 内边距，对话框只提供一个占满高度的容器
+.jcip-dialog {
+    .b3-dialog__body {
+        min-height: 0;
+    }
+
+    // 面板根节点撑满对话框高度，面板内部的日志 / 摘要卡片才能在各自区域内滚动
+    .jcip-tab {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+}
+
 // 面板主体容器
 .jcip-panel {
     display: grid;
@@ -1086,6 +1099,11 @@ $jcip-repo-summary-avatar-size: 50px;
     flex-direction: column;
     min-height: 0;
     width: min(360px, calc(100vw - 32px));
+}
+
+// 移动端的菜单是整屏宽的底部抽屉，列表再用固定宽度会贴在左边，这里改成占满
+.b3-menu--fullscreen .jcip-list {
+    width: 100%;
 }
 
 .jcip-list__toolbar {

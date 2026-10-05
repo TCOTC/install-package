@@ -6,7 +6,7 @@
  * 的包仓库地址，版本由安装面板按最新 Release 解析
  */
 
-import { Custom } from "siyuan";
+import type { PanelHost } from "./panelHost";
 import {
     getBazaarPullCommentRepo,
     isBazaarPullCIPassed,
@@ -74,8 +74,8 @@ export class BazaarPrPanel {
     private resolving: number | undefined;
     private resolveAbort: AbortController | undefined;
 
-    constructor(custom: Custom, openInstallTab: (preset: InstallPanelPreset) => void) {
-        this.root = custom.element as HTMLElement;
+    constructor(host: PanelHost, openInstallTab: (preset: InstallPanelPreset) => void) {
+        this.root = host.element;
         renderBazaarPrPanel(this.root);
         this.listEl = this.root.querySelector(".jcip-pr__list") as HTMLDivElement;
         this.itemsEl = this.root.querySelector("div[data-type='pr-items']") as HTMLDivElement;

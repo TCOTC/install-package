@@ -17,6 +17,9 @@ import {
     REFRESH_ICON_ID,
     SETTINGS_ICON_ID,
 } from "./ui/icons";
+import { customTabPanelHost } from "./ui/panelHost";
+import { DialogPanels } from "./ui/dialogPanels";
+import { isMobileFrontend } from "./infra/desktop";
 import { findCustomTabForReuse, focusCustomTab, openNewCustomTab, openOrFocusCustomTab } from "./ui/tabs";
 import { openMenuFlushSide, topBarMenuAnchor } from "./ui/menuPosition";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
@@ -56,6 +59,13 @@ export default class InstallPackage extends Plugin {
     private localPackagesMenu?: LocalPackagesMenu;
     /** 顶栏按钮；命令面板或快捷键触发「本地集市包列表」时用它作为菜单定位锚点 */
     private topBarElement?: HTMLElement;
+    /**
+     * 移动端的面板宿主（三个面板各自一个对话框）；桌面端为 null
+     *
+     * 移动端没有自定义页签（宿主的 `openTab` 是空函数、`addTab` 被剥掉、`getAllTabs` 恒空），
+     * 面板改由对话框承载，页签那套“一个包一个页签”的复用逻辑随之换成“每种面板一个对话框”
+     */
+    private dialogPanels: DialogPanels | null = null;
 
     onload() {
         setMessagePrefix(this.displayName);
@@ -75,10 +85,14 @@ export default class InstallPackage extends Plugin {
         const openInstallTab = this.openInstallTab.bind(this);
         // 面板需要知道插件自身包名，用于把「卸载」目标里的插件自身剔除
         const pluginName = this.name;
+        // 移动端没有自定义页签，三个面板改用对话框承载（下面的 addTab 在移动端本来就是空实现）
+        this.dialogPanels = isMobileFrontend()
+            ? new DialogPanels({ pluginName, openInstallPanel: openInstallTab })
+            : null;
         this.addTab({
             type: INSTALL_TAB_TYPE,
             init(this: Custom) {
-                tabPanels.set(this, new InstallPanel(this, pluginName));
+                tabPanels.set(this, new InstallPanel(customTabPanelHost(this), pluginName));
             },
             destroy(this: Custom) {
                 destroyTabPanel(this);
@@ -87,7 +101,7 @@ export default class InstallPackage extends Plugin {
         this.addTab({
             type: BAZAAR_PR_TAB_TYPE,
             init(this: Custom) {
-                tabPanels.set(this, new BazaarPrPanel(this, openInstallTab));
+                tabPanels.set(this, new BazaarPrPanel(customTabPanelHost(this), openInstallTab));
             },
             destroy(this: Custom) {
                 destroyTabPanel(this);
@@ -96,7 +110,7 @@ export default class InstallPackage extends Plugin {
         this.addTab({
             type: LOCAL_TAB_TYPE,
             init(this: Custom) {
-                tabPanels.set(this, new InstalledPanel(this, openInstallTab, pluginName));
+                tabPanels.set(this, new InstalledPanel(customTabPanelHost(this), openInstallTab, pluginName));
             },
             destroy(this: Custom) {
                 destroyTabPanel(this);
@@ -167,7 +181,12 @@ export default class InstallPackage extends Plugin {
                     label: i18n.openPluginSettings,
                     click: openPluginSettings,
                 });
-                // 入口菜单按按钮原位弹出，不做贴边处理（贴边只给「本地集市包列表」用）
+                // 入口菜单按按钮原位弹出，不做贴边处理（贴边只给「本地集市包列表」用）；
+                // 移动端菜单是底部抽屉，坐标与贴边都无意义（宿主会忽略坐标）
+                if (this.dialogPanels !== null) {
+                    menu.open({ x: 0, y: 0 });
+                    return;
+                }
                 const rect = topBarMenuAnchor(anchor);
                 menu.open({
                     x: rect.right,
@@ -193,12 +212,17 @@ export default class InstallPackage extends Plugin {
     }
 
     /**
-     * 打开安装页签
+     * 打开安装面板
      *
      * 顶栏菜单打开的是带输入框的完整表单，每次都是新页签；集市 PR 页带来目标的是没带输入框的精简形态，
-     * **按包复用**：同一个包已打开就直接切过去并刷新来源信息，不同包各占一个页签
+     * **按包复用**：同一个包已打开就直接切过去并刷新来源信息，不同包各占一个页签。
+     * 移动端没有页签，全部交由 `DialogPanels` 用同一个对话框承载
      */
     private openInstallTab(preset?: InstallPanelPreset): void {
+        if (this.dialogPanels !== null) {
+            this.dialogPanels.openInstall(preset);
+            return;
+        }
         if (preset === undefined) {
             this.createInstallTab();
             return;
@@ -229,6 +253,10 @@ export default class InstallPackage extends Plugin {
     }
 
     private openBazaarPrTab(): void {
+        if (this.dialogPanels !== null) {
+            this.dialogPanels.openBazaarPr();
+            return;
+        }
         openOrFocusCustomTab({
             app: this.app,
             customId: this.bazaarPrTabCustomId,
@@ -238,6 +266,10 @@ export default class InstallPackage extends Plugin {
     }
 
     private openLocalTab(): void {
+        if (this.dialogPanels !== null) {
+            this.dialogPanels.openLocal();
+            return;
+        }
         openOrFocusCustomTab({
             app: this.app,
             customId: this.localTabCustomId,
@@ -362,6 +394,9 @@ export default class InstallPackage extends Plugin {
         destroyGitHubNotice();
         clearRuntimeSecretCache();
         clearMessagePrefix();
+        // 移动端的面板在对话框里，`getAllTabs` 收不到它们，必须单独关闭（会连带销毁面板）
+        this.dialogPanels?.destroyAll();
+        this.dialogPanels = null;
         // 列表还开着时先收起菜单：列表里的控件指向本插件的回调
         if (this.localPackagesMenu?.isAttached() === true) {
             this.listMenu?.close();

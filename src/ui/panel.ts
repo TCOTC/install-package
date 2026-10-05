@@ -1,4 +1,4 @@
-import { Custom, Menu, saveLayout } from "siyuan";
+import { Menu } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { safeExternalUrl, escapeHtml } from "../infra/html";
 import type { Logger } from "../infra/logger";
@@ -28,6 +28,7 @@ import { openInterfaceLanguageMenu } from "./languageMenu";
 import { NO_MENU_ICON } from "./menuItem";
 import { PackageCompareLogger } from "./packageCompareLog";
 import { PanelUninstallTargets, petalDirPath } from "./panelUninstall";
+import type { PanelHost } from "./panelHost";
 import { persistFormToLayout, type PersistedForm } from "./panelPersistence";
 import {
     normalizeData,
@@ -158,7 +159,8 @@ interface InstallPanelElements {
 }
 
 export class InstallPanel {
-    private readonly custom: Custom;
+    /** 承载本面板的宿主（桌面=自定义页签，移动端=对话框） */
+    private readonly host: PanelHost;
     private readonly data: InstallPanelData;
     private readonly root: HTMLElement;
     private readonly elements: InstallPanelElements;
@@ -194,18 +196,20 @@ export class InstallPanel {
     /** 页签已关闭：异步回调不再改 DOM */
     private destroyed = false;
 
-    constructor(custom: Custom, pluginName: string) {
-        this.custom = custom;
+    constructor(host: PanelHost, pluginName: string) {
+        this.host = host;
         // 入口带入的安装目标随页签数据一道送达；先取出再归一表单，避免它被写回页签数据
-        const pendingPreset = takePendingInstallPreset(custom.data as Record<string, unknown>);
-        this.persistForm = persistFormToLayout(normalizeData(this.custom.data), () => saveLayout(() => {}));
+        const pendingPreset = takePendingInstallPreset(this.host.data);
+        this.persistForm = persistFormToLayout(normalizeData(this.host.data), () => this.host.persist());
         this.data = this.persistForm.data;
-        this.custom.data = this.data;
+        // `InstallPanelData` 是具名接口、没有索引签名，与宿主的 `Record<string, unknown>` 靠断言打通：
+        // 两侧存的是同一个对象，宿主只负责原样保管（页签写进 layout / 对话框放在内存）
+        this.host.data = this.data as unknown as Record<string, unknown>;
         if (pendingPreset !== null) {
             this.storePreset(pendingPreset);
         }
         this.uiStore = new InstallPanelUiStore(this.data.repoKey);
-        this.root = this.custom.element as HTMLElement;
+        this.root = this.host.element;
         renderInstallPanel(this.root);
         this.elements = {
             inputEl: this.root.querySelector(".jcip-input") as HTMLDivElement,
@@ -263,8 +267,20 @@ export class InstallPanel {
 
     /**
      * 载入入口带入的安装目标：URL 换成该目标、面板切为对应形态，并重新解析
+     *
+     * 传 `null` 表示回到了顶栏入口（没有目标）：只恢复完整表单形态，不动已经填好的 URL。
+     * 桌面端每次都新开页签，用不到这条分支；移动端只有一个安装对话框，需要它把留在
+     * 精简形态的面板变回完整表单
      */
-    applyPreset(preset: InstallPanelPreset): void {
+    applyPreset(preset: InstallPanelPreset | null): void {
+        if (preset === null) {
+            this.data.presetRepoKey = "";
+            this.data.presetPull = "";
+            this.data.presetInstalled = "";
+            this.applyStoredPreset();
+            this.syncEnableAfterInstall();
+            return;
+        }
         this.storePreset(preset);
         this.elements.urlEl.value = preset.url;
         this.versionUI.syncDisplayFromData();
@@ -765,7 +781,7 @@ export class InstallPanel {
      */
     private applyRepoParseEvent(event: RepoParseEvent): void {
         if (event.type === "settled") {
-            this.custom.tab.updateTitle(event.data !== null ? event.data.repo : i18n.title);
+            this.host.setTitle(event.data !== null ? event.data.repo : i18n.title);
         }
 
         if (event.type === "parsing") {
@@ -857,7 +873,7 @@ export class InstallPanel {
         }
     }
 
-    /** 自定义页签关闭时由 `addTab.destroy` 调用，解除全局安装状态监听 */
+    /** 宿主销毁时调用（桌面为页签关闭，移动端为对话框关闭），解除全局安装状态监听 */
     destroy(): void {
         this.destroyed = true;
         this.persistForm.cancel();

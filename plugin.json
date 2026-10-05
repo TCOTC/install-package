@@ -4,8 +4,8 @@
   "url": "https://github.com/TCOTC/install-package",
   "version": "0.4.6",
   "minAppVersion": "3.8.7-alpha.4",
-  "backends": ["windows","linux","darwin"],
-  "frontends": ["desktop", "desktop-window"],
+  "backends": ["all"],
+  "frontends": ["all"],
   "disabledInPublish": true,
   "displayName": {
     "default": "Marketplace Package Manager",

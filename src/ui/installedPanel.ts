@@ -6,7 +6,6 @@
  * 更新检查按 GitHub Release 的最新 tag 与已安装版本比较，与本插件的安装流程口径一致
  */
 
-import { Custom } from "siyuan";
 import { getLatestReleaseTag } from "../github/github";
 import { i18n } from "../infra/i18n";
 import { comparePackageVersions } from "../install/packageVersion";
@@ -30,6 +29,7 @@ import {
     setStatusText,
 } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "../infra/logger";
+import type { PanelHost } from "./panelHost";
 import type { InstallPanelPreset } from "./panelData";
 
 /** 更新检查结果；`unknown` 为版本号无法比较（如版本写法不是语义化版本） */
@@ -102,8 +102,8 @@ export class InstalledPanel {
     private checkAllSeq = 0;
     private destroyed = false;
 
-    constructor(custom: Custom, openInstallTab: (preset: InstallPanelPreset) => void, pluginName: string) {
-        this.root = custom.element as HTMLElement;
+    constructor(host: PanelHost, openInstallTab: (preset: InstallPanelPreset) => void, pluginName: string) {
+        this.root = host.element;
         renderInstalledPanel(this.root);
         this.cardsEl = this.root.querySelector("div[data-type='cards']") as HTMLDivElement;
         this.tabsEl = this.root.querySelector("div[data-type='tabs']") as HTMLDivElement;

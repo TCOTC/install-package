@@ -10,6 +10,7 @@
  */
 
 import type { Menu } from "siyuan";
+import { isMobileFrontend } from "../infra/desktop";
 
 /** 边栏自身的边框宽度，贴边时让出这一点 */
 const DOCK_BORDER = 1;
@@ -39,8 +40,15 @@ export function topBarMenuAnchor(button: HTMLElement): DOMRect {
  * 锚点在窗口左半边时贴左侧栏，在右半边时贴右侧栏（藏起来的一侧宽度为 0，即贴窗口边缘）。
  * 内联的 `left` / `right` 会覆盖 `Menu.open` 里算出的 `left`；思源关闭菜单时会清掉菜单上的内联样式，
  * 不会影响其它菜单
+ *
+ * 移动端没有侧栏（`#dockLeft` / `#dockRight` 都不存在）、菜单也不再是浮层：`Menu.open` 会忽略坐标，
+ * 把菜单展开成底部抽屉，因此这里直接开、不传坐标也不写内联定位
  */
 export function openMenuFlushSide(menu: Menu, button: HTMLElement): void {
+    if (isMobileFrontend()) {
+        menu.open({ x: 0, y: 0 });
+        return;
+    }
     const rect = topBarMenuAnchor(button);
     const anchorCenter = rect.left + rect.width / 2;
     const toLeft = anchorCenter < window.innerWidth / 2;

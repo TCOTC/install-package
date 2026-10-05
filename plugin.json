@@ -20,6 +20,6 @@
     "zh-CN": "README.zh-CN.md"
   },
   "preview": "preview.webp",
-  "funding": {"custom": ["https://mytemos.com/"]},
+  "funding": {"custom":["https://mytemos.com/"]},
   "keywords": ["开发者工具","developer tool"]
 }

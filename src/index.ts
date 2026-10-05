@@ -23,6 +23,7 @@ import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/gith
 import { abortAllActiveInstalls } from "./install/installSession";
 import { initInstallHistory, INSTALL_HISTORY_STORAGE_NAME } from "./install/installHistory";
 import { initSelfPackage } from "./install/selfPackage";
+import { parseInstallUri } from "./install/siyuanUri";
 import { fetchSyncPost } from "./infra/kernelClient";
 import { normalizeRepoKey } from "./infra/repoKey";
 
@@ -100,6 +101,12 @@ export default class InstallPackage extends Plugin {
             destroy(this: Custom) {
                 destroyTabPanel(this);
             },
+        });
+
+        // 一键安装链接（`siyuan://plugins/<包名>/install?...`）由宿主的 open-siyuan-url-plugin 事件送达，
+        // 必须在这里注册：链接到达时若还没有订阅者，事件会被直接丢弃，宿主不做排队
+        this.eventBus.on("open-siyuan-url-plugin", (event) => {
+            this.openInstallUri(event.detail.url);
         });
 
         this.topBarElement = this.addTopBar({
@@ -278,6 +285,27 @@ export default class InstallPackage extends Plugin {
                 }
             },
         });
+    }
+
+    /**
+     * 处理思源协议送达的一键安装链接
+     *
+     * 链接能由任意外部程序构造，因此只做「打开安装页签并预填目标」这一件事：参数非法时只提示不开页签，
+     * 面板形态与「安装后启用」等开关一律沿用默认值，不给链接额外的控制能力
+     */
+    private openInstallUri(rawUrl: string): void {
+        const result = parseInstallUri(rawUrl, this.name);
+        if (!result.ok) {
+            if (result.reason === "notSiYuanUri" || result.reason === "notThisPlugin") {
+                // 不是发给本插件的链接：宿主本不该转发，兜底忽略
+                return;
+            }
+            console.warn(this.displayName, "invalid install link:", result.reason, rawUrl);
+            message(i18n.uriInstallLinkInvalid);
+            return;
+        }
+        console.log(this.displayName, "install link:", result.target.repoKey);
+        this.openInstallTab({ url: result.target.url, repoKey: result.target.repoKey });
     }
 
     /**

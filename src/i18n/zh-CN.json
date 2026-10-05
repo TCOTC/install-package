@@ -1,4 +1,5 @@
 {
+  "uriInstallLinkInvalid": "一键安装链接格式不正确，无法打开安装界面",
   "title": "安装集市包",
   "cancel": "取消",
   "confirm": "确定",

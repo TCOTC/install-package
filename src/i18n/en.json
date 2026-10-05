@@ -1,4 +1,5 @@
 {
+  "uriInstallLinkInvalid": "Invalid one-click install link; cannot open the install panel",
   "title": "Install Package",
   "cancel": "Cancel",
   "confirm": "Confirm",

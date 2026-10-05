@@ -23,7 +23,7 @@ module.exports = (env, argv) => {
         plugins.push(new ForkTsCheckerWebpackPlugin()); // build 时检查 i18n
         plugins.push(new CopyPlugin({
             patterns: [
-                {from: "preview.png", to: "./dist/"},
+                {from: "preview.webp", to: "./dist/"},
                 {from: "icon.png", to: "./dist/"},
                 {from: "README*.md", to: "./dist/"},
                 {from: "plugin.json", to: "./dist/"},

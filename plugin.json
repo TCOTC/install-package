@@ -2,7 +2,7 @@
   "name": "install-package",
   "author": "Jeffrey Chen",
   "url": "https://github.com/TCOTC/install-package",
-  "version": "0.4.6",
+  "version": "1.0.0",
   "minAppVersion": "3.8.7-alpha.4",
   "backends": ["all"],
   "frontends": ["all"],
@@ -19,6 +19,7 @@
     "default": "README.md",
     "zh-CN": "README.zh-CN.md"
   },
+  "preview": "preview.webp",
   "funding": {"custom": ["https://mytemos.com/"]},
   "keywords": ["开发者工具","developer tool"]
 }

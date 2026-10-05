@@ -38,18 +38,27 @@ export interface DialogPanelsOptions {
 /**
  * 建一个承载面板的对话框，返回填进面板根节点的宿主
  *
- * 高度给到 86vh：面板内部的日志卡片各自滚动，比让对话框按内容撑高更好用（撑高会超出屏幕）。
- * 面板自带 24px 内边距，对话框只提供容器，因此不额外加内容层的边距
+ * 整屏展示（做法对齐思源移动端的间隔重复界面 `card/openCard.ts`）：
+ * - 宽高给 `100%` 而不是 `100vw` / `100dvh`。`.b3-dialog` 用 `--mobile-top-safe-area` 与
+ *   `env(safe-area-inset-*)` 预留了刘海与手势区，百分比取的是它的内容盒，因此自动落在安全区内；
+ *   `100vw` / `100dvh` 会连内边距一起算上，在刘海屏与全面屏上会溢出视口
+ * - 遮罩底色改成表面色：弹出动画期间容器会从 80% 放大，深色遮罩会闪一下；
+ *   整屏时遮罩本就看不到，同色后安全区的留白与面板连成一片
+ * - 保留自带的关闭图标（移动端 `Dialog` 默认渲染它），面板自己没有关闭入口
  */
 function createDialogHost(kind: PanelKind, title: string, onClosed: (kind: PanelKind) => void): DialogEntry {
     const dialog = new Dialog({
         title,
-        width: "92vw",
-        height: "86vh",
+        width: "100%",
+        height: "100%",
         content: "",
         destroyCallback: () => onClosed(kind),
     });
-    // 给容器套上自己的类名（样式只调整高度分配）。构造参数里没有 `containerClassName`
+    const scrim = dialog.element.querySelector(".b3-dialog__scrim");
+    if (scrim instanceof HTMLElement) {
+        scrim.style.backgroundColor = "var(--b3-theme-surface)";
+    }
+    // 给容器套上自己的类名（样式只去掉圆角、边框与阴影，并分配 高度）。构造参数里没有 `containerClassName`
     // （pin 的 petal 版本未声明），因此建好后自己加
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("jcip-dialog");
     const body = dialog.element.querySelector(".b3-dialog__body");

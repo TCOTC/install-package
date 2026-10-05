@@ -23,16 +23,64 @@ $jcip-pr-avatar-size: 32px;
     background-color: var(--b3-theme-background);
 }
 
-// 移动端的面板对话框：面板本就自带 24px 内边距，对话框只提供一个占满高度的容器
+// 移动端的面板对话框：整屏铺满
+//
+// 容器铺满遮罩的内边距区（`.b3-dialog` 已用 `--mobile-top-safe-area` 与 `env(safe-area-inset-*)`
+// 预留刘海与手势区），去掉圆角、边框与阴影，让它看起来像思源移动端的整屏页面而不是浮层。
+// 本类只会加在移动端的对话框上（桌面走自定义页签）
 .jcip-dialog {
-    .b3-dialog__body {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    // 与 `.b3-dialog__container` 同特异度（都是单个类），靠样式注入晚于 base.css 胜出
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+
+    // 面板撑满对话框高度，面板内部的列表 / 日志卡片才能在各自区域内滚动；
+    // 内容高于视口时由面板自己滚动，不把滚动交给对话框（避免两层滚动条）
+    > .b3-dialog__body > .jcip-tab {
+        flex: 1 1 auto;
         min-height: 0;
     }
 
-    // 面板根节点撑满对话框高度，面板内部的日志 / 摘要卡片才能在各自区域内滚动
-    .jcip-tab {
+    // 整屏时按视口分配高度而不是按内容撑开：输入区与操作区按内容高度，
+    // 展示区吃掉剩下的部分，日志卡片因此始终可见、不把操作区顶出屏幕
+    .jcip-panel {
         flex: 1 1 auto;
         min-height: 0;
+    }
+
+    .jcip-input,
+    .jcip-action {
+        flex: 0 0 auto;
+    }
+
+    .jcip-show {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    // 窄布局把信息区与日志区改成了「按内容撑开、可见溢出」，整屏时要改回「填满父级、内部滚动」：
+    // 卡片高度改为跟随区块（`max-height: 100%`），超出部分由卡片自身的滚动条承接
+    .jcip-show__info,
+    .jcip-show__log {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .jcip-show__card {
+        min-height: 0;
+        max-height: 100%;
+    }
+
+    // 移动端只剩「界面语言」一个工具键（其余依赖 Electron 或桌面路径），
+    // 竖排会得到一个通栏按钮，改成靠右的紧凑一行
+    .jcip-action__tools {
+        flex: 0 0 auto;
+        flex-flow: row wrap;
+        justify-content: flex-end;
     }
 }
 

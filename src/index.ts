@@ -10,12 +10,12 @@ import { InstalledPanel } from "./ui/installedPanel";
 import { LocalPackagesMenu } from "./ui/localPackagesMenu";
 import {
     BAZAAR_PR_ICON_ID,
-    INSTALL_PACKAGE_ICON_ID,
     INSTALL_PACKAGE_ICON_SYMBOLS,
     LIST_ICON_ID,
-    LOCAL_PACKAGE_ICON_ID,
+    PACKAGE_OPEN_ICON_ID,
     REFRESH_ICON_ID,
     SETTINGS_ICON_ID,
+    STORE_ICON_ID,
 } from "./ui/icons";
 import { customTabPanelHost } from "./ui/panelHost";
 import { DialogPanels } from "./ui/dialogPanels";
@@ -124,7 +124,7 @@ export default class InstallPackage extends Plugin {
         });
 
         this.topBarElement = this.addTopBar({
-            icon: INSTALL_PACKAGE_ICON_ID,
+            icon: STORE_ICON_ID,
             title: this.displayName,
             position: "right",
             callback: () => {
@@ -139,7 +139,7 @@ export default class InstallPackage extends Plugin {
                     return;
                 }
                 menu.addItem({
-                    icon: INSTALL_PACKAGE_ICON_ID,
+                    icon: PACKAGE_OPEN_ICON_ID,
                     label: i18n.title,
                     click: () => {
                         this.openInstallTab();
@@ -154,7 +154,7 @@ export default class InstallPackage extends Plugin {
                 });
                 menu.addSeparator();
                 menu.addItem({
-                    icon: LOCAL_PACKAGE_ICON_ID,
+                    icon: STORE_ICON_ID,
                     label: i18n.installedTitle,
                     click: () => {
                         this.openLocalTab();
@@ -246,7 +246,7 @@ export default class InstallPackage extends Plugin {
         openNewCustomTab({
             app: this.app,
             customId: this.installTabCustomId,
-            icon: INSTALL_PACKAGE_ICON_ID,
+            icon: PACKAGE_OPEN_ICON_ID,
             title: i18n.title,
             ...(preset === undefined ? {} : { data: { [PENDING_INSTALL_PRESET_KEY]: preset } }),
         });
@@ -273,7 +273,7 @@ export default class InstallPackage extends Plugin {
         openOrFocusCustomTab({
             app: this.app,
             customId: this.localTabCustomId,
-            icon: LOCAL_PACKAGE_ICON_ID,
+            icon: STORE_ICON_ID,
             title: i18n.installedTitle,
         });
     }

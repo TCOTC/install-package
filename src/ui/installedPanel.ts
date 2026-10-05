@@ -18,7 +18,7 @@ import {
     type KernelPackageType,
 } from "../install/installedPackages";
 import { uninstallInstalledPackages } from "../install/uninstall";
-import { BAZAAR_ICON_ID, REFRESH_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
+import { REFRESH_ICON_ID, STORE_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import {
     emptyPackagesText,
     iconButton,
@@ -494,7 +494,7 @@ export class InstalledPanel {
         const placeholder = document.createElement("span");
         placeholder.className = "jcip-local__icon-fallback";
         // 必须交给 HTML 解析器建 SVG：`document.createElement("svg")` 得到的是未知元素，里面的 <use> 不会渲染
-        placeholder.innerHTML = `<svg><use xlink:href="#${BAZAAR_ICON_ID}"></use></svg>`;
+        placeholder.innerHTML = `<svg><use xlink:href="#${STORE_ICON_ID}"></use></svg>`;
         if (pkg.iconURL === "") {
             wrap.append(placeholder);
             return wrap;

@@ -1246,6 +1246,20 @@ $jcip-repo-summary-avatar-size: 50px;
     }
 }
 
+// 设置面板的令牌输入框：默认以圆点遮蔽
+//
+// 不用 `type="password"` 是因为 Chromium 会把它、以及「曾经是密码框」的输入框都上报为密码类
+// `EditorInfo.inputType`，移动端第三方输入法据此弹出不提供剪贴板的安全键盘，导致无法粘贴。
+// 该属性只有 Chromium / WebKit 支持，不支持的环境由 `settings/tokenField.ts` 退回密码框
+.jcip-token-field {
+    -webkit-text-security: disc;
+}
+
+// 「眼睛」按钮切换后的明文状态（遮蔽是默认状态，故这里是修饰类）
+.jcip-token-field--revealed {
+    -webkit-text-security: none;
+}
+
 // 单列窄布局
 @mixin narrow {
     // 窄屏下改为一列纵向 flex

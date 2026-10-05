@@ -9,6 +9,7 @@
 import { i18n } from "../infra/i18n";
 import { getFile, readDir } from "../infra/kernelClient";
 import { normalizeRepoKey, repoKeyFromOwnerRepo } from "../infra/repoKey";
+import { isVersionAtLeast } from "./packageVersion";
 import type { Logger } from "../infra/logger";
 
 /**
@@ -120,25 +121,14 @@ export function isSelfDevEnvironmentSync(): boolean {
     return selfInfo?.devEnvironment ?? false;
 }
 
-/** 把 tag 解析为三段数字版本；无法解析时返回 null */
-function parseVersionTag(tag: string): number[] | null {
-    const match = tag.trim().match(/^[vV]?(\d+)\.(\d+)\.(\d+)/);
-    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-}
-
-/** tag 是否达到自我安装的最低版本；无法解析的 tag 一律视为不满足 */
+/**
+ * tag 是否达到自我安装的最低版本
+ *
+ * 复用集市包的版本比较（语义化版本），因此 `1.0` 这类不合规的 tag 同样视为不满足；
+ * 预发布版（如 `1.0.0-beta`）低于同号正式版，也不放行
+ */
 export function isSelfInstallableVersion(tag: string): boolean {
-    const version = parseVersionTag(tag);
-    const selfMinimum = parseVersionTag(MIN_SELF_INSTALL_VERSION);
-    if (!version || !selfMinimum) {
-        return false;
-    }
-    for (let i = 0; i < selfMinimum.length; i++) {
-        if (version[i] !== selfMinimum[i]) {
-            return version[i] > selfMinimum[i];
-        }
-    }
-    return true;
+    return isVersionAtLeast(tag, MIN_SELF_INSTALL_VERSION);
 }
 
 /** 版本低于自我安装最低版本时的提示文案 */

@@ -80,22 +80,15 @@ test("投递的安装目标取出后即从页签数据删除", () => {
     assert.equal(takePendingInstallPreset(raw), null);
 });
 
-test("resolveVersionPin：入口带入的目标始终保留版本", () => {
-    // 本地集市包形态：URL 与版本栏被隐藏，清了无法恢复
-    assert.deepEqual(resolveVersionPin("a/b", "a/b", null), { keep: true, historyPickRepoKey: null });
-    // 与入口目标无关的仓库照常清空
-    assert.deepEqual(resolveVersionPin("c/d", "a/b", null), { keep: false, historyPickRepoKey: null });
-});
-
 test("resolveVersionPin：历史记录选定的版本命中后消费标记", () => {
     // 命中：保留版本，标记置空（用户随后再改 URL 时会照常清空）
-    assert.deepEqual(resolveVersionPin("a/b", "", "a/b"), { keep: true, historyPickRepoKey: null });
+    assert.deepEqual(resolveVersionPin("a/b", "a/b"), { keep: true, historyPickRepoKey: null });
     // 未命中：标记留着（用户可能还在改 URL），版本照常清空
-    assert.deepEqual(resolveVersionPin("c/d", "", "a/b"), { keep: false, historyPickRepoKey: "a/b" });
+    assert.deepEqual(resolveVersionPin("c/d", "a/b"), { keep: false, historyPickRepoKey: "a/b" });
     // 解析失败（空仓库键）同样视为未命中
-    assert.deepEqual(resolveVersionPin("", "", "a/b"), { keep: false, historyPickRepoKey: "a/b" });
-    // 入口目标与历史记录同时存在时，标记不会被消费
-    assert.deepEqual(resolveVersionPin("a/b", "a/b", "x/y"), { keep: true, historyPickRepoKey: "x/y" });
+    assert.deepEqual(resolveVersionPin("", "a/b"), { keep: false, historyPickRepoKey: "a/b" });
+    // 没有历史记录标记时一律清空
+    assert.deepEqual(resolveVersionPin("a/b", null), { keep: false, historyPickRepoKey: null });
 });
 
 test("投递的安装目标带上来源信息", () => {

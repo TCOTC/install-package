@@ -301,12 +301,12 @@ export class InstallPanel {
     /**
      * 把入口带入的目标写进页签数据（不碰界面）；形态与来源信息随后由 `applyStoredPreset` 推导
      *
-     * 本地集市包来源回填已安装版本（Release 列表到达后由版本控件对齐到实际 tag），
-     * 其它来源留空，以便解析完成后落到最新 Release
+     * 版本一律留空：解析完成后落到最新 Release。本地集市包来源的已安装版本只用于展示来源信息，
+     * 不作为安装目标
      */
     private storePreset(preset: InstallPanelPreset): void {
         this.data.url = preset.url;
-        this.data.version = preset.installed?.version ?? "";
+        this.data.version = "";
         this.data.presetRepoKey = normalizeRepoKey(preset.repoKey);
         this.data.presetPull = serializePull(preset.pull);
         this.data.presetInstalled = serializeInstalled(preset.installed);
@@ -332,7 +332,6 @@ export class InstallPanel {
         const installed = form === "installed" ? parseInstalled(this.data.presetInstalled) : undefined;
         this.elements.inputEl.classList.toggle("jcip-input--with-source", pull !== undefined || installed !== undefined);
         this.renderSourceInfo(pull, installed);
-        this.versionUI.setInstalledVersionAlias(installed?.version ?? "");
     }
 
     /** 由持久化数据推导面板形态；`presetRepoKey` 为空串说明目标来自顶栏入口 */
@@ -789,9 +788,9 @@ export class InstallPanel {
         } else {
             const { clearVersion, state } = this.uiStore.dispatch({ type: "parse/settled", ownerRepo: event.data });
             this.data.repoKey = state.lastParsedRepoKey;
-            // 入口带入的版本与历史记录选定的版本都来自「与仓库配套的来源」，解析落定不能把它们当作用户上一次选择的版本清掉；
+            // 历史记录选定的版本与仓库配套而来，解析落定不能把它当作用户上一次选择的版本清掉；
             // 无论是否要清空版本都先做一次判定：历史记录选定的标记要在落定时消费掉
-            const pin = resolveVersionPin(normalizeRepoKey(state.lastParsedRepoKey), this.data.presetRepoKey, this.historyPickRepoKey);
+            const pin = resolveVersionPin(normalizeRepoKey(state.lastParsedRepoKey), this.historyPickRepoKey);
             this.historyPickRepoKey = pin.historyPickRepoKey;
             if (clearVersion && !pin.keep) {
                 this.clearVersionFieldAndRefreshUi();

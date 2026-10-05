@@ -1,6 +1,5 @@
 import { Menu } from "siyuan";
 import { GITHUB_RELEASES_PER_PAGE, listReleasesPage, mergeInstallReleasePages } from "../github/github";
-import { comparePackageVersions } from "../install/packageVersion";
 import { isSelfInstallableVersion, MIN_SELF_INSTALL_VERSION, selfInstallVersionTooOldText } from "../install/selfPackage";
 import { SELECT_ICON_ID } from "./icons";
 import { i18n } from "../infra/i18n";
@@ -40,13 +39,6 @@ export class InstallPanelVersion {
     private releaseLoadMoreAbort: AbortController | null = null;
     /** 首页 Release 请求已发出、尚未收到 `onReleasesChanged`，需显示 loading 图标 */
     private releasesFirstPagePending = false;
-    /**
-     * 由本地集市包页回填的已安装版本
-     *
-     * 元数据里的版本（如 `0.4.6`）与 Release 的 tag（如 `v0.4.6`）写法不同，直接按原样安装取不到 Release，
-     * 因此等 Release 列表到达后换成列表里真正存在的 tag；用户另行选版后该标记作废
-     */
-    private installedVersionAlias = "";
     /** 是否已提示过摘要块缺少约定节点 */
     private warnedRepoSummaryContract = false;
     private versionMenu: Menu | null = null;
@@ -95,41 +87,6 @@ export class InstallPanelVersion {
     setRepoParseReady(ready: boolean): void {
         this.versionEl.disabled = !ready;
         this.syncRepoSummaryReleaseExtras();
-    }
-
-    /**
-     * 记下由本地集市包页回填的已安装版本，等 Release 列表到达后对齐到实际 tag
-     *
-     * 传空串表示清除：面板切到别的形态（集市 PR、顶栏入口）时不再需要对齐
-     */
-    setInstalledVersionAlias(version: string): void {
-        this.installedVersionAlias = version.trim();
-    }
-
-    /**
-     * 把回填的已安装版本换成列表里真实存在的 tag；只做一次，用户另行选版后作废
-     *
-     * 已安装的老版本可能排在第一页之后，因此每次列表扩充都再试一次，直到换成功或用户改选版本
-     */
-    private alignInstalledVersionAlias(rows: InstallReleaseRow[]): void {
-        const alias = this.installedVersionAlias;
-        if (alias === "") {
-            return;
-        }
-        if (comparePackageVersions(this.data.version, alias) !== 0) {
-            this.installedVersionAlias = "";
-            return;
-        }
-        if (rows.some((item) => item.tag === this.data.version)) {
-            // 回填的写法本身就在列表里，无需换算
-            this.installedVersionAlias = "";
-            return;
-        }
-        const row = rows.find((item) => comparePackageVersions(item.tag, alias) === 0);
-        if (row) {
-            this.data.version = row.tag;
-            this.installedVersionAlias = "";
-        }
     }
 
     /** 开始加载首页 Release */
@@ -183,7 +140,6 @@ export class InstallPanelVersion {
         this.releasesListOwner = meta ? meta.owner : null;
         this.releasesListRepo = meta ? meta.repo : null;
         this.releasesHasMore = meta ? meta.initialPageFull : false;
-        this.alignInstalledVersionAlias(rows);
         this.applyDefaultVersionIfEmpty(latest, preferred);
         this.syncVersionDisplay();
         this.renderVersionList();
@@ -443,7 +399,6 @@ export class InstallPanelVersion {
                 : merged;
             this.releasesNextPage += 1;
             this.releasesHasMore = result.pageFull;
-            this.alignInstalledVersionAlias(this.releaseRows);
             this.syncVersionDisplay();
             if (this.versionMenuListEl === listEl) {
                 const savedScrollTop = listEl.scrollTop;

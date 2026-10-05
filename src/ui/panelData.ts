@@ -59,23 +59,16 @@ export function normalizeData(raw: unknown): InstallPanelData {
 /**
  * 解析落定到某个仓库后，是否保留当前版本（以及更新后的历史记录标记）
  *
- * 有两种「版本与仓库配套而来」的来源，都不能按「用户上一次的选择」清掉：
- * - 入口带入的目标（本地集市包形态）：URL 与版本栏都被隐藏，清了无法恢复
- * - 刚从历史记录选定的：填回表单即会切换仓库，版本正是随这次切换带进来的
- *
- * 历史记录选定的标记命中后消费（返回的 `historyPickRepoKey` 为 null），
+ * 刚从历史记录选定的版本与仓库配套而来，不能按「用户上一次的选择」清掉：填回表单即会切换仓库，
+ * 版本正是随这次切换带进来的。标记命中后消费（返回的 `historyPickRepoKey` 为 null），
  * 之后用户再改 URL 时会照常清空版本。
  *
- * 三个仓库键均须是归一后的形式（见 `infra/repoKey`），调用方负责归一
+ * 仓库键均须是归一后的形式（见 `infra/repoKey`），调用方负责归一
  */
 export function resolveVersionPin(
     parsedRepoKey: string,
-    presetRepoKey: string,
     historyPickRepoKey: string | null,
 ): { keep: boolean; historyPickRepoKey: string | null } {
-    if (presetRepoKey !== "" && parsedRepoKey === presetRepoKey) {
-        return { keep: true, historyPickRepoKey };
-    }
     if (historyPickRepoKey === null || parsedRepoKey !== historyPickRepoKey) {
         return { keep: false, historyPickRepoKey };
     }
@@ -98,7 +91,7 @@ export interface InstallPanelInstalledSource {
     name: string;
     /** 当前语言下的展示名 */
     displayName: string;
-    /** 已安装版本，回填到版本栏 */
+    /** 已安装版本，仅用于来源信息展示；安装目标一律默认最新 Release */
     version: string;
     /** 该包当前的启用状态，用作「安装后启用」的初始值；挂件与模板没有该状态时省略 */
     enableAfterInstall?: boolean;
@@ -107,8 +100,9 @@ export interface InstallPanelInstalledSource {
 /**
  * 由别的页签（集市 PR 页、本地集市包页）带过来的安装目标
  *
- * URL 与版本已确定，面板形态由来源决定：PR 来源隐藏 URL 与版本栏并展示 PR，
- * 本地集市包来源只隐藏 URL 栏（保留版本下拉框），并回填已安装版本
+ * URL 已确定，面板形态由来源决定：PR 来源隐藏 URL 与版本栏并展示 PR，
+ * 本地集市包来源只隐藏 URL 栏（保留版本下拉框），并展示来源本地集市包；
+ * 两种来源的版本都留空，解析完成后落到最新 Release
  */
 export interface InstallPanelPreset {
     url: string;
@@ -182,7 +176,7 @@ export function takePendingInstallPreset(data: Record<string, unknown>): Install
     };
 }
 
-/** 反序列化来源本地集市包信息；内容异常时按「无信息」处理，只影响展示与回填 */
+/** 反序列化来源本地集市包信息；内容异常时按「无信息」处理，只影响展示 */
 export function parseInstalled(raw: string): InstallPanelInstalledSource | undefined {
     if (raw === "") {
         return undefined;

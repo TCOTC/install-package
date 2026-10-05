@@ -2,7 +2,7 @@
  * 「本地集市包」页签
  *
  * 列出本工作空间已安装的集市包（插件、主题、图标、挂件、模板），按类型分页签，卡片式展示；
- * 点击卡片打开对应的安装页签（隐藏 URL 栏、版本栏回填已安装版本），卡片右下角可检查更新、卸载。
+ * 点击卡片打开对应的安装页签（隐藏 URL 栏、版本默认最新 Release，来源信息里显示已安装版本），卡片右下角可检查更新、卸载。
  * 更新检查按 GitHub Release 的最新 tag 与已安装版本比较，与本插件的安装流程口径一致
  */
 
@@ -417,7 +417,7 @@ export class InstalledPanel {
         return this.packages.find((item) => rowKey(item) === key);
     }
 
-    /** 打开该包的安装页签：隐藏 URL 栏、回填已安装版本，并按该包当前的启用状态决定「安装后启用」 */
+    /** 打开该包的安装页签：隐藏 URL 栏、版本默认最新 Release，并按该包当前的启用状态决定「安装后启用」 */
     private openInstallPage(pkg: InstalledPackage): void {
         // 插件看是否启用，主题与图标看是否为当前使用；挂件与模板没有该状态，沿用默认值
         const enableAfterInstall = pkg.type === "plugin"

@@ -3,7 +3,7 @@
  *
  * 面板据此显示「卸载」「打开本地详情页」「打开包目录」与「打开插件存储目录」这几个键：
  * 目标按仓库键匹配（同一仓库可能对应多个包），检测结果与「插件存储目录是否存在」都带缓存，
- * 安装或卸载成功后再失效。
+ * 安装、卸载成功或收到内核的集市包变更时失效（后者只重读受影响的类型）。
  *
  * 与界面的耦合只通过 `onChanged` 回调：模块只管数据与内核请求，显隐由面板自己投影
  */
@@ -12,7 +12,10 @@ import { i18n } from "../infra/i18n";
 import { directoryPresence } from "../infra/kernelClient";
 import type { Logger } from "../infra/logger";
 import { normalizeRepoKey } from "../infra/repoKey";
-import { findInstalledByRepo, listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
+import { findInstalledByRepo, refreshedTypes, sortByKernelType } from "../install/installedPackageList";
+import { listInstalledPackages, type InstalledPackage } from "../install/installedPackages";
+import { type PackageChange } from "../install/packageChange";
+import { type KernelPackageType } from "../install/packageTypes";
 import { uninstallInstalledPackages } from "../install/uninstall";
 
 /** 插件的存储目录（插件通过 `saveData` 等接口写入的私有目录） */
@@ -90,7 +93,7 @@ export class PanelUninstallTargets {
             return;
         }
         const matched = findInstalledByRepo(result.packages, repoKey);
-        const targets = matched.filter((pkg) => !this.isOwnPlugin(pkg));
+        const targets = sortByKernelType(matched.filter((pkg) => !this.isOwnPlugin(pkg)));
         if (targets.length === 0 && matched.length > 0) {
             this.log.info(i18n.uninstallSelfExcluded);
         }
@@ -162,13 +165,75 @@ export class PanelUninstallTargets {
         await this.detect(this.repoKey);
     }
 
-    /** 安装成功：包集合与存储目录的存在性都可能变了，清缓存并重检 */
-    invalidateAfterInstall(): void {
+    /**
+     * 已安装集合可能已变：本插件的安装、卸载成功时使用（不知道具体类型，整体重检）
+     */
+    invalidate(): void {
         this.cache.clear();
         this.petalDirCache.clear();
         if (this.repoKey !== "") {
             void this.detect(this.repoKey);
         }
+    }
+
+    /**
+     * 内核推送的集市包变更（在设置里卸载、其它客户端或窗口操作）
+     *
+     * 分两步，尽量少发请求：
+     * - 插件卸载拿得到包名（内核只在插件卸载时给名字），就地把它们从当前目标里摘掉，界面不必等内核往返
+     * - 其余情况按受影响的类型重读一次；仓库键是包自己的属性，某类型的已安装集合变化**只会**影响
+     *   该类型的匹配结果，其它类型沿用上次的结果
+     */
+    applyPackageChange(change: PackageChange): void {
+        if (this.dropPackages(change.removedPlugins)) {
+            this.onChanged();
+        }
+        if (this.repoKey === "") {
+            return;
+        }
+        if (change.types.length === 0) {
+            // 内核未指明类型，只能整体重检
+            this.invalidate();
+            return;
+        }
+        void this.detectTypes(change.types);
+    }
+
+    /** 内核确认已卸载的插件：从当前目标与各仓库键的缓存里摘掉 */
+    private dropPackages(names: readonly string[]): boolean {
+        if (names.length === 0) {
+            return false;
+        }
+        const removed = new Set(names);
+        const isRemoved = (pkg: InstalledPackage): boolean => pkg.type === "plugin" && removed.has(pkg.name);
+        const before = this.targets.length;
+        this.targets = this.targets.filter((pkg) => !isRemoved(pkg));
+        for (const key of Array.from(this.cache.keys())) {
+            this.cache.set(key, (this.cache.get(key) ?? []).filter((pkg) => !isRemoved(pkg)));
+        }
+        return this.targets.length !== before;
+    }
+
+    /** 只重读受影响的类型，并与上次的匹配结果合并 */
+    private async detectTypes(types: readonly KernelPackageType[]): Promise<void> {
+        const seq = ++this.detectSeq;
+        const repoKey = this.repoKey;
+        const result = await listInstalledPackages(this.log, types);
+        if (this.destroyed || seq !== this.detectSeq || repoKey !== this.repoKey) {
+            return;
+        }
+        if (result === null) {
+            // 读取整体失败：保留上次的匹配，宁可不更新，也不把还在的包的操作键错收起来
+            return;
+        }
+        // 读失败的类型保持原样，否则会把它已有的匹配当成「已卸载」清掉
+        const affected = refreshedTypes(types, result.failedTypes);
+        const kept = (this.cache.get(repoKey) ?? this.targets).filter((pkg) => !affected.has(pkg.kernelType));
+        const fresh = findInstalledByRepo(result.packages, repoKey).filter((pkg) => !this.isOwnPlugin(pkg));
+        const targets = sortByKernelType([...kept, ...fresh]);
+        this.cache.set(repoKey, targets);
+        this.targets = targets;
+        this.onChanged();
     }
 
     /** 面板关闭：在途回调凭序号与 `destroyed` 自行作废 */

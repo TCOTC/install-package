@@ -7,12 +7,8 @@
  */
 
 import { i18n } from "../infra/i18n";
-import {
-    KERNEL_PACKAGE_TYPES,
-    kernelPackageTypeLabel,
-    type InstalledPackage,
-    type KernelPackageType,
-} from "../install/installedPackages";
+import { kernelPackageTypeLabel, type InstalledPackage } from "../install/installedPackages";
+import { KERNEL_PACKAGE_TYPES, type KernelPackageType } from "../install/packageTypes";
 
 /** 行标识：内核类型 + 包名，不同目录下的同名包互不影响 */
 export function rowKey(pkg: InstalledPackage): string {

@@ -25,6 +25,7 @@ import { openMenuFlushSide, topBarMenuAnchor } from "./ui/menuPosition";
 import { destroyGitHubNotice, setOpenPluginSettingsHandler } from "./github/githubNotice";
 import { abortAllActiveInstalls } from "./install/installSession";
 import { initInstallHistory, INSTALL_HISTORY_STORAGE_NAME } from "./install/installHistory";
+import { parsePackageChange, type PackageChange } from "./install/packageChange";
 import { initSelfPackage } from "./install/selfPackage";
 import { parseInstallUri } from "./install/siyuanUri";
 import { fetchSyncPost } from "./infra/kernelClient";
@@ -123,6 +124,16 @@ export default class InstallPackage extends Plugin {
             // 宿主转发链接时不激活窗口，先自己把窗口调到前台，否则用户看不到打开的安装页签
             showWindow();
             this.openInstallUri(event.detail.url);
+        });
+
+        // 在「设置 - 集市」里安装、更新、卸载集市包都会推 `bazaarChanged`（内核 model/bazaar.go 的 pushBazaarChanged），
+        // 插件卸载时还会多推一条 `reloadPlugin`（带被卸载的包名）；两个面板与本地列表据此刷新，
+        // 不必等用户手动重开页签或重载界面
+        this.eventBus.on("ws-main", (event) => {
+            const change = parsePackageChange(event.detail);
+            if (change !== null) {
+                this.applyPackageChange(change);
+            }
         });
 
         this.topBarElement = this.addTopBar({
@@ -340,6 +351,22 @@ export default class InstallPackage extends Plugin {
         }
         console.log(this.displayName, "install link:", result.target.repoKey);
         this.openInstallTab({ url: result.target.url, repoKey: result.target.repoKey });
+    }
+
+    /**
+     * 内核侧的集市包变更：把影响范围转给各界面
+     *
+     * 桌面端的面板在自定义页签里、移动端的在对话框里，两条链各自遍历（同 `onunload` 的处置）；
+     * 菜单是快照式的，只在自己还开着时重读（关掉后不必再管）
+     */
+    private applyPackageChange(change: PackageChange): void {
+        for (const panel of tabPanels.values()) {
+            if (panel instanceof InstallPanel || panel instanceof InstalledPanel) {
+                panel.applyPackageChange(change);
+            }
+        }
+        this.dialogPanels?.applyPackageChange(change);
+        this.localPackagesMenu?.applyPackageChange(change);
     }
 
     /**

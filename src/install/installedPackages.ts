@@ -9,15 +9,11 @@ import { Constants, getFrontend } from "siyuan";
 import { i18n } from "../infra/i18n";
 import { packageLabelText } from "../infra/packageLabels";
 import { fetchSyncPost } from "../infra/kernelClient";
-import { normalizeRepoKey, repoKeyOf } from "../infra/repoKey";
+import { repoKeyOf } from "../infra/repoKey";
 import { PACKAGE_TYPE_BY_KERNEL_TYPE, type PackageType } from "./install";
 import { sortPackagesByBazaarOrder } from "./packageSort";
+import { KERNEL_PACKAGE_TYPES, type KernelPackageType } from "./packageTypes";
 import type { Logger } from "../infra/logger";
-
-/** 内核集市接口使用的包类型名（复数），顺序即页面分组顺序 */
-export const KERNEL_PACKAGE_TYPES = ["plugins", "themes", "icons", "widgets", "templates"] as const;
-
-export type KernelPackageType = (typeof KERNEL_PACKAGE_TYPES)[number];
 
 /** 各类型的已安装包列表接口；是否需要 frontend 由 `kernelTypeNeedsFrontend` 判定 */
 const INSTALLED_PACKAGES_API: Record<KernelPackageType, string> = {
@@ -75,12 +71,6 @@ export interface InstalledPackage {
     incompatible: boolean;
     /** 需要升级思源才能启用或使用 */
     disallowInstall: boolean;
-}
-
-/** 按仓库键筛选已安装包；`repoKey` 大小写不限，结果可能有多项（实测一个仓库对应多个包） */
-export function findInstalledByRepo(packages: InstalledPackage[], repoKey: string): InstalledPackage[] {
-    const key = normalizeRepoKey(repoKey);
-    return key === "" ? [] : packages.filter((pkg) => pkg.repoKey === key);
 }
 
 /** 思源集市「已下载」列表的排序配置键，存在 `window.siyuan.storage["local-bazaar"]` 里 */
@@ -153,7 +143,7 @@ function parseInstalledPackage(
     };
 }
 
-/** 已安装集市包的读取结果；`null` 表示五类全部读取失败，调用方按「加载失败」处理 */
+/** 已安装集市包的读取结果；`null` 表示请求的类型全部读取失败，调用方按「加载失败」处理 */
 export interface InstalledPackagesResult {
     packages: InstalledPackage[];
     /** 读取失败的类型（内核不可达或接口异常）；非空表示列表不完整，调用方应如实提示 */
@@ -161,13 +151,19 @@ export interface InstalledPackagesResult {
 }
 
 /**
- * 读取全部已安装集市包
+ * 读取已安装集市包
  *
- * 五类并发请求：单类失败不影响其它类型，但失败的类型会记入 `failedTypes`，
- * 使调用方能区分「确实一个包都没装」与「有几类没读到」；五类全失败时返回 `null`
+ * `types` 省略或为空数组都表示读取全部五类（内核的集市包变更通知偶尔不带类型，调用方不必自己兜底，
+ * 也就不存在「传了空数组反而读到空列表」这种误用）。
+ * 单类失败不影响其它类型，失败的类型记入 `failedTypes`，使调用方能区分「确实一个包都没装」
+ * 与「有几类没读到」；**请求的类型全部失败**时返回 `null`
  */
-export async function listInstalledPackages(log: Logger): Promise<InstalledPackagesResult | null> {
-    const responses = await Promise.all(KERNEL_PACKAGE_TYPES.map((kernelType) => {
+export async function listInstalledPackages(
+    log: Logger,
+    types: readonly KernelPackageType[] = KERNEL_PACKAGE_TYPES,
+): Promise<InstalledPackagesResult | null> {
+    const requested: readonly KernelPackageType[] = types.length === 0 ? KERNEL_PACKAGE_TYPES : types;
+    const responses = await Promise.all(requested.map((kernelType) => {
         return fetchSyncPost(
             INSTALLED_PACKAGES_API[kernelType],
             kernelTypeNeedsFrontend(kernelType) ? { frontend: getFrontend() } : {},
@@ -176,8 +172,8 @@ export async function listInstalledPackages(log: Logger): Promise<InstalledPacka
 
     const packages: InstalledPackage[] = [];
     const failedTypes: KernelPackageType[] = [];
-    for (let i = 0; i < KERNEL_PACKAGE_TYPES.length; i++) {
-        const kernelType = KERNEL_PACKAGE_TYPES[i];
+    for (let i = 0; i < requested.length; i++) {
+        const kernelType = requested[i];
         const response = responses[i];
         const type = PACKAGE_TYPE_BY_KERNEL_TYPE[kernelType];
         const rawPackages = (response.data as { packages?: unknown } | null)?.packages;
@@ -192,7 +188,7 @@ export async function listInstalledPackages(log: Logger): Promise<InstalledPacka
             }
         }
     }
-    if (failedTypes.length === KERNEL_PACKAGE_TYPES.length) {
+    if (failedTypes.length === requested.length) {
         return null;
     }
     return { packages, failedTypes };

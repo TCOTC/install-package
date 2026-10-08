@@ -16,6 +16,7 @@ import type { PanelHost } from "./panelHost";
 import type { InstallPanelPreset } from "./panelData";
 import { BazaarPrPanel } from "./prPanel";
 import { InstalledPanel } from "./installedPanel";
+import { type PackageChange } from "../install/packageChange";
 
 /** 面板种类：安装面板 / 集市 PR 页 / 本地集市包页 */
 type PanelKind = "install" | "bazaarPr" | "local";
@@ -131,6 +132,20 @@ export class DialogPanels {
         }
         const entry = this.create("local", i18n.installedTitle);
         entry.panel = new InstalledPanel(entry.host, this.options.openInstallPanel, this.options.pluginName);
+    }
+
+    /**
+     * 内核侧集市包变更：转给还开着的面板
+     *
+     * 移动端的面板都在对话框里，`tabPanels` 收不到它们，因此与桌面端各自遍历一条（见 `index.ts`）
+     */
+    applyPackageChange(change: PackageChange): void {
+        for (const entry of this.entries.values()) {
+            const panel = entry.panel;
+            if (panel instanceof InstallPanel || panel instanceof InstalledPanel) {
+                panel.applyPackageChange(change);
+            }
+        }
     }
 
     /** 插件卸载或插件被禁用时关掉所有对话框（移动端的 `getAllTabs` 收不到它们） */

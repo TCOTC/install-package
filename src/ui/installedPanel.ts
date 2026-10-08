@@ -10,13 +10,15 @@ import { getLatestReleaseTag } from "../github/github";
 import { i18n } from "../infra/i18n";
 import { comparePackageVersions } from "../install/packageVersion";
 import {
-    KERNEL_PACKAGE_TYPES,
     kernelPackageTypeLabel,
     listInstalledPackages,
     sortInstalledPackages,
     type InstalledPackage,
-    type KernelPackageType,
+    type InstalledPackagesResult,
 } from "../install/installedPackages";
+import { mergeInstalledByType, refreshedTypes } from "../install/installedPackageList";
+import { KERNEL_PACKAGE_TYPES, type KernelPackageType } from "../install/packageTypes";
+import { type PackageChange } from "../install/packageChange";
 import { uninstallInstalledPackages } from "../install/uninstall";
 import { REFRESH_ICON_ID, STORE_ICON_ID, TRASHCAN_ICON_ID } from "./icons";
 import {
@@ -79,6 +81,8 @@ export class InstalledPanel {
     private packages: InstalledPackage[] = [];
     /** 当前查看的包类型；默认插件，若该类型为空则自动切到第一个有内容的类型 */
     private activeType: KernelPackageType = "plugins";
+    /** 各类型上次的读取情况；非空表示列表不完整，状态行要如实说明 */
+    private failedTypes: KernelPackageType[] = [];
     /** 类型页签与其数量标记，键为内核类型 */
     private readonly tabEls = new Map<KernelPackageType, { tab: HTMLButtonElement; count: HTMLElement }>();
     /** 卡片内的更新状态展示位置，键同 `rowKey` */
@@ -87,8 +91,13 @@ export class InstalledPanel {
     private readonly rowCheckEls = new Map<string, HTMLButtonElement>();
     /** 各行的更新检查结果 */
     private readonly updateStates = new Map<string, PackageUpdateState>();
-    /** 在途的检查请求，重新加载、中断检查或关闭页签时中止 */
-    private readonly checkAborts = new Set<AbortController>();
+    /** 各行标识对应的包；与 `rowKey` 一致，行被刷新掉时返回 undefined */
+    private findPackage(key: string): InstalledPackage | undefined {
+        return this.packages.find((item) => rowKey(item) === key);
+    }
+
+    /** 在途的检查请求，键同 `rowKey`；重新加载、中断检查或关闭页签时中止 */
+    private readonly checkAborts = new Map<string, AbortController>();
     /** 已发起检查、尚未出结果的行 */
     private readonly checkingRows = new Set<string>();
     /** 「全部检查更新」是否在进行中；进行中时该键改作「中断检查」 */
@@ -100,6 +109,10 @@ export class InstalledPanel {
     private loadSeq = 0;
     /** 全量检查的世代号：中断或重新开始时作废上一轮还没跑完的分支 */
     private checkAllSeq = 0;
+    /** 首次整页读取是否已成功过：还没有可用数据时不做「只刷新受影响类型」的局部更新 */
+    private hasLoaded = false;
+    /** 整页读取进行中：它自己会读到最新数据，此时不必再插一次局部刷新 */
+    private fullLoadInFlight = false;
     private destroyed = false;
 
     constructor(host: PanelHost, openInstallTab: (preset: InstallPanelPreset) => void, pluginName: string) {
@@ -141,15 +154,116 @@ export class InstalledPanel {
         this.cancelChecks();
     }
 
+    /**
+     * 内核侧集市包变更（在设置 - 集市里卸载、其它客户端或窗口操作）
+     *
+     * 先按包名把已确认卸载的插件行就立即摘掉（内核只在插件卸载时给名字，这一步不发请求），
+     * 再按受影响的类型重读：其它类型的卡片与它们的「检查更新」结果都保留，也不写「正在读取…」
+     */
+    applyPackageChange(change: PackageChange): void {
+        if (this.destroyed) {
+            return;
+        }
+        if (change.removedPlugins.length > 0) {
+            this.dropPackages(change.removedPlugins);
+        }
+        // 整页读取进行中：它随后读到的就是最新数据，不必再插一次
+        if (this.fullLoadInFlight) {
+            return;
+        }
+        if (!this.hasLoaded || change.types.length === 0) {
+            void this.reload();
+            return;
+        }
+        void this.refreshTypes(change.types);
+    }
+
+    /** 就立即掉内核已确认卸载的插件行；不动其它行，也不改页签 */
+    private dropPackages(names: readonly string[]): void {
+        const removed = new Set(names);
+        const isRemoved = (pkg: InstalledPackage): boolean => pkg.type === "plugin" && removed.has(pkg.name);
+        if (!this.packages.some(isRemoved)) {
+            return;
+        }
+        for (const pkg of this.packages) {
+            if (isRemoved(pkg)) {
+                this.clearUpdateState(rowKey(pkg));
+            }
+        }
+        this.packages = this.packages.filter((pkg) => !isRemoved(pkg));
+        this.syncTabs();
+        this.renderCards();
+        this.setStatusAfterLoad();
+        this.syncToolbar();
+    }
+
+    /** 只重读受影响的类型；其余类型的卡片与检查结果原样保留 */
+    private async refreshTypes(types: readonly KernelPackageType[]): Promise<void> {
+        const seq = ++this.loadSeq;
+        this.cancelChecksFor(types);
+        const result = await listInstalledPackages(this.log, types);
+        if (seq !== this.loadSeq || this.destroyed) {
+            return;
+        }
+        if (result === null) {
+            // 这一轮读取整体失败：保留旧数据，只把失败写进状态行（日志已由 listInstalledPackages 写）
+            this.setStatus(i18n.installedLoadFailed, true);
+            return;
+        }
+        const refreshed = refreshedTypes(types, result.failedTypes);
+        for (const pkg of this.packages) {
+            if (refreshed.has(pkg.kernelType)) {
+                this.clearUpdateState(rowKey(pkg));
+            }
+        }
+        this.packages = mergeInstalledByType(this.packages, result, types);
+        // 受影响的类型换成这一轮的读取情况，其它类型保留上次的
+        this.failedTypes = [
+            ...this.failedTypes.filter((kernelType) => !types.includes(kernelType)),
+            ...result.failedTypes,
+        ];
+        // 不调 pickDefaultType：用户正看着的页签不该因为别处安装了包而被切走
+        this.syncTabs();
+        this.renderCards();
+        this.setStatusAfterLoad();
+        this.syncToolbar();
+    }
+
+    /** 状态行：有读取失败的类型就说明列表不完整，否则是空列表提示 */
+    private setStatusAfterLoad(): void {
+        const partialFailed = partialFailedText(this.failedTypes);
+        this.setStatus(partialFailed === "" ? this.emptyStatusText() : partialFailed, partialFailed !== "");
+    }
+
     /** 中止全部在途的更新检查并清空其状态；同时作废「全部检查更新」还在排队的行 */
     private cancelChecks(): void {
         this.checkAllSeq++;
         this.checkingAll = false;
-        for (const abort of this.checkAborts) {
+        for (const abort of this.checkAborts.values()) {
             abort.abort();
         }
         this.checkAborts.clear();
         this.checkingRows.clear();
+    }
+
+    /**
+     * 只中止受影响类型里在途的检查
+     *
+     * 那些行马上要换成新数据，在途结果已不可信；其它类型的行不受影响（这是局部刷新与整页重读的区别）
+     */
+    private cancelChecksFor(types: readonly KernelPackageType[]): void {
+        const affected = new Set<KernelPackageType>(types);
+        const affectedKeys = new Set(
+            this.packages.filter((pkg) => affected.has(pkg.kernelType)).map((pkg) => rowKey(pkg)),
+        );
+        for (const key of Array.from(this.checkAborts.keys())) {
+            if (!affectedKeys.has(key)) {
+                continue;
+            }
+            this.checkAborts.get(key)?.abort();
+            this.checkAborts.delete(key);
+            this.checkingRows.delete(key);
+        }
     }
 
     private async reload(): Promise<void> {
@@ -160,7 +274,13 @@ export class InstalledPanel {
         this.syncTabs();
         this.renderCards();
         this.setStatus(i18n.installedLoading, false);
-        const result = await listInstalledPackages(this.log);
+        this.fullLoadInFlight = true;
+        let result: InstalledPackagesResult | null;
+        try {
+            result = await listInstalledPackages(this.log);
+        } finally {
+            this.fullLoadInFlight = false;
+        }
         if (seq !== this.loadSeq || this.destroyed) {
             return;
         }
@@ -169,12 +289,13 @@ export class InstalledPanel {
             this.syncToolbar();
             return;
         }
+        this.hasLoaded = true;
+        this.failedTypes = result.failedTypes;
         this.packages = result.packages;
         this.pickDefaultType();
         this.syncTabs();
         this.renderCards();
-        const partialFailed = partialFailedText(result.failedTypes);
-        this.setStatus(partialFailed === "" ? this.emptyStatusText() : partialFailed, partialFailed !== "");
+        this.setStatusAfterLoad();
         this.syncToolbar();
     }
 
@@ -281,17 +402,17 @@ export class InstalledPanel {
         this.checkingRows.add(key);
         this.setCheckButtonBusy(key, true);
         const abort = new AbortController();
-        this.checkAborts.add(abort);
+        this.checkAborts.set(key, abort);
         try {
             const latestTag = await this.fetchLatestTag(pkg.repoKey, abort.signal);
-            if (abort.signal.aborted || this.destroyed) {
-                // 被中断：不留半成品状态，回到「未检查」
+            if (abort.signal.aborted || this.destroyed || this.findPackage(key) === undefined) {
+                // 被中断，或该行已在内核变更后重新读掉：不留半成品状态
                 this.clearUpdateState(key);
                 return;
             }
             this.setUpdateState(key, latestTag === null ? { kind: "failed" } : this.compareUpdate(pkg, latestTag));
         } finally {
-            this.checkAborts.delete(abort);
+            this.checkAborts.delete(key);
             this.checkingRows.delete(key);
             this.setCheckButtonBusy(key, false);
         }
@@ -405,7 +526,7 @@ export class InstalledPanel {
         if (!(card instanceof HTMLElement)) {
             return;
         }
-        const pkg = this.packages.find((item) => rowKey(item) === card.dataset.key);
+        const pkg = this.findPackage(card.dataset.key ?? "");
         if (pkg !== undefined) {
             this.openInstallPage(pkg);
         }
@@ -413,8 +534,7 @@ export class InstalledPanel {
 
     /** 按钮所在的卡片对应的包 */
     private packageOf(el: Element): InstalledPackage | undefined {
-        const key = el.closest(".jcip-local__card")?.getAttribute("data-key") ?? "";
-        return this.packages.find((item) => rowKey(item) === key);
+        return this.findPackage(el.closest(".jcip-local__card")?.getAttribute("data-key") ?? "");
     }
 
     /** 打开该包的安装页签：隐藏 URL 栏、版本默认最新 Release，并按该包当前的启用状态决定「安装后启用」 */

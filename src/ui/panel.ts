@@ -28,6 +28,7 @@ import { openInterfaceLanguageMenu } from "./languageMenu";
 import { NO_MENU_ICON } from "./menuItem";
 import { PackageCompareLogger } from "./packageCompareLog";
 import { PanelUninstallTargets, petalDirPath } from "./panelUninstall";
+import { type PackageChange } from "../install/packageChange";
 import type { PanelHost } from "./panelHost";
 import { persistFormToLayout, type PersistedForm } from "./panelPersistence";
 import {
@@ -263,6 +264,15 @@ export class InstallPanel {
 
         this.init();
         this.applyStoredPreset();
+    }
+
+    /**
+     * 内核侧集市包变更（在设置 - 集市里卸载、其它客户端或窗口操作）：重新匹配本地集市包
+     *
+     * 面板据此更新「卸载 / 打开详情 / 打开包目录 / 打开存储目录」这几个键的显隐
+     */
+    applyPackageChange(change: PackageChange): void {
+        this.uninstallTargets.applyPackageChange(change);
     }
 
     /**
@@ -858,7 +868,7 @@ export class InstallPanel {
                 this.log.info(text);
                 message(text, true);
                 // 刚装上的包开始参与匹配，存储目录的存在性也可能变了，重新检测一次
-                this.uninstallTargets.invalidateAfterInstall();
+                this.uninstallTargets.invalidate();
             } else if (result === false) {
                 const text = i18n.installFailed.replace("{ownerRepo}", `${ownerRepo.owner}/${ownerRepo.repo}`);
                 this.log.warn(text);

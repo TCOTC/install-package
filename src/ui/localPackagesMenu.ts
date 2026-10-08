@@ -16,14 +16,10 @@ import { fetchSyncPost } from "../infra/kernelClient";
 import { message } from "../infra/message";
 import { setPackageEnabled } from "../install/install";
 import { openPackageDetailPage } from "../install/packageDetail";
-import {
-    KERNEL_PACKAGE_TYPES,
-    kernelPackageTypeLabel,
-    listInstalledPackages,
-    sortInstalledPackages,
-    type InstalledPackage,
-    type KernelPackageType,
-} from "../install/installedPackages";
+import { mergeInstalledByType } from "../install/installedPackageList";
+import { kernelPackageTypeLabel, listInstalledPackages, sortInstalledPackages, type InstalledPackage } from "../install/installedPackages";
+import { type PackageChange } from "../install/packageChange";
+import { KERNEL_PACKAGE_TYPES, type KernelPackageType } from "../install/packageTypes";
 import { CLOSE_ICON_ID, INFO_ICON_ID, SELECT_ICON_ID } from "./icons";
 import { emptyPackagesText, iconButton, partialFailedText, pickDefaultType, rowKey, setStatusText } from "./installedPackageUi";
 import { createConsoleLogger, type Logger } from "../infra/logger";
@@ -137,6 +133,63 @@ export class LocalPackagesMenu {
         this.loadSeq++;
         // 菜单容器是全局共用的，用完必须把类摘掉，否则下一个菜单也会变成纵向分列
         this.itemsEl.classList.remove(LIST_HOST_CLASS);
+    }
+
+    /**
+     * 内核侧集市包变更：按影响范围重读后重画
+     *
+     * 菜单是快照式的，只在还挂着时处理（关掉后思源会清空内容，不必再管）；
+     * 已确认卸载的插件先就地摘掉，不必等一次内核往返
+     */
+    applyPackageChange(change: PackageChange): void {
+        if (!this.isAttached() || this.packages === null) {
+            return;
+        }
+        const removed = new Set(change.removedPlugins);
+        const isRemoved = (pkg: InstalledPackage): boolean => pkg.type === "plugin" && removed.has(pkg.name);
+        if (change.removedPlugins.length > 0 && this.packages.some(isRemoved)) {
+            this.packages = this.packages.filter((pkg) => !isRemoved(pkg));
+            this.renderLater();
+        }
+        void this.reloadTypes(change.types);
+    }
+
+    /**
+     * 重读受影响的类型（空数组 = 全部）后重画
+     *
+     * 读取失败时保留当前列表（原因已由 `listInstalledPackages` 写进日志）
+     */
+    private async reloadTypes(types: readonly KernelPackageType[]): Promise<void> {
+        const seq = ++this.loadSeq;
+        const result = await listInstalledPackages(this.log, types);
+        if (this.destroyed || seq !== this.loadSeq || !this.isAttached() || result === null || this.packages === null) {
+            return;
+        }
+        this.packages = types.length === 0 ? result.packages : mergeInstalledByType(this.packages, result, types);
+        // 受影响的类型换成这一轮的读取情况，其它类型保留上次的
+        this.failedTypes = [
+            ...this.failedTypes.filter((kernelType) => !types.includes(kernelType)),
+            ...result.failedTypes,
+        ];
+        this.renderLater();
+    }
+
+    /**
+     * 延到下一个任务再重画
+     *
+     * 重建行会摘掉可能正被点的元素，而思源的全局点击处理把「点中的元素已脱离文档」当成
+     * 点了菜单外面并把菜单收起来，因此不在回调里同步动 DOM
+     */
+    private renderLater(): void {
+        window.setTimeout(() => {
+            if (this.destroyed || !this.isAttached()) {
+                return;
+            }
+            this.syncTabs();
+            this.renderMaster();
+            this.renderRows();
+            this.setStatus(this.statusText(), this.failedTypes.length > 0);
+        }, 0);
     }
 
     /**

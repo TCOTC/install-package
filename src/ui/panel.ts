@@ -521,6 +521,8 @@ export class InstallPanel {
             });
         }
         this.root.querySelector("button[data-type='refresh-repo']")?.addEventListener("click", () => {
+            // 存储目录由插件运行时创建，可能在面板打开后才出现，重查一次才能决定是否显示入口
+            this.uninstallTargets.refreshPetalDir();
             void this.repoParser.refresh();
         });
 

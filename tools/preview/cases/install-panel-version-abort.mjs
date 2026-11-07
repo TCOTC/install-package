@@ -199,6 +199,7 @@ exports.PanelUninstallTargets = function (pluginName, log, onChanged) {
 };
 exports.PanelUninstallTargets.prototype.setRepoKey = function () {};
 exports.PanelUninstallTargets.prototype.hasPetalDir = function () { return false; };
+exports.PanelUninstallTargets.prototype.refreshPetalDir = function () {};
 exports.PanelUninstallTargets.prototype.applyPackageChange = function () {};
 exports.PanelUninstallTargets.prototype.invalidate = function () {};
 exports.PanelUninstallTargets.prototype.uninstall = function () { return Promise.resolve(); };

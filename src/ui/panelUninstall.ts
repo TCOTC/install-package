@@ -34,6 +34,8 @@ export class PanelUninstallTargets {
     private readonly petalDirCache = new Map<string, boolean>();
     /** 在途的目录检查：同一路径只发一次请求（状态未知时不写缓存，可能被反复问） */
     private readonly petalDirPending = new Set<string>();
+    /** 路径到最近一次目录检查的序号：被手动重查顶替的旧结果直接丢弃 */
+    private readonly petalDirRequests = new Map<string, number>();
     /** 检测序号：URL 变化或面板关闭后作废在途回调 */
     private detectSeq = 0;
     /** 目录检查序号：新的一次检查或面板关闭后作废在途回调 */
@@ -129,14 +131,39 @@ export class PanelUninstallTargets {
         return false;
     }
 
-    /** 询问内核目录是否存在；只有最后一次检查能重投影，面板已关闭则丢弃结果 */
-    private async checkPetalDir(path: string): Promise<void> {
-        if (this.petalDirPending.has(path)) {
+    /**
+     * 手动「重新验证」：绕开缓存重新向内核确认插件存储目录是否存在
+     *
+     * 目录由插件自己在运行时创建，可能在面板打开后才出现，而命中缓存（含「不存在」）时不会再问内核，
+     * 用户显式要求重新验证时必须重查一次，否则入口会一直停在旧结论上。
+     * 不先清空缓存：结果回来后再覆盖，避免按钮先消失再出现
+     */
+    refreshPetalDir(): void {
+        const target = this.targets[0];
+        if (target === undefined || target.type !== "plugin") {
+            return;
+        }
+        void this.checkPetalDir(petalDirPath(target.name), true);
+    }
+
+    /**
+     * 询问内核目录是否存在；只有最后一次检查能重投影，面板已关闭则丢弃结果
+     *
+     * `force` 跳过在途去重：在途那次可能早于目录创建，等它回来仍会得到旧结论。
+     * 同一路径以最近一次请求的结论为准，被顶替的旧请求不再写缓存也不再投影
+     */
+    private async checkPetalDir(path: string, force = false): Promise<void> {
+        if (!force && this.petalDirPending.has(path)) {
             return;
         }
         this.petalDirPending.add(path);
+        const request = (this.petalDirRequests.get(path) ?? 0) + 1;
+        this.petalDirRequests.set(path, request);
         const seq = ++this.petalDirSeq;
         const presence = await directoryPresence(path);
+        if (this.petalDirRequests.get(path) !== request) {
+            return;
+        }
         this.petalDirPending.delete(path);
         if (presence === "unknown") {
             return;

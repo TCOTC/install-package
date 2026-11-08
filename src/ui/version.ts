@@ -430,8 +430,9 @@ export class InstallPanelVersion {
         }
         listEl.replaceChildren();
         if (this.releasesFirstPagePending) {
-            // 使用思源原生 loading 图标
-            listEl.innerHTML = '<img src="/stage/loading-pure.svg" style="margin: 0 auto; display: block; width: 64px; height: 64px;">';
+            // 思源原生加载指示器（`/stage/loading-pure.svg` 自思源 v3.8.10 起已移除）
+            listEl.innerHTML =
+                '<div class="fn__flex" style="height: 64px; align-items: center; justify-content: center"><span class="b3-loading" aria-hidden="true"></span></div>';
             return;
         }
         const queryTrimmed = this.versionMenuSearchEl?.value.trim() ?? "";
